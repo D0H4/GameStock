@@ -38,9 +38,9 @@ public class MarketService {
     private static final long STARTING_CASH = 1_000_000L;
     private static final ZoneId MISSION_ZONE = ZoneId.of("Asia/Seoul");
     private static final Map<String, Long> MISSION_REWARDS = Map.of(
-            "market", 10_000L,
-            "news", 10_000L,
-            "watch", 10_000L);
+            "market", 50_000L,
+            "news", 50_000L,
+            "watch", 50_000L);
     /** GameStock charges a small, transparent 0.10% commission per side. */
     private static final double TRADING_FEE_RATE = 0.001;
     /** Per-headline news influence limits used to update fair value only. */
@@ -228,6 +228,7 @@ public class MarketService {
         addUserColumnIfMissing("role", "VARCHAR(20) NOT NULL DEFAULT 'USER'");
         addUserColumnIfMissing("account_reset_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("reset_used_at", "TIMESTAMP NULL");
+        addUserColumnIfMissing("nickname_changed_at", "TIMESTAMP NULL");
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS attendance_rewards (
                   id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, rewarded_on DATE NOT NULL,
@@ -386,10 +387,16 @@ public class MarketService {
                              AND h.recorded_at <= COALESCE(e.published_at, e.created_at)
                            ORDER BY h.recorded_at DESC, h.id DESC LIMIT 1
                        ), s.current_price) AS price_at_publish
-                FROM market_events e LEFT JOIN stocks s ON s.id = e.stock_id
-                WHERE e.event_type = 'NEWS'
+                FROM (
+                    SELECT ranked.* FROM (
+                        SELECT events.*, ROW_NUMBER() OVER (
+                            PARTITION BY stock_id, source
+                            ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+                        ) AS news_rank
+                        FROM market_events events WHERE event_type = 'NEWS'
+                    ) ranked WHERE ranked.news_rank <= 50
+                ) e LEFT JOIN stocks s ON s.id = e.stock_id
             ORDER BY COALESCE(e.published_at, e.created_at) DESC, e.id DESC
-            LIMIT 200
                 """, this::toMarketEvent).stream()
                 .filter(this::isRelevantNews)
                 .toList();
@@ -511,7 +518,7 @@ public class MarketService {
     public synchronized List<RankingEntry> ranking() {
         settleDuePayments();
         List<RankingEntry> entries = jdbc.query("""
-                SELECT u.nickname, NULL AS profile_image_url, u.cash,
+                SELECT u.nickname, u.profile_image_url, u.cash,
                        COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0) AS reserved_cash,
                        COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0) AS unsettled_cash,
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
@@ -521,7 +528,7 @@ public class MarketService {
                 LEFT JOIN stocks s ON s.id = p.stock_id
                 WHERE u.password_hash <> 'BOT' AND u.username <> 'demo'
                   AND COALESCE(u.role, 'USER') <> 'ADMIN'
-                GROUP BY u.id, u.nickname, u.cash
+                GROUP BY u.id, u.nickname, u.profile_image_url, u.cash
                 ORDER BY (u.cash + reserved_cash + asset_value) DESC, u.id ASC
                 LIMIT 100
                 """, (rs, row) -> {

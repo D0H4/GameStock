@@ -5,11 +5,13 @@ import { StatusBar } from "./components/StatusBar";
 import { Topbar } from "./components/Topbar";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
+import { TradePage } from "./pages/TradePage";
 import { MarketPage } from "./pages/MarketPage";
 import { MyPage } from "./pages/MyPage";
 import { NewsPage } from "./pages/NewsPage";
 import { RankingPage } from "./pages/RankingPage";
 import { MissionRewardToast } from "./components/MissionRewardToast";
+import { CircuitBreakerNotice } from "./components/CircuitBreakerNotice";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
@@ -19,6 +21,10 @@ function titleFor(route: Route): string {
   if (route.name === "market") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
     return name ? `${name} · 시장 · 씹덕주식` : "시장 · 씹덕주식";
+  }
+  if (route.name === "trade") {
+    const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
+    return name ? `${name} · 거래 · 씹덕주식` : "거래 · 씹덕주식";
   }
   if (route.name === "news") return "속보 · 씹덕주식";
   if (route.name === "ranking") return "투자 랭킹 · 씹덕주식";
@@ -59,6 +65,7 @@ export default function App() {
       <main id="content" className="content" ref={main} tabIndex={-1}>
         {route.name === "home" && <HomePage />}
         {route.name === "market" && <MarketPage ticker={route.ticker} />}
+        {route.name === "trade" && <TradePage ticker={route.ticker} />}
         {route.name === "news" && <NewsPage />}
         {route.name === "ranking" && <RankingPage />}
         {route.name === "mypage" && (auth.user ? <MyPage /> : <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>)}
@@ -67,6 +74,7 @@ export default function App() {
       <StatusBar />
       <MissionRewardToast />
       <LoginModal />
+      <CircuitBreakerNotice />
     </div>
   );
 }
