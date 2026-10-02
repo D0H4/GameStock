@@ -22,7 +22,7 @@ export function NewsFeed({ limit, emptyMessage }: Props) {
     <ol className="news-list">
       {items.map((item) => {
         const quote = snapshot.quotes[item.code];
-        const effect = newsEffect(item.priceAtPublish, quote);
+        const effect = item.priceChangeRatio ?? newsEffect(item.priceAtPublish, quote);
         return (
           <li key={item.id} className="news-item">
             <GameIcon code={item.code} size="large" />

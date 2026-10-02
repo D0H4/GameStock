@@ -1,3 +1,4 @@
+import { AuthBridge } from "./components/AuthBridge";
 import { useEffect, useRef } from "react";
 import { LoginModal } from "./components/LoginModal";
 import { StatusBar } from "./components/StatusBar";
@@ -8,6 +9,7 @@ import { MarketPage } from "./pages/MarketPage";
 import { MyPage } from "./pages/MyPage";
 import { NewsPage } from "./pages/NewsPage";
 import { RankingPage } from "./pages/RankingPage";
+import { MissionRewardToast } from "./components/MissionRewardToast";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
@@ -52,6 +54,7 @@ export default function App() {
       <a className="skip-link" href="#content">
         본문으로 건너뛰기
       </a>
+      <AuthBridge />
       <Topbar route={route} />
       <main id="content" className="content" ref={main} tabIndex={-1}>
         {route.name === "home" && <HomePage />}
@@ -62,6 +65,7 @@ export default function App() {
         {route.name === "login" && <LoginPage method={route.method} />}
       </main>
       <StatusBar />
+      <MissionRewardToast />
       <LoginModal />
     </div>
   );

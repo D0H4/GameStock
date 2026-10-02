@@ -13,7 +13,7 @@ export function Topbar({ route }: { route: Route }) {
   return (
     <header className="topbar">
       <div className="topbar-inner">
-        <Link className="brand" to="/">
+        <Link className="brand" to="/" aria-label="씹덕주식 홈">
           <BrandMark />
           <span className="brand-text">씹덕주식</span>
         </Link>
@@ -32,6 +32,7 @@ export function Topbar({ route }: { route: Route }) {
         <Link
           className={`nav-link nav-me${route.name === "mypage" ? " is-active" : ""}`}
           to="/mypage"
+          aria-label="내 계좌"
           aria-current={route.name === "mypage" ? "page" : undefined}
         >
           내 계좌

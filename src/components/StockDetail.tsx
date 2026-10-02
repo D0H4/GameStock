@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { Delta } from "./Delta";
 import { GameIcon } from "./GameIcon";
 import { Link } from "./Link";
 import { OrderTicket } from "./OrderTicket";
 import { PriceCell } from "./PriceCell";
-import { SeriesChart } from "./SeriesChart";
+import { ReferenceSeriesChart } from "./ReferenceSeriesChart";
 import { clock, shares, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate } from "../market/selectors";
@@ -12,6 +13,11 @@ import { LISTING_BY_CODE } from "../market/universe";
 export function StockDetail({ code }: { code: string }) {
   const snapshot = useMarket();
   const api = useMarketApi();
+  const setActiveDetailCode = api.setActiveDetailCode;
+  useEffect(() => {
+    setActiveDetailCode(code);
+    return () => setActiveDetailCode(null);
+  }, [setActiveDetailCode, code]);
   const listing = LISTING_BY_CODE[code];
   const quote = snapshot.quotes[code];
 
@@ -54,7 +60,7 @@ export function StockDetail({ code }: { code: string }) {
         <Delta change={ratio} ratio={ratio} showAmount={false} />
       </div>
 
-      <SeriesChart code={code} />
+      <ReferenceSeriesChart code={code} />
 
       <dl className="facts">
         <div>

@@ -1,3 +1,5 @@
+import { AccountSettings } from "./AccountSettings";
+import { useState } from "react";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
 import { HoldingsTable } from "../components/HoldingsTable";
@@ -9,6 +11,7 @@ import { totals } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
 
 export function MyPage() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const snapshot = useMarket();
   const money = totals(snapshot);
   const fills = snapshot.portfolio.fills;
@@ -90,6 +93,13 @@ export function MyPage() {
           <p className="empty">체결 내역이 없습니다.</p>
         )}
       </Panel>
+      <details className="account-tools" onToggle={(event) => setSettingsOpen(event.currentTarget.open)}>
+        <summary className="account-tools-summary">
+          <span>계정 관리 · 미체결 주문 · 가격 알림</span>
+          <span className="account-tools-toggle" aria-hidden="true">{settingsOpen ? "접기 −" : "펼치기 +"}</span>
+        </summary>
+        {settingsOpen && <AccountSettings />}
+      </details>
     </div>
   );
 }

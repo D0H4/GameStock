@@ -21,8 +21,8 @@ export function OrderTicket({ code, initialSide = "buy", selectedLimitPrice }: {
   const api = useMarketApi();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [qty, setQty] = useState("");
+  const [pending, setPending] = useState(false);
   const [result, setResult] = useState<OrderResult | null>(null);
-  const [busy, setBusy] = useState(false);
   void selectedLimitPrice;
 
   const quote = snapshot.quotes[code];
@@ -40,15 +40,14 @@ export function OrderTicket({ code, initialSide = "buy", selectedLimitPrice }: {
   };
 
   const submit = async () => {
+    if (pending) return;
     if (!requireSignIn(`/market/${code}`)) return;
-    setBusy(true);
+    setPending(true);
     try {
       const outcome = await api.placeOrder({ code, side, qty: parsed });
       setResult(outcome);
       if (outcome.ok) setQty("");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setPending(false); }
   };
 
   return (
@@ -56,7 +55,7 @@ export function OrderTicket({ code, initialSide = "buy", selectedLimitPrice }: {
       className="ticket"
       onSubmit={(event) => {
         event.preventDefault();
-        if (valid && !busy) void submit();
+        if (valid && !pending) void submit();
       }}
     >
       <div className="ticket-side" role="group" aria-label="주문 방향">
@@ -110,8 +109,8 @@ export function OrderTicket({ code, initialSide = "buy", selectedLimitPrice }: {
         </div>
       </div>
 
-      <button type="submit" className={`submit-button is-${side}`} disabled={!valid || busy}>
-        {busy ? "처리 중…" : valid ? `${won(amount)} ${side === "buy" ? "매수" : "매도"}` : side === "buy" ? "매수" : "매도"}
+      <button type="submit" className={`submit-button is-${side}`} disabled={!valid || pending || Boolean(quote.restriction && !quote.restriction.marketOrdersAllowed)}>
+        {pending ? "처리 중…" : valid ? `${won(amount)} ${side === "buy" ? "매수" : "매도"}` : side === "buy" ? "매수" : "매도"}
       </button>
 
       <p className={`ticket-message${result && !result.ok ? " is-error" : ""}`} role="status" aria-live="polite">
