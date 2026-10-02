@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
+import { LoginModal } from "./components/LoginModal";
+import { StatusBar } from "./components/StatusBar";
 import { Topbar } from "./components/Topbar";
 import { HomePage } from "./pages/HomePage";
+import { LoginPage } from "./pages/LoginPage";
 import { MarketPage } from "./pages/MarketPage";
+import { MyPage } from "./pages/MyPage";
 import { NewsPage } from "./pages/NewsPage";
 import { RankingPage } from "./pages/RankingPage";
-import { MyPage } from "./pages/MyPage";
-import { LoginPage } from "./pages/LoginPage";
-import { MissionRewardToast } from "./components/MissionRewardToast";
-import { LoginModal } from "./components/LoginModal";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
@@ -18,7 +18,7 @@ function titleFor(route: Route): string {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
     return name ? `${name} · 시장 · 씹덕주식` : "시장 · 씹덕주식";
   }
-  if (route.name === "news") return "뉴스 · 씹덕주식";
+  if (route.name === "news") return "속보 · 씹덕주식";
   if (route.name === "ranking") return "투자 랭킹 · 씹덕주식";
   if (route.name === "mypage") return "마이페이지 · 씹덕주식";
   if (route.name === "login") return "로그인 · 씹덕주식";
@@ -37,7 +37,6 @@ export default function App() {
 
   useEffect(() => {
     document.title = titleFor(route);
-    /* 최초 렌더에서는 포커스를 옮기지 않는다. 이동할 때만 본문으로 보낸다. */
     if (previous.current === route) return;
     previous.current = route;
     window.requestAnimationFrame(() => {
@@ -62,7 +61,7 @@ export default function App() {
         {route.name === "mypage" && (auth.user ? <MyPage /> : <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>)}
         {route.name === "login" && <LoginPage method={route.method} />}
       </main>
-      <MissionRewardToast />
+      <StatusBar />
       <LoginModal />
     </div>
   );

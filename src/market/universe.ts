@@ -27,6 +27,29 @@ export const LISTING_BY_CODE: Record<string, Listing> = Object.fromEntries(
   LISTINGS.map((listing) => [listing.code, listing]),
 );
 
+/** 게임 공식 아트워크 경로. 백엔드가 사용하는 네 종목 코드를 그대로 유지한다. */
+const GAME_ICON_BY_CODE: Record<string, string> = {
+  GOV: "/game-icons/nk.jpg",
+  UMA: "/game-icons/uma.jpg",
+  BA: "/game-icons/ba.jpg",
+  GI: "/game-icons/gi.jpg",
+  SR: "/game-icons/sr.jpg",
+  ZZZ: "/game-icons/zzz.jpg",
+  AK: "/game-icons/ak.jpg",
+  WH: "/game-icons/wh.jpg",
+  PX: "/game-icons/px.jpg",
+  LT: "/game-icons/lt.jpg",
+  ES: "/game-icons/es.jpg",
+  MH: "/game-icons/mh.jpg",
+  EL: "/game-icons/el.jpg",
+  PW: "/game-icons/pw.jpg",
+  SD: "/game-icons/sd.jpg",
+};
+
+export function gameIcon(code: string): string | null {
+  return GAME_ICON_BY_CODE[code] ?? null;
+}
+
 /**
  * 한국 거래소 호가 단위. 모의 시세도 같은 단위로 맞춰야 표가 읽힌다.
  */

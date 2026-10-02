@@ -1,51 +1,23 @@
-import { Chip, rateTone } from "./Chip";
+import { Delta } from "./Delta";
 import { GameIcon } from "./GameIcon";
 import { Link } from "./Link";
 import { PriceCell } from "./PriceCell";
-import { Sparkline } from "./Sparkline";
-import { RestrictionBadge } from "./RestrictionBadge";
-import { rate, shares, trendArrow } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
 import type { SortDirection, SortKey } from "../market/selectors";
 
-/* 열 이름 뒤에 붙으므로 같은 단어를 반복하지 않는다. */
-const SORT_LABEL: Record<SortKey, { asc: string; desc: string }> = {
-  name: { asc: "가나다순", desc: "역순" },
-  price: { asc: "낮은순", desc: "높은순" },
-  rate: { asc: "하락순", desc: "상승순" },
-  volume: { asc: "적은순", desc: "많은순" },
-};
-
 interface Props {
   codes: string[];
   caption: string;
-  /** 그래프용 시계열을 외부에서 고정할 때 사용한다. 현재가·거래량은 실시간 스냅샷을 계속 사용한다. */
-  chartSeries?: Record<string, number[]>;
   selected?: string | null;
   onSelect?: (code: string) => void;
-  onToggleWatch?: boolean;
+  watchable?: boolean;
   sort?: { key: SortKey; direction: SortDirection };
   onSort?: (key: SortKey) => void;
-  /** 거래량 열에 막대를 그릴 기준값. 없으면 계산한다. */
-  volumeScale?: number;
 }
 
-export function QuoteTable({
-  codes,
-  caption,
-  chartSeries,
-  selected,
-  onSelect,
-  onToggleWatch = false,
-  sort,
-  onSort,
-  volumeScale,
-}: Props) {
-  const snapshot = useMarket();
-  const scale = volumeScale ?? Math.max(1, ...codes.map((code) => snapshot.quotes[code]?.volume ?? 0));
-
+export function QuoteTable({ codes, caption, selected, onSelect, watchable = false, sort, onSort }: Props) {
   const header = (key: SortKey, label: string, className: string) => {
     const active = sort?.key === key;
     return (
@@ -57,7 +29,7 @@ export function QuoteTable({
         {onSort ? (
           <button type="button" className={`sort-button${active ? " is-active" : ""}`} onClick={() => onSort(key)}>
             {label}
-            {active && <span className="sort-note"> {SORT_LABEL[key][sort.direction]}</span>}
+            {active && <span aria-hidden="true">{sort.direction === "asc" ? " ↑" : " ↓"}</span>}
           </button>
         ) : (
           label
@@ -68,35 +40,23 @@ export function QuoteTable({
 
   return (
     <div className="table-scroll">
-      <table className="quote-table market-quote-table">
+      <table className="table quote-table">
         <caption className="vh">{caption}</caption>
         <thead>
           <tr>
-            {onToggleWatch && (
+            {watchable && (
               <th scope="col" className="cell-watch">
                 <span className="vh">관심</span>
               </th>
             )}
-            {header("name", "종목", "cell-name")}
-            {header("price", "현재가", "cell-price")}
-            {header("rate", "등락", "cell-rate")}
-            <th scope="col" className="cell-chart">
-              세션 차트
-            </th>
-            {header("volume", "거래량", "cell-volume")}
+            {header("name", "게임", "cell-name")}
+            {header("price", "현재가", "cell-num")}
+            {header("rate", "등락", "cell-num")}
           </tr>
         </thead>
         <tbody>
           {codes.map((code) => (
-            <QuoteRow
-              key={code}
-              code={code}
-              selected={selected === code}
-              onSelect={onSelect}
-              showWatch={onToggleWatch}
-              volumeScale={scale}
-              chartSeries={chartSeries}
-            />
+            <QuoteRow key={code} code={code} selected={selected === code} onSelect={onSelect} watchable={watchable} />
           ))}
         </tbody>
       </table>
@@ -108,12 +68,10 @@ interface RowProps {
   code: string;
   selected: boolean;
   onSelect?: (code: string) => void;
-  showWatch: boolean;
-  volumeScale: number;
-  chartSeries?: Record<string, number[]>;
+  watchable: boolean;
 }
 
-function QuoteRow({ code, selected, onSelect, showWatch, volumeScale, chartSeries }: RowProps) {
+function QuoteRow({ code, selected, onSelect, watchable }: RowProps) {
   const snapshot = useMarket();
   const api = useMarketApi();
   const listing = LISTING_BY_CODE[code];
@@ -121,13 +79,11 @@ function QuoteRow({ code, selected, onSelect, showWatch, volumeScale, chartSerie
   if (!listing || !quote) return null;
 
   const ratio = sessionRate(quote);
-  const tone = rateTone(ratio);
-  const sparkTone: "up" | "down" | "flat" = ratio > 0 ? "up" : ratio < 0 ? "down" : "flat";
   const watched = snapshot.watch.includes(code);
 
   return (
     <tr className={selected ? "is-selected" : undefined} onClick={() => onSelect?.(code)}>
-      {showWatch && (
+      {watchable && (
         <td className="cell-watch">
           <button
             type="button"
@@ -144,7 +100,6 @@ function QuoteRow({ code, selected, onSelect, showWatch, volumeScale, chartSerie
         </td>
       )}
       <th scope="row" className="cell-name">
-        <div className="stock-name-group">
         <Link
           className="name-link"
           to={`/market/${code}`}
@@ -154,39 +109,15 @@ function QuoteRow({ code, selected, onSelect, showWatch, volumeScale, chartSerie
             onSelect(code);
           }}
         >
-          <GameIcon code={listing.code} name={listing.name} size="table" />
-          <span className="name-stack">
-            <span className="name-text">{listing.name}</span>
-            <span className="name-sub">
-              {listing.genre} · {listing.publisher} · {listing.code}
-            </span>
-          </span>
+          <GameIcon code={code} />
+          <span className="name-text">{listing.name}</span>
         </Link>
-        <RestrictionBadge code={code} />
-        </div>
       </th>
-      <td className="cell-price">
+      <td className="cell-num">
         <PriceCell className="num" value={quote.price} />
       </td>
-      <td className="cell-rate">
-        <Chip tone={tone}>
-          <span aria-hidden="true">{trendArrow(ratio)}</span>
-          <span className="num">{rate(ratio)}</span>
-        </Chip>
-      </td>
-      <td className="cell-chart">
-        <Sparkline series={chartSeries?.[code] ?? quote.series} prevClose={quote.prevClose} tone={sparkTone} />
-      </td>
-      <td className="cell-volume">
-        <span className="volume-cell">
-          <span className="num volume-value">{shares(quote.volume)}</span>
-          <span className="bar volume-bar" aria-hidden="true">
-            <span
-              className="bar-fill"
-              style={{ width: `${Math.max(2, (quote.volume / volumeScale) * 100)}%` }}
-            />
-          </span>
-        </span>
+      <td className="cell-num">
+        <Delta change={ratio} ratio={ratio} showAmount={false} />
       </td>
     </tr>
   );

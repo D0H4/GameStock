@@ -1,30 +1,25 @@
-const ICON_BY_CODE: Record<string, string> = {
-  // Official app icons sourced from each game's Google Play listing.
-  GOV: "/game-icons/gov.png",
-  UMA: "/game-icons/uma.png",
-  BA: "/game-icons/ba.png",
-  ZZZ: "/game-icons/zzz.png",
-};
+import { gameIcon } from "../market/universe";
 
 export function GameIcon({
   code,
   name,
-  size = "detail",
+  size = "default",
 }: {
   code: string;
-  name: string;
-  size?: "detail" | "table" | "news";
+  name?: string;
+  size?: "small" | "default" | "large" | "xl" | "detail" | "table" | "news";
 }) {
-  const source = ICON_BY_CODE[code];
-  const className = `game-icon${size !== "detail" ? ` game-icon-${size}` : ""}`;
+  const source = gameIcon(code);
+  const className =
+    size === "detail"
+      ? "game-icon"
+      : size === "table"
+        ? "game-icon game-icon-table"
+        : size === "news"
+          ? "game-icon game-icon-news"
+          : `game-icon is-${size}`;
 
-  if (!source) {
-    return (
-      <span className={`${className} game-icon-fallback`} aria-hidden="true">
-        {code}
-      </span>
-    );
-  }
+  if (!source) return <span className={className} aria-hidden="true" />;
 
-  return <img className={className} src={source} alt={`${name} 앱 아이콘`} />;
+  return <img className={className} src={source} alt={name ? `${name} 앱 아이콘` : ""} aria-hidden={name ? undefined : true} loading="lazy" decoding="async" />;
 }
