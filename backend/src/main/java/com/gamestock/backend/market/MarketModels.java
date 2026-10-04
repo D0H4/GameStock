@@ -10,9 +10,17 @@ public final class MarketModels {
     private MarketModels() { }
 
     public record Stock(String code, String name, String genre, long price, double changePercent, long volume,
-                        TradingRestriction restriction) {
+                        TradingRestriction restriction, long activeUsers, long marketCap,
+                        double movementWeight) {
         public Stock(String code, String name, String genre, long price, double changePercent, long volume) {
             this(code, name, genre, price, changePercent, volume, null);
+        }
+
+        public Stock(String code, String name, String genre, long price, double changePercent, long volume,
+                     TradingRestriction restriction) {
+            this(code, name, genre, price, changePercent, volume, restriction,
+                    StockMarketProfile.of(code).activeUsers(), StockMarketProfile.of(code).marketCap(),
+                    StockMarketProfile.of(code).movementWeight());
         }
     }
     public record TradingRestriction(String kind, String label, String phase, int level, String reason,
@@ -25,9 +33,9 @@ public final class MarketModels {
      */
     public record Portfolio(long cash, long assetValue, long totalAsset, List<Position> positions,
                             long unsettledCash, long unsettledAssetValue, long totalFees,
-                            long realizedProfitLoss, long attendanceRewardCash) {
+                            long realizedProfitLoss, long attendanceRewardCash, long missionRewardCash) {
         public Portfolio(long cash, long assetValue, long totalAsset, List<Position> positions) {
-            this(cash, assetValue, totalAsset, positions, 0, 0, 0, 0, 0);
+            this(cash, assetValue, totalAsset, positions, 0, 0, 0, 0, 0, 0);
         }
     }
 

@@ -65,6 +65,17 @@ class BatchOrderBookTest {
         assertTrue(b.fills.isEmpty());assertTrue(b.prices.isEmpty());assertEquals(10000,b.stocks.get(1L).last);
         assertEquals(10600,b.stocks.get(1L).viTrigger);assertEquals(100,b.holding(2,1).quantity());
     }
+    @Test void automatedOrderOutsideViBandIsCancelledWithoutTriggeringVi() {
+        var b=book(1000000);
+        b.accounts.put(4L,new Account(4,1000000,false,true));
+        b.holdings.put(new PositionKey(2,1),new Holding(100,100,10000,0));
+        var bot=b.submit(4,1,"BUY","LIMIT",3,10600,1000,5000);
+        b.submit(2,1,"SELL","LIMIT",3,10600,1001,5000);
+        assertEquals("CANCELLED",bot.status);
+        assertTrue(b.fills.isEmpty());
+        assertTrue(b.stocks.get(1L).continuous);
+        assertEquals(0,b.stocks.get(1L).viTrigger);
+    }
     @Test void incomingOrdersExecuteSequentiallyNotResortedAsOneBatch() {
         var b=book(1000000);
         b.submit(2,1,"SELL","LIMIT",2,10000,1000,5000);
@@ -83,5 +94,19 @@ class BatchOrderBookTest {
         b.submit(1,1,"SELL","MARKET",1,0,1003,0);
         assertEquals(49980,b.lpCashBudgets.get(1L));assertEquals(25000,b.lpCashBudgets.get(2L));
         b.beginBatch(1004);assertEquals(49980,b.lpCashBudgets.get(1L));
+    }
+    @Test void depletedInlineLiquidityInventoryRestoresOnceAndPreservesRealizedProfit() {
+        var b=book(1000000);
+        b.restoreLiquidityInventory(2,1,400,10050);
+        assertEquals(100,b.holding(2,1).quantity());
+
+        var key=new PositionKey(2,1);
+        b.holdings.put(key,new Holding(0,0,0,77));
+        b.restoreLiquidityInventory(2,1,400,10050);
+        assertEquals(new Holding(400,400,10050,77),b.holding(2,1));
+        assertTrue(b.changedHoldings.contains(key));
+
+        b.restoreLiquidityInventory(2,1,400,11000);
+        assertEquals(new Holding(400,400,10050,77),b.holding(2,1));
     }
 }

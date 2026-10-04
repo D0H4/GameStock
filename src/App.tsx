@@ -10,6 +10,8 @@ import { MarketPage } from "./pages/MarketPage";
 import { MyPage } from "./pages/MyPage";
 import { NewsPage } from "./pages/NewsPage";
 import { RankingPage } from "./pages/RankingPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { ChargePage } from "./pages/ChargePage";
 import { MissionRewardToast } from "./components/MissionRewardToast";
 import { CircuitBreakerNotice } from "./components/CircuitBreakerNotice";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
@@ -17,20 +19,24 @@ import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
 import type { Route } from "./router";
 
+const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "charge"]);
+
 function titleFor(route: Route): string {
   if (route.name === "market") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
-    return name ? `${name} · 시장 · 씹덕주식` : "시장 · 씹덕주식";
+    return name ? `${name} · 시장 · 슈엔증권` : "시장 · 슈엔증권";
   }
   if (route.name === "trade") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
-    return name ? `${name} · 거래 · 씹덕주식` : "거래 · 씹덕주식";
+    return name ? `${name} · 거래 · 슈엔증권` : "거래 · 슈엔증권";
   }
-  if (route.name === "news") return "속보 · 씹덕주식";
-  if (route.name === "ranking") return "투자 랭킹 · 씹덕주식";
-  if (route.name === "mypage") return "마이페이지 · 씹덕주식";
-  if (route.name === "login") return "로그인 · 씹덕주식";
-  return "씹덕주식 · 게임 종목 모의 거래소";
+  if (route.name === "news") return "속보 · 슈엔증권";
+  if (route.name === "ranking") return "투자 랭킹 · 슈엔증권";
+  if (route.name === "mypage") return "내 계좌 · 슈엔증권";
+  if (route.name === "settings") return "설정 · 슈엔증권";
+  if (route.name === "charge") return "충전하기 · 슈엔증권";
+  if (route.name === "login") return "로그인 · 슈엔증권";
+  return "슈엔증권";
 }
 
 export default function App() {
@@ -40,7 +46,7 @@ export default function App() {
   const previous = useRef(route);
 
   useEffect(() => {
-    if (route.name === "mypage" && auth.ready && !auth.user) openLoginPrompt("/mypage");
+    if (PRIVATE_ROUTES.has(route.name) && auth.ready && !auth.user) openLoginPrompt(`/${route.name}`);
   }, [route, auth.ready, auth.user]);
 
   useEffect(() => {
@@ -68,7 +74,10 @@ export default function App() {
         {route.name === "trade" && <TradePage ticker={route.ticker} />}
         {route.name === "news" && <NewsPage />}
         {route.name === "ranking" && <RankingPage />}
-        {route.name === "mypage" && (auth.user ? <MyPage /> : <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>)}
+        {PRIVATE_ROUTES.has(route.name) && !auth.user && <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>}
+        {route.name === "mypage" && auth.user && <MyPage />}
+        {route.name === "settings" && auth.user && <SettingsPage />}
+        {route.name === "charge" && auth.user && <ChargePage />}
         {route.name === "login" && <LoginPage method={route.method} />}
       </main>
       <StatusBar />

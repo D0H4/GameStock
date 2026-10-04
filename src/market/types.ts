@@ -58,6 +58,10 @@ export interface TradingRestriction {
 export interface Quote {
   code: string;
   restriction?: TradingRestriction | null;
+  /** Deterministic virtual market-size inputs exposed by the backend. */
+  activeUsers?: number;
+  marketCap?: number;
+  movementWeight?: number;
   price: number;
   prevClose: number;
   open: number;
@@ -133,6 +137,8 @@ export interface Portfolio {
   realized: number;
   /** 출석 보상으로 지급된 현금. 투자 수익률에서는 제외한다. */
   attendanceRewardCash?: number;
+  /** 미션 보상으로 지급된 현금. 투자 수익률에서는 제외한다. */
+  missionRewardCash?: number;
 }
 
 export interface MarketSnapshot {

@@ -53,7 +53,7 @@ public class MarketService {
     private static final double NEWS_AGGREGATE_SPECIAL_RATE = 0.10;
     private static final String LP_USERNAME = "liquidity_provider";
     private static final long LP_STARTING_CASH = 50_000_000L;
-    private static final int LP_INITIAL_INVENTORY = 400;
+    private static final int LP_INITIAL_INVENTORY = 100;
     private static final String TRADER_BOT_PASSWORD = "TRADER";
     private static final long TRADER_BOT_STARTING_CASH = 1_000_000L;
     private static final double NEWS_SPECIAL_IMPACT_THRESHOLD = 6.0;
@@ -86,6 +86,7 @@ public class MarketService {
         this.matching=matching;this.pipelineMetrics=metrics;this.ownership=ownership;
     }
     public boolean matchingEnabled(){return ownership==null||ownership.enabled();}
+    public boolean ownerAvailable(){return ownership==null||ownership.available();}
     public void requireMatchingOwner(){if(ownership!=null)ownership.requireOwner();}
 
     // Wall clock in production; replaceable with a synchronized Java/SQL clock in soak tests.
@@ -128,7 +129,14 @@ public class MarketService {
     private final MarketActivityPolicy activityPolicy=new MarketActivityPolicy();
     public void recordHumanActivity(){activityPolicy.touch(clock.millis());prepareVisitor();events.publishEvent(new MarketPresenceEvent());}
     public void recordRemoteActivity(){activityPolicy.touch(clock.millis());prepareVisitor();}
-    public void marketViewerConnected(String id){activityPolicy.connected(id,clock.millis());prepareVisitor();events.publishEvent(new MarketPresenceEvent());}
+    public void marketViewerConnected(String id){
+        activityPolicy.connected(id,clock.millis());
+        // A reconnect is also the first reliable wake-up after an idle period.
+        // Run the protection/auction expiry pass before the initial snapshot so
+        // an already-finished 2-minute VI cannot be shown as active forever.
+        if(simulationInitialized){activityPolicy.requestMaintenance();maintainScheduledMarket();}
+        events.publishEvent(new MarketPresenceEvent());
+    }
     public void marketViewerDisconnected(String id){activityPolicy.disconnected(id,clock.millis());}
     boolean activeSimulation(){return !adaptiveActivity||activityPolicy.active(clock.millis(),idleAfterMillis);}
     public long participantCadenceMillis(){return activeSimulation()?Math.max(50,Math.min(250,activeCadenceMillis)):activityPolicy.pulseOpen(clock.millis())?200:500;}
@@ -140,7 +148,7 @@ public class MarketService {
     }
     /** Idle heartbeats do not acquire a JDBC connection. Only due work opens a transaction. */
     public void maintainScheduledMarket() {
-        if(!simulationInitialized||!matchingEnabled())return;
+        if(!simulationInitialized||!matchingEnabled()||!ownerAvailable())return;
         activityPolicy.maintain(clock.millis(),activeSimulation(),idleRefreshMillis,idleRefreshBatches,()->{
             var tx=new org.springframework.transaction.support.TransactionTemplate(
                     new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
@@ -174,8 +182,15 @@ public class MarketService {
         this.protection = protection;
     }
 
+    /**
+     * Startup runs in two phases. Schema changes come first because MySQL
+     * commits every CREATE/ALTER implicitly. Data steps then run in autocommit
+     * and are idempotent, so a restart after a failure resumes them. Only steps
+     * that pair a cash write with another write use their own short transaction.
+     * {@code @PostConstruct} bypasses the transaction proxy, so a method-level
+     * {@code @Transactional} would never apply here.
+     */
     @PostConstruct
-    @Transactional
     public void initializeData() {
         simulationSeed = configuredSeed == null || configuredSeed.isBlank() ? new java.security.SecureRandom().nextLong()
                 : Long.parseLong(configuredSeed);
@@ -194,15 +209,8 @@ public class MarketService {
             demoUserId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,DEMO_USERNAME);
             simulationInitialized=true;return;
         }
-        ensurePriceHistoryTable();
-        ensureAuthenticationTables();
-        ensureMarketEventColumns();
-        ensureTradeTable();
-        ensurePortfolioColumns();
-        ensureSettlementTable();
-        ensureDailySummaryTable();
-        ensureSimulationState();
-        ensureMarketLock();
+        new MarketSchema(jdbc).migrate(userFeatures, protection, priceMetrics);
+
         jdbc.update("""
                 INSERT IGNORE INTO users (username, password_hash, nickname, cash)
                 VALUES (?, ?, ?, ?)
@@ -214,22 +222,15 @@ public class MarketService {
         removeExistingStock("VOID", "보이드 러너");
 
         StockCatalog.ensureListings(jdbc);
-        MarketBookCache.ensureTables(jdbc);
-        BotLedgerJournal.ensureTables(jdbc);
+        MarketBookCache.seedRevisions(jdbc);
         botJournal=new BotLedgerJournal(jdbc);
         ensureTraderBots();
-        userFeatures.ensureTables();
         userFeatures.ensureDefaultTags();
         seedPriceHistory();
         seedDailySummaries();
-        protection.ensureTables();
         normalizeOpenOrderPrices();
         initializeSimulationBooks();
-        priceMetrics.ensureTables();
-        for(String column:List.of("created_at","expires_at")) {
-            Integer precision=jdbc.queryForObject("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='orders' AND column_name=?",Integer.class,column);
-            if(precision==null || precision<3)jdbc.execute("ALTER TABLE orders MODIFY COLUMN "+column+" TIMESTAMP(3) "+(column.equals("created_at")?"NOT NULL DEFAULT CURRENT_TIMESTAMP(3)":"NULL"));
-        }
+        priceMetrics.seedCursors();
         refreshEnvironments();
 
         removeDefaultEvents();
@@ -238,8 +239,10 @@ public class MarketService {
         demoUserId = jdbc.queryForObject(
                 "SELECT id FROM users WHERE username = ?", Long.class, DEMO_USERNAME);
         // Convert any rows created by the former T+1 implementation to the
-        // new immediate-settlement state during startup.
-        settleDuePayments();
+        // new immediate-settlement state during startup. Each pending row pays
+        // the seller and marks itself settled; one transaction keeps a restart
+        // from paying a row twice.
+        startupTransaction().executeWithoutResult(status -> settleDuePayments());
         if(batchEnabled)initializeActivityEngine();
         simulationInitialized=true;
     }
@@ -288,10 +291,14 @@ public class MarketService {
         long started=System.nanoTime();
         BatchMarketRepository repository=new BatchMarketRepository(jdbc,compactLedger?botJournal:null);
         BatchOrderBook book=bookCacheEnabled?lane.cache.borrow(repository,now,lane.stocks,lane.users):repository.load(now,lane.stocks,lane.users);
-        if(inlineMarketMaker)for(long stock:book.stocks.keySet())if(!book.lpCashBudgets.containsKey(stock)) {
-            long total=liquidityAllocatedCash(stock,activityLpId);
-            long reserved=book.working(activityLpId,stock).stream().mapToLong(o->o.reservedCash).sum();
-            book.lpCashBudgets.put(stock,total-reserved);
+        if(inlineMarketMaker)for(var stock:book.stocks.values()) {
+            book.restoreLiquidityInventory(activityLpId,stock.id,
+                    StockMarketProfile.initialLiquidityInventory(stock.code,LP_INITIAL_INVENTORY),stock.last);
+            if(!book.lpCashBudgets.containsKey(stock.id)) {
+                long total=liquidityAllocatedCash(stock.id,activityLpId);
+                long reserved=book.working(activityLpId,stock.id).stream().mapToLong(o->o.reservedCash).sum();
+                book.lpCashBudgets.put(stock.id,total-reserved);
+            }
         }
         long loaded=System.nanoTime();
         if(lane.lastObservation==0 || now-lane.lastObservation>=500) {
@@ -299,7 +306,8 @@ public class MarketService {
                 priceMetrics.project(stock.id,now);
                 double fundamental=jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,stock.id);
                 var observed=priceMetrics.read(stock.id,stock.last,now,0);
-                lane.observations.put(stock.id,new BotActivityEngine.Observation(observed,environment(stock.code),fundamental,recentNewsBias(stock.code).rate(),.65));
+                lane.observations.put(stock.id,new BotActivityEngine.Observation(observed,environment(stock.code),fundamental,recentNewsBias(stock.code).rate(),
+                        StockMarketProfile.liquidityScale(stock.code,.65)));
                 jdbc.update("UPDATE market_price_metrics SET mark_price=?,mark_updated_at=? WHERE stock_id=?",Math.round(observed.markPrice()),new Timestamp(now),stock.id);
             }
             lane.lastObservation=now;
@@ -351,104 +359,6 @@ public class MarketService {
         }
     }
 
-    private void ensureAuthenticationTables() {
-        addOrderColumnIfMissing();
-        addUserColumnIfMissing("google_uid", "VARCHAR(128) NULL UNIQUE");
-        addUserColumnIfMissing("email", "VARCHAR(255) NULL");
-        addUserColumnIfMissing("profile_image_url", "VARCHAR(500) NULL");
-        addUserColumnIfMissing("profile_completed", "BOOLEAN NOT NULL DEFAULT FALSE");
-        addUserColumnIfMissing("role", "VARCHAR(20) NOT NULL DEFAULT 'USER'");
-        addUserColumnIfMissing("account_reset_at", "TIMESTAMP NULL");
-        addUserColumnIfMissing("reset_used_at", "TIMESTAMP NULL");
-        addUserColumnIfMissing("nickname_changed_at", "TIMESTAMP NULL");
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS attendance_rewards (
-                  id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, rewarded_on DATE NOT NULL,
-                  streak_day INT NOT NULL, reward_cash BIGINT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  UNIQUE KEY uq_attendance_user_day (user_id, rewarded_on),
-                  CONSTRAINT fk_attendance_user FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-                """);
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS mission_rewards (
-                  id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL,
-                  mission_id VARCHAR(40) NOT NULL, rewarded_on DATE NOT NULL, reward_cash BIGINT NOT NULL,
-                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  UNIQUE KEY uq_mission_reward_user_day (user_id, mission_id, rewarded_on),
-                  CONSTRAINT fk_mission_reward_user FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-                """);
-        migrateDailyMissionRewards();
-    }
-
-    private void migrateDailyMissionRewards() {
-        Integer columnCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'mission_rewards' AND column_name = 'rewarded_on'", Integer.class);
-        if (columnCount != null && columnCount == 0) {
-            jdbc.execute("ALTER TABLE mission_rewards ADD COLUMN rewarded_on DATE NULL AFTER mission_id");
-        }
-        Integer nullableCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'mission_rewards' AND column_name = 'rewarded_on' AND is_nullable = 'YES'", Integer.class);
-        if (nullableCount != null && nullableCount > 0) {
-            // JDBC sessions use UTC. Keep each legacy payout on its original Korean date.
-            jdbc.update("UPDATE mission_rewards SET rewarded_on = DATE(CONVERT_TZ(created_at, '+00:00', '+09:00')) WHERE rewarded_on IS NULL");
-            jdbc.execute("ALTER TABLE mission_rewards MODIFY COLUMN rewarded_on DATE NOT NULL");
-        }
-        Integer dailyIndexCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'mission_rewards' AND index_name = 'uq_mission_reward_user_day'", Integer.class);
-        if (dailyIndexCount != null && dailyIndexCount == 0) {
-            jdbc.execute("ALTER TABLE mission_rewards ADD UNIQUE KEY uq_mission_reward_user_day (user_id, mission_id, rewarded_on)");
-        }
-        Integer legacyIndexCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'mission_rewards' AND index_name = 'uq_mission_reward_user_mission'", Integer.class);
-        if (legacyIndexCount != null && legacyIndexCount > 0) {
-            // Add the daily index first so the user foreign key always has a supporting index.
-            jdbc.execute("ALTER TABLE mission_rewards DROP INDEX uq_mission_reward_user_mission");
-        }
-    }
-
-    private void addOrderColumnIfMissing() {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'orders' AND column_name = 'remaining_quantity'", Integer.class);
-        if (count != null && count == 0) jdbc.execute("ALTER TABLE orders ADD COLUMN remaining_quantity INT NOT NULL DEFAULT 0");
-        addOrderColumnIfMissing("reserved_cash", "BIGINT NOT NULL DEFAULT 0");
-        addOrderColumnIfMissing("reserved_quantity", "INT NOT NULL DEFAULT 0");
-        addOrderColumnIfMissing("expires_at", "TIMESTAMP NULL");
-        jdbc.update("UPDATE orders SET remaining_quantity = quantity WHERE remaining_quantity = 0 AND status = 'OPEN'");
-        jdbc.execute("ALTER TABLE orders MODIFY COLUMN status ENUM('OPEN', 'FILLED', 'PARTIAL', 'CANCELLED') NOT NULL DEFAULT 'OPEN'");
-    }
-
-    private void addOrderColumnIfMissing(String name, String definition) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'orders' AND column_name = ?", Integer.class, name);
-        if (count != null && count == 0) jdbc.execute("ALTER TABLE orders ADD COLUMN " + name + " " + definition);
-    }
-
-    private void addUserColumnIfMissing(String name, String definition) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = ?", Integer.class, name);
-        if (count != null && count == 0) jdbc.execute("ALTER TABLE users ADD COLUMN " + name + " " + definition);
-    }
-
-    private void ensureMarketEventColumns() {
-        Integer sourceCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'source'", Integer.class);
-        if (sourceCount != null && sourceCount == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN source VARCHAR(40) NOT NULL DEFAULT '미디어 보도' AFTER event_type");
-        jdbc.update("UPDATE market_events SET source = '미디어 보도' WHERE source IS NULL OR source = ''");
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'published_at'", Integer.class);
-        if (count != null && count == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN published_at TIMESTAMP NULL AFTER impact");
-        Integer priceAtPublishCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'price_at_publish'", Integer.class);
-        if (priceAtPublishCount != null && priceAtPublishCount == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN price_at_publish BIGINT NULL AFTER published_at");
-        jdbc.update("UPDATE market_events SET published_at = created_at WHERE published_at IS NULL");
-        // Existing events predate the persisted baseline. Reuse the closest
-        // historical quote when available and fall back to the current quote
-        // only for rows without enough history. Newly collected events receive
-        // their collection-time price in NewsFeedService.
-        jdbc.update("""
-                UPDATE market_events e
-                JOIN stocks s ON s.id = e.stock_id
-                SET e.price_at_publish = COALESCE((
-                    SELECT h.price FROM stock_price_history h
-                    WHERE h.stock_id = e.stock_id
-                      AND h.recorded_at <= COALESCE(e.published_at, e.created_at)
-                    ORDER BY h.recorded_at DESC, h.id DESC LIMIT 1
-                ), s.current_price)
-                WHERE e.event_type = 'NEWS' AND e.price_at_publish IS NULL
-                """);
-    }
-
     private void renameExistingStock(String oldCode, String newCode, String oldName, String newName) {
         jdbc.update("UPDATE games SET name = ? WHERE name = ?", newName, oldName);
         jdbc.update("UPDATE stocks SET stock_code = ? WHERE stock_code = ?", newCode, oldCode);
@@ -472,19 +382,6 @@ public class MarketService {
                 "글로벌 누적 이용자 1,000만 달성");
     }
 
-    private void ensurePriceHistoryTable() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS stock_price_history (
-                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                  stock_id BIGINT NOT NULL,
-                  price BIGINT NOT NULL,
-                  recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  CONSTRAINT fk_price_history_stock FOREIGN KEY (stock_id) REFERENCES stocks(id),
-                  INDEX ix_price_history_stock_time (stock_id, recorded_at)
-                )
-                """);
-    }
-
     private void seedPriceHistory() {
         jdbc.update("""
                 INSERT INTO stock_price_history (stock_id, price)
@@ -495,8 +392,11 @@ public class MarketService {
                 """);
     }
 
-    public synchronized List<Stock> stocks() {
-        return jdbc.query("""
+    // Locking policy: read-only queries below run without the service monitor; each
+    // statement reads committed rows and they touch no mutable fields. Methods that
+    // write or use in-memory simulation state (bots, environments, random) stay synchronized.
+    public List<Stock> stocks() {
+        List<Stock> rows = jdbc.query("""
                 SELECT stock_code, g.name, g.genre, current_price, previous_price, total_volume
                 FROM stocks s JOIN games g ON g.id = s.game_id
                 ORDER BY s.id
@@ -506,10 +406,21 @@ public class MarketService {
                 rs.getString("genre"),
                 rs.getLong("current_price"),
                 changePercent(rs.getLong("current_price"), rs.getLong("previous_price")),
-                rs.getLong("total_volume"), protection.restriction(rs.getString("stock_code"))));
+                rs.getLong("total_volume"), null));
+        return rows.stream().map(this::withRestriction).toList();
     }
 
-    public synchronized List<MarketEvent> marketEvents() {
+    /**
+     * Restrictions are looked up after the stock query has released its connection.
+     * Querying inside a row mapper holds two pooled connections per caller, which
+     * exhausts the pool once several requests run in parallel.
+     */
+    private Stock withRestriction(Stock stock) {
+        return new Stock(stock.code(), stock.name(), stock.genre(), stock.price(), stock.changePercent(),
+                stock.volume(), protection.restriction(stock.code()));
+    }
+
+    public List<MarketEvent> marketEvents() {
         List<MarketEvent> relevant = jdbc.query("""
                 SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at,
                        s.current_price, s.previous_price,
@@ -573,11 +484,11 @@ public class MarketService {
     }
 
     /** GameStock은 장 마감 없이 24시간 주문을 접수하는 게임형 시장이다. */
-    public synchronized MarketStatus marketStatus() {
+    public MarketStatus marketStatus() {
         return protection.marketStatus();
     }
 
-    public synchronized List<MarketEvent> stockNews(String code) {
+    public List<MarketEvent> stockNews(String code) {
         List<MarketEvent> candidates = jdbc.query("""
                 SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at,
                        s.current_price, s.previous_price,
@@ -648,21 +559,22 @@ public class MarketService {
     }
 
     @Transactional(readOnly = true)
-    public synchronized List<RankingEntry> ranking() {
+    public List<RankingEntry> ranking() {
         List<RankingEntry> entries = jdbc.query("""
                 SELECT u.nickname, u.profile_image_url, u.cash,
                        COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0) AS reserved_cash,
                        COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0) AS unsettled_cash,
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
+                       COALESCE((SELECT SUM(mr.reward_cash) FROM mission_rewards mr WHERE mr.user_id = u.id), 0) AS mission_reward_cash,
                        COALESCE(SUM(CASE WHEN p.quantity > 0 THEN p.quantity * COALESCE(pm.mark_price,s.current_price) ELSE 0 END), 0) AS asset_value
                 FROM users u
                 LEFT JOIN portfolios p ON p.user_id = u.id
                 LEFT JOIN stocks s ON s.id = p.stock_id
                 LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
-                WHERE u.password_hash <> 'BOT' AND u.username <> 'demo'
+                WHERE u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
                   AND COALESCE(u.role, 'USER') <> 'ADMIN'
                 GROUP BY u.id, u.nickname, u.profile_image_url, u.cash
-                ORDER BY (u.cash + reserved_cash + asset_value) DESC, u.id ASC
+                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value) DESC, u.id ASC
                 LIMIT 100
                 """, (rs, row) -> {
             long assetValue = rs.getLong("asset_value");
@@ -670,9 +582,13 @@ public class MarketService {
             long reservedCash = rs.getLong("reserved_cash");
             long unsettledCash = rs.getLong("unsettled_cash");
             long attendanceRewardCash = rs.getLong("attendance_reward_cash");
+            long missionRewardCash = rs.getLong("mission_reward_cash");
             long totalAsset = cash + reservedCash + unsettledCash + assetValue;
-            double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash) * 100.0 / STARTING_CASH;
-            return new RankingEntry(0, rs.getString("nickname"), rs.getString("profile_image_url"), totalAsset, assetValue, cash, changePercent);
+            // 출석·미션 보상은 투자 성과가 아니므로 수익률에서 제외한다.
+            double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash) * 100.0 / STARTING_CASH;
+            // Rows saved before image validation may hold arbitrary URLs; never expose them to other viewers.
+            String image = com.gamestock.backend.auth.ProfileImages.sanitize(rs.getString("profile_image_url"));
+            return new RankingEntry(0, rs.getString("nickname"), image.isEmpty() ? null : image, totalAsset, assetValue, cash, changePercent);
         });
         List<RankingEntry> ranked = new ArrayList<>(entries.size());
         for (int index = 0; index < entries.size(); index++) {
@@ -683,12 +599,12 @@ public class MarketService {
     }
 
     @Transactional(readOnly = true)
-    public synchronized Portfolio portfolio(long userId) {
+    public Portfolio portfolio(long userId) {
         return portfolioUnsafe(userId);
     }
 
     @Transactional(readOnly = true)
-    public synchronized DailyMissionStatus dailyMissions(long userId) {
+    public DailyMissionStatus dailyMissions(long userId) {
         return dailyMissionsAt(userId, clock.instant());
     }
 
@@ -704,6 +620,13 @@ public class MarketService {
     public synchronized MissionRewardResult rewardMission(String missionId, long userId) {
         Long reward = MISSION_REWARDS.get(missionId);
         if (reward == null) throw new IllegalArgumentException("존재하지 않는 미션입니다.");
+        // 화면 열람(market/news)은 서버가 확인할 수 없어 랭킹 수익률에서 보상을 제외한다.
+        // 관심종목 등록은 서버 상태로 확인할 수 있으므로 등록 여부를 검증한다.
+        if ("watch".equals(missionId)) {
+            Long watched = jdbc.queryForObject("SELECT COUNT(*) FROM user_watchlists WHERE user_id = ?", Long.class, userId);
+            if (watched == null || watched == 0)
+                throw new IllegalArgumentException("관심종목을 1개 이상 등록하면 보상을 받을 수 있습니다.");
+        }
         LocalDate day = LocalDate.now(clock.withZone(MISSION_ZONE));
         int inserted = jdbc.update("INSERT IGNORE INTO mission_rewards (user_id, mission_id, rewarded_on, reward_cash) VALUES (?, ?, ?, ?)",
                 userId, missionId, java.sql.Date.valueOf(day), reward);
@@ -714,7 +637,7 @@ public class MarketService {
     }
 
     @Transactional(readOnly = true)
-    public synchronized List<ActiveOrder> activeOrders(long userId) {
+    public List<ActiveOrder> activeOrders(long userId) {
         return jdbc.query("""
                 SELECT o.id, s.stock_code, o.side, o.quantity, o.remaining_quantity, COALESCE(o.price, 0) AS price,
                        o.status, o.order_type, COALESCE(o.reserved_cash, 0) AS reserved_cash,
@@ -840,7 +763,7 @@ public class MarketService {
     }
 
     @Transactional(readOnly = true)
-    public synchronized List<OrderHistory> orderHistory(String code, long userId) {
+    public List<OrderHistory> orderHistory(String code, long userId) {
         return jdbc.query("""
                 SELECT o.side, o.quantity, o.price, o.status, o.order_type, o.remaining_quantity, o.created_at,
                        COALESCE(SUM(CASE WHEN o.side = 'BUY' THEN t.buyer_fee ELSE t.seller_fee END), 0) AS fee,
@@ -872,7 +795,7 @@ public class MarketService {
 
     /** 모든 사용자의 익명 체결 내역. 개인별 주문 API와 분리해 공개한다. */
     @Transactional(readOnly = true)
-    public synchronized List<PublicTrade> publicTrades(String code) {
+    public List<PublicTrade> publicTrades(String code) {
         List<PublicTrade> result=new ArrayList<>(jdbc.query("""
                 SELECT t.aggressor_side AS side, t.quantity, t.price, taker.order_type, t.created_at
                 FROM trades t
@@ -890,7 +813,7 @@ public class MarketService {
         return result.stream().sorted(Comparator.comparing((PublicTrade trade)->Instant.parse(trade.createdAt())).reversed()).limit(10).toList();
     }
 
-    public synchronized List<PricePoint> priceHistory(String code) {
+    public List<PricePoint> priceHistory(String code) {
         return priceHistory(code, "24h");
     }
 
@@ -900,7 +823,7 @@ public class MarketService {
      * interval fragments. A generous point cap keeps a week view lightweight;
      * the clients down-sample only when the canvas width requires it.
      */
-    public synchronized List<PricePoint> priceHistory(String code, String range) {
+    public List<PricePoint> priceHistory(String code, String range) {
         Instant cutoff = clock.instant().minus(historyWindow(range));
         String table=historyWindow(range).toMinutes()<=15?"bot_trade_seconds":"bot_trade_minutes";
         List<PricePoint> points = jdbc.query("""
@@ -921,7 +844,7 @@ public class MarketService {
     }
 
     /** Returns a bounded OHLC series for the chart ranges shown by the client. */
-    public synchronized List<ChartCandle> chartHistory(String code, String range) {
+    public List<ChartCandle> chartHistory(String code, String range) {
         String normalized = code.toUpperCase(Locale.ROOT);
         if (findStock(normalized) == null) throw new IllegalArgumentException("존재하지 않는 종목입니다.");
         Duration window = chartWindow(range);
@@ -1014,7 +937,7 @@ public class MarketService {
      * stock recently. This deliberately uses existing news, trade, and order
      * tables so the explanation is derived from the same data as the price.
      */
-    public synchronized PriceDrivers priceDrivers(String code) {
+    public PriceDrivers priceDrivers(String code) {
         String normalized = code.toUpperCase(Locale.ROOT);
         Stock stock = findStock(normalized);
         if (stock == null) throw new IllegalArgumentException("존재하지 않는 종목입니다.");
@@ -1110,7 +1033,7 @@ public class MarketService {
     }
 
     @Transactional(readOnly = true)
-    public synchronized OrderBook orderBook(String code) {
+    public OrderBook orderBook(String code) {
         String normalized = code.toUpperCase(Locale.ROOT);
         if (findStock(normalized) == null) throw new IllegalArgumentException("존재하지 않는 종목입니다.");
         long id = stockId(normalized);
@@ -1128,7 +1051,7 @@ public class MarketService {
     }
 
     @Transactional(readOnly = true)
-    public synchronized MarketSnapshot snapshot() {
+    public MarketSnapshot snapshot() {
         return new MarketSnapshot(stocks(), portfolioUnsafe(demoUserId), marketEvents());
     }
 
@@ -1302,14 +1225,16 @@ public class MarketService {
         // Measure live depth before withdrawing our quotes; replacement itself is not a liquidity crisis.
         PriceMetricService.Metrics metrics = metrics(code, 0);
         cancelBotOrders(lp, stockId(code));
+        ensureLiquidityInventory(code, lp);
         OrderBook externalBook=orderBook(code);
         PriceBand band=botPriceBand(code);
         MarketMakerEngine.QuoteConstraints constraints=new MarketMakerEngine.QuoteConstraints(band.lowerPrice(),band.upperPrice(),
                 externalBook.bids().isEmpty()?0:externalBook.bids().get(0).price(),
                 externalBook.asks().isEmpty()?0:externalBook.asks().get(0).price());
         MarketMakerEngine.RiskBook risk = liquidityRiskBook(code, lp);
+        double fundamental=jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,stockId(code));
         for (MarketMakerEngine.Quote quote : marketMaker.quotes(metrics, environment(code), risk,
-                tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints)) {
+                tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints,fundamental)) {
             insertLiquidityQuote(code, lp, quote);
         }
         MatchSummary matched = matchOrders(code);
@@ -1490,9 +1415,15 @@ public class MarketService {
                 Timestamp.from(clock.instant().plusMillis(4000)),compactLedger);
     }
 
-    /** Seed finite inventory once; a later sale is never replenished automatically. */
-    private void seedLiquidityInventory(String code, long userId) {
+    /**
+     * Seed a new LP lot and restore only a fully depleted lot.
+     *
+     * A non-zero holding remains persistent across restarts, but a zero holding
+     * must not permanently remove the sole public sell-side counterparty.
+     */
+    private void ensureLiquidityInventory(String code, long userId) {
         long id = stockId(code);
+        int initialInventory = StockMarketProfile.initialLiquidityInventory(code,LP_INITIAL_INVENTORY);
         List<HoldingState> holdings = jdbc.query("""
                 SELECT quantity, settled_quantity, average_price, realized_profit_loss
                 FROM portfolios WHERE user_id = ? AND stock_id = ? FOR UPDATE
@@ -1505,7 +1436,15 @@ public class MarketService {
             jdbc.update("""
                     INSERT INTO portfolios (user_id, stock_id, quantity, settled_quantity, average_price, realized_profit_loss)
                     VALUES (?, ?, ?, ?, ?, 0)
-                    """, userId, id, LP_INITIAL_INVENTORY, LP_INITIAL_INVENTORY, findStock(code).price());
+                    """, userId, id, initialInventory, initialInventory, findStock(code).price());
+        } else if (holdings.get(0).quantity() <= 0) {
+            // Replenish only after the previous lot is fully consumed. This
+            // preserves ordinary fills and avoids a full production reset.
+            jdbc.update("""
+                    UPDATE portfolios
+                    SET quantity = ?, settled_quantity = ?, average_price = ?
+                    WHERE user_id = ? AND stock_id = ?
+                    """, initialInventory, initialInventory, findStock(code).price(), userId, id);
         }
     }
 
@@ -1520,30 +1459,15 @@ public class MarketService {
         return jdbc.queryForObject("SELECT id FROM users WHERE username = ?", Long.class, LP_USERNAME);
     }
 
-    private void initializeSimulationBooks() {
-        ensureOrderIndex("ix_orders_live_book", "stock_id,status,side,price,created_at,id");
-        ensureOrderIndex("ix_orders_expiry", "status,expires_at");
-        ensureOrderIndex("ix_orders_user_live", "user_id,status,stock_id");
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS market_price_metrics (
-                    stock_id BIGINT PRIMARY KEY, mark_price BIGINT NOT NULL,
-                    hidden_fundamental DOUBLE NOT NULL, anchor_price BIGINT NOT NULL,
-                    last_news_id BIGINT NOT NULL DEFAULT 0, mark_updated_at TIMESTAMP(3) NULL)
-                """);
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='market_price_metrics' AND column_name='mark_updated_at'",Integer.class)==0)
-            jdbc.execute("ALTER TABLE market_price_metrics ADD COLUMN mark_updated_at TIMESTAMP(3) NULL");
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS lp_risk_books (
-                    stock_id BIGINT PRIMARY KEY, opening_cash BIGINT NOT NULL,
-                    baseline_trade_id BIGINT NOT NULL, target_inventory INT NOT NULL,
-                    max_inventory INT NOT NULL, risk_limit BIGINT NOT NULL)
-                """);
-        jdbc.execute("CREATE TABLE IF NOT EXISTS lp_cash_projection (stock_id BIGINT PRIMARY KEY,last_id BIGINT NOT NULL,cash BIGINT NOT NULL)");
-        // PostConstruct is not intercepted by Spring's transaction proxy. Startup cancellation
-        // and finite allocations therefore need an explicit transaction after the schema DDL.
-        var startup=new org.springframework.transaction.support.TransactionTemplate(
+    /** PostConstruct bypasses the transaction proxy, so startup writes that must be atomic use this. */
+    private org.springframework.transaction.support.TransactionTemplate startupTransaction() {
+        return new org.springframework.transaction.support.TransactionTemplate(
                 new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
-        startup.executeWithoutResult(status->{
+    }
+
+    private void initializeSimulationBooks() {
+        // Startup cancellation and finite allocations must commit together.
+        startupTransaction().executeWithoutResult(status->{
             acquireMarketLock();
             long lp = ensureLiquidityProvider("");
             cancelBotOrders(lp, null);
@@ -1555,8 +1479,8 @@ public class MarketService {
             for (String code : codes) {
                 long id = stockId(code);
                 Stock stock = findStock(code);
-                seedLiquidityInventory(code,lp);
-                // No reset/refill on restart: persistent opening allocations and trade baselines are retained.
+                ensureLiquidityInventory(code,lp);
+                // Non-zero allocations and trade baselines are retained across restarts.
                 jdbc.update("INSERT IGNORE INTO lp_risk_books VALUES (?,?,?,?,?,?)",
                         id,allocation,baseline,batchEnabled?100:400,1200,stock.price()*1200L);
                 jdbc.update("INSERT IGNORE INTO market_price_metrics (stock_id,mark_price,hidden_fundamental,anchor_price) VALUES (?,?,?,?)",
@@ -1564,11 +1488,6 @@ public class MarketService {
                 sectors.put(code,stock.genre());
             }
         });
-    }
-
-    private void ensureOrderIndex(String name,String columns) {
-        Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='orders' AND index_name=?",Integer.class,name);
-        if(count==null || count==0) jdbc.execute("CREATE INDEX "+name+" ON orders ("+columns+")");
     }
 
     private MarketMakerEngine.RiskBook liquidityRiskBook(String code,long lp) {
@@ -1612,8 +1531,9 @@ public class MarketService {
                     1+Math.max(0,news.rate())*8,1+Math.max(0,-news.rate())*8,
                     1+Math.abs(news.rate())*5,1/(1+Math.abs(news.rate())*5),0,0,0,
                     1+Math.abs(news.rate())*5,1+Math.abs(news.rate())*5);
-            environments.put(code,regimes.environment(code,sectors.getOrDefault(code,"OTHER"))
-                    .combine(patterns.environment(code,now)).combine(event));
+            MarketEnvironment raw = regimes.environment(code,sectors.getOrDefault(code,"OTHER"))
+                    .combine(patterns.environment(code,now)).combine(event);
+            environments.put(code,StockMarketProfile.applyTo(code,raw));
             updateFundamentalFromNews(code);
         }
     }
@@ -1628,10 +1548,13 @@ public class MarketService {
                     (rs,n)->new RecentNews(rs.getString(1),rs.getString(2),rs.getDouble(3),1),newsId);
             if (NewsRelevance.isRelevant(code,news.title(),news.description())) total += newsInfluence(news).rate();
         }
-        if (!ids.isEmpty()) jdbc.update("""
-                UPDATE market_price_metrics SET hidden_fundamental=GREATEST(anchor_price*.5,
-                    LEAST(anchor_price*2,hidden_fundamental*?)),last_news_id=? WHERE stock_id=?
-                """,1+MarketEnvironment.clamp(total,-.1,.1),ids.get(ids.size()-1),id);
+        if (!ids.isEmpty()) {
+            double weightedTotal = total * StockMarketProfile.of(code).movementWeight();
+            jdbc.update("""
+                    UPDATE market_price_metrics SET hidden_fundamental=GREATEST(anchor_price*.5,
+                        LEAST(anchor_price*2,hidden_fundamental*?)),last_news_id=? WHERE stock_id=?
+                    """,1+MarketEnvironment.clamp(weightedTotal,-.1,.1),ids.get(ids.size()-1),id);
+        }
     }
 
     private void refreshMarkPrice(String code) {
@@ -1647,15 +1570,16 @@ public class MarketService {
         jdbc.update("UPDATE market_price_metrics SET mark_price=?,mark_updated_at=? WHERE stock_id=?",mark,new Timestamp(now),id);
     }
 
-    /** Human-only activity gives at most 50% extra scale; bots cannot amplify their own volume. */
+    /** Human activity and virtual market size determine liquidity; bots cannot amplify their own scale. */
     private double marketScale(String code) {
-        return jdbc.queryForObject("""
+        double humanScale = jdbc.queryForObject("""
                 SELECT COUNT(DISTINCT u.id), COALESCE(SUM(t.quantity),0)
                 FROM trades t JOIN users u ON (u.id=t.buyer_id OR u.id=t.seller_id)
                 WHERE t.stock_id=? AND t.created_at>=DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 5 MINUTE)
                   AND u.password_hash NOT IN ('BOT','TRADER') AND u.username<>'demo'
                   AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.trade_id=t.id AND s.status='CANCELLED')
                 """, (rs,n)->Math.min(1.5,.65+rs.getLong(1)*.04+Math.sqrt(rs.getLong(2))*.015),stockId(code));
+        return StockMarketProfile.liquidityScale(code,humanScale);
     }
 
     private void advanceTradingProtections() {
@@ -1787,29 +1711,6 @@ public class MarketService {
         return summary;
     }
 
-    private MatchRow topOrder(long stockId, String side) {
-        return topOrder(stockId, side, 0L);
-    }
-
-    private MatchRow topOrder(long stockId, String side, long excludedUserId) {
-        String priceOrder = "BUY".equals(side) ? "o.price DESC" : "o.price ASC";
-        String userFilter = excludedUserId > 0 ? " AND o.user_id <> ? " : "";
-        String sql = "SELECT o.id, o.user_id, COALESCE(o.price, 0), o.quantity, o.remaining_quantity, o.order_type, o.created_at, COALESCE(o.reserved_cash, 0), COALESCE(o.reserved_quantity, 0), o.side, (u.password_hash = 'BOT') AS is_bot "
-                + "FROM orders o JOIN users u ON u.id = o.user_id WHERE o.stock_id = ? AND o.side = ? AND o.status = 'OPEN' AND o.remaining_quantity > 0 "
-                + userFilter
-                + "ORDER BY CASE WHEN o.order_type = 'MARKET' THEN 1 ELSE 0 END DESC, " + priceOrder + ", o.created_at ASC, o.id ASC LIMIT 1";
-        List<MatchRow> rows = excludedUserId > 0
-                ? jdbc.query(sql, (rs, row) -> new MatchRow(
-                rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getInt(4), rs.getInt(5),
-                rs.getString(6), databaseInstant(rs.getTimestamp(7)), rs.getLong(8), rs.getInt(9), rs.getString(10),
-                rs.getBoolean(11)), stockId, side, excludedUserId)
-                : jdbc.query(sql, (rs, row) -> new MatchRow(
-                rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getInt(4), rs.getInt(5),
-                rs.getString(6), databaseInstant(rs.getTimestamp(7)), rs.getLong(8), rs.getInt(9), rs.getString(10),
-                rs.getBoolean(11)), stockId, side);
-        return rows.isEmpty() ? null : rows.get(0);
-    }
-
     private boolean canSettle(MatchRow buy, MatchRow sell, int quantity, long tradePrice, long stockId) {
         if (!canPayForFill(buy,quantity,tradePrice)) return false;
         return sell.reservedQuantity() > 0 || availableQuantity(sell.userId(), stockId) >= quantity;
@@ -1824,16 +1725,6 @@ public class MarketService {
     private boolean canPayForFill(MatchRow buy,int quantity,long price) {
         long gross=price*quantity;
         return availableCash(buy.userId())+releasedReservation(buy,quantity)>=gross+feeFor(gross);
-    }
-
-    private int affordableFill(long cash,long price,int requested) {
-        int low=0,high=(int)Math.min(requested,cash/price);
-        while(low<high) {
-            int candidate=low+(high-low+1)/2;
-            long gross=price*candidate;
-            if(feeFor(gross)<=cash-gross) low=candidate; else high=candidate-1;
-        }
-        return low;
     }
 
     private void settleTrade(long stockId, MatchRow buy, MatchRow sell, MatchRow maker, MatchRow taker, int quantity, long tradePrice) {
@@ -1920,135 +1811,6 @@ public class MarketService {
         };
     }
 
-    private void ensureTradeTable() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS trades (
-                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                  stock_id BIGINT NOT NULL,
-                  buy_order_id BIGINT NOT NULL,
-                  sell_order_id BIGINT NOT NULL,
-                  buyer_id BIGINT NOT NULL,
-                  seller_id BIGINT NOT NULL,
-                  maker_order_id BIGINT NOT NULL,
-                  taker_order_id BIGINT NOT NULL,
-                  aggressor_side ENUM('BUY', 'SELL') NOT NULL,
-                  quantity INT NOT NULL,
-                  price BIGINT NOT NULL,
-                  buyer_fee BIGINT NOT NULL DEFAULT 0,
-                  seller_fee BIGINT NOT NULL DEFAULT 0,
-                  fee BIGINT NOT NULL DEFAULT 0,
-                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  CONSTRAINT fk_trades_stock FOREIGN KEY (stock_id) REFERENCES stocks(id),
-                  CONSTRAINT fk_trades_buy_order FOREIGN KEY (buy_order_id) REFERENCES orders(id),
-                  CONSTRAINT fk_trades_sell_order FOREIGN KEY (sell_order_id) REFERENCES orders(id),
-                  CONSTRAINT fk_trades_buyer FOREIGN KEY (buyer_id) REFERENCES users(id),
-                  CONSTRAINT fk_trades_seller FOREIGN KEY (seller_id) REFERENCES users(id),
-                  INDEX ix_trades_stock_time (stock_id, created_at),
-                  INDEX ix_trades_taker (taker_order_id),
-                  INDEX ix_trades_maker (maker_order_id)
-                )
-                """);
-        addTradeColumnIfMissing("buyer_fee", "BIGINT NOT NULL DEFAULT 0");
-        addTradeColumnIfMissing("seller_fee", "BIGINT NOT NULL DEFAULT 0");
-        addTradeColumnIfMissing("fee", "BIGINT NOT NULL DEFAULT 0");
-        for(String side:List.of("buyer","seller")) {
-            String name="ix_trades_"+side+"_fees";
-            if(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='trades' AND index_name=?",Integer.class,name)==0)
-                jdbc.execute("CREATE INDEX "+name+" ON trades ("+side+"_id,created_at,"+side+"_fee)");
-        }
-        if(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='trades' AND index_name='ix_trades_stock_sequence'",Integer.class)==0)
-            jdbc.execute("CREATE INDEX ix_trades_stock_sequence ON trades (stock_id,id)");
-    }
-
-    private void addTradeColumnIfMissing(String name, String definition) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'trades' AND column_name = ?", Integer.class, name);
-        if (count != null && count == 0) jdbc.execute("ALTER TABLE trades ADD COLUMN " + name + " " + definition);
-    }
-
-    private void ensurePortfolioColumns() {
-        boolean settledColumnAdded = addPortfolioColumnIfMissing("settled_quantity", "INT NOT NULL DEFAULT 0");
-        addPortfolioColumnIfMissing("realized_profit_loss", "BIGINT NOT NULL DEFAULT 0");
-        // Only rows from a pre-settlement schema are known to be settled. Do not
-        // run this update on every restart; fresh rows are already settled.
-        if (settledColumnAdded) jdbc.update("UPDATE portfolios SET settled_quantity = quantity WHERE quantity > 0");
-    }
-
-    private boolean addPortfolioColumnIfMissing(String name, String definition) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'portfolios' AND column_name = ?", Integer.class, name);
-        if (count != null && count == 0) {
-            jdbc.execute("ALTER TABLE portfolios ADD COLUMN " + name + " " + definition);
-            return true;
-        }
-        return false;
-    }
-
-    private void ensureSettlementTable() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS settlements (
-                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                  trade_id BIGINT NOT NULL UNIQUE,
-                  buyer_id BIGINT NOT NULL,
-                  seller_id BIGINT NOT NULL,
-                  stock_id BIGINT NOT NULL,
-                  quantity INT NOT NULL,
-                  gross_amount BIGINT NOT NULL,
-                  buyer_fee BIGINT NOT NULL DEFAULT 0,
-                  seller_fee BIGINT NOT NULL DEFAULT 0,
-                  buyer_quantity_before INT NULL,
-                  buyer_settled_quantity_before INT NULL,
-                  buyer_average_price_before BIGINT NULL,
-                  buyer_realized_profit_loss_before BIGINT NULL,
-                  seller_quantity_before INT NULL,
-                  seller_settled_quantity_before INT NULL,
-                  seller_average_price_before BIGINT NULL,
-                  seller_realized_profit_loss_before BIGINT NULL,
-                  settlement_at TIMESTAMP NOT NULL,
-                  status ENUM('PENDING', 'SETTLED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
-                  settled_at TIMESTAMP NULL,
-                  cancelled_at TIMESTAMP NULL,
-                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  CONSTRAINT fk_settlements_trade FOREIGN KEY (trade_id) REFERENCES trades(id),
-                  CONSTRAINT fk_settlements_buyer FOREIGN KEY (buyer_id) REFERENCES users(id),
-                  CONSTRAINT fk_settlements_seller FOREIGN KEY (seller_id) REFERENCES users(id),
-                  CONSTRAINT fk_settlements_stock FOREIGN KEY (stock_id) REFERENCES stocks(id),
-                  INDEX ix_settlements_pending (status, settlement_at),
-                  INDEX ix_settlements_buyer (buyer_id, status),
-                  INDEX ix_settlements_seller (seller_id, status)
-                )
-                """);
-        addSettlementColumnIfMissing("buyer_quantity_before", "INT NULL");
-        addSettlementColumnIfMissing("buyer_settled_quantity_before", "INT NULL");
-        addSettlementColumnIfMissing("buyer_average_price_before", "BIGINT NULL");
-        addSettlementColumnIfMissing("buyer_realized_profit_loss_before", "BIGINT NULL");
-        addSettlementColumnIfMissing("seller_quantity_before", "INT NULL");
-        addSettlementColumnIfMissing("seller_settled_quantity_before", "INT NULL");
-        addSettlementColumnIfMissing("seller_average_price_before", "BIGINT NULL");
-        addSettlementColumnIfMissing("seller_realized_profit_loss_before", "BIGINT NULL");
-        addSettlementColumnIfMissing("cancelled_at", "TIMESTAMP NULL");
-        jdbc.execute("ALTER TABLE settlements MODIFY COLUMN status ENUM('PENDING', 'SETTLED', 'CANCELLED') NOT NULL DEFAULT 'PENDING'");
-    }
-
-    private void addSettlementColumnIfMissing(String name, String definition) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'settlements' AND column_name = ?", Integer.class, name);
-        if (count != null && count == 0) jdbc.execute("ALTER TABLE settlements ADD COLUMN " + name + " " + definition);
-    }
-
-    private void ensureDailySummaryTable() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS daily_market_summaries (
-                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                  stock_id BIGINT NOT NULL,
-                  trading_date DATE NOT NULL,
-                  open_price BIGINT NOT NULL,
-                  close_price BIGINT NOT NULL,
-                  total_volume BIGINT NOT NULL DEFAULT 0,
-                  UNIQUE KEY uq_daily_summary_stock_date (stock_id, trading_date),
-                  CONSTRAINT fk_daily_summary_stock FOREIGN KEY (stock_id) REFERENCES stocks(id),
-                  INDEX ix_daily_summary_date (trading_date)
-                )
-                """);
-    }
-
     private void seedDailySummaries() {
         jdbc.update("""
                 INSERT INTO daily_market_summaries (stock_id, trading_date, open_price, close_price, total_volume)
@@ -2061,45 +1823,14 @@ public class MarketService {
                 """);
     }
 
-    private void ensureSimulationState() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS simulation_state (
-                  id TINYINT PRIMARY KEY,
-                  tick BIGINT NOT NULL DEFAULT 0
-                )
-                """);
-        jdbc.update("INSERT IGNORE INTO simulation_state (id, tick) VALUES (1, 0)");
-    }
-
-    private void ensureNewsPriceState() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS news_price_state (
-                  stock_id BIGINT PRIMARY KEY,
-                  applied_bias DECIMAL(8,6) NOT NULL DEFAULT 0,
-                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                  CONSTRAINT fk_news_price_state_stock FOREIGN KEY (stock_id) REFERENCES stocks(id)
-                )
-                """);
-    }
-
     /** Seed only new rows so a backend restart never reapplies old headlines. */
     private void initializeNewsPriceState() {
-        ensureNewsPriceState();
         List<String> codes = jdbc.queryForList("SELECT stock_code FROM stocks ORDER BY id", String.class);
         for (String code : codes) {
             long id = stockId(code);
             double currentBias = recentNewsBias(code).rate();
             jdbc.update("INSERT IGNORE INTO news_price_state (stock_id, applied_bias) VALUES (?, ?)", id, currentBias);
         }
-    }
-
-    private void ensureMarketLock() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS market_locks (
-                  id TINYINT PRIMARY KEY
-                )
-                """);
-        jdbc.update("INSERT IGNORE INTO market_locks (id) VALUES (1)");
     }
 
     /** Reject accidental double-clicks and abusive bursts from human users. */
@@ -2152,29 +1883,42 @@ public class MarketService {
             long normalized = order.bot()
                     ? allowedBand.clamp(rounded)
                     : allowedBand.clamp(rounded);
+            Long required = null;
             if ("BUY".equals(order.side())) {
-                long required;
                 try {
                     long normalizedGross = Math.multiplyExact(normalized, order.remainingQuantity());
                     required = normalizedGross + feeFor(normalizedGross);
                 } catch (ArithmeticException error) {
-                    if (order.reservedCash() > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", order.reservedCash(), order.userId());
-                    jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE id = ?", order.id());
-                    continue;
+                    // required stays null: the order is cancelled and refunded below.
                 }
-                long difference = order.reservedCash() - required;
-                if (difference < 0 && jdbc.update("UPDATE users SET cash = cash - ? WHERE id = ? AND cash >= ?", -difference, order.userId(), -difference) == 0) {
-                    if (order.reservedCash() > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", order.reservedCash(), order.userId());
-                    jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE id = ?", order.id());
-                    continue;
-                }
-                if (difference > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", difference, order.userId());
-                if (normalized != order.price() || order.reservedCash() != required)
-                    jdbc.update("UPDATE orders SET price = ?, reserved_cash = ? WHERE id = ?", normalized, required, order.id());
-            } else {
-                if (normalized != order.price()) jdbc.update("UPDATE orders SET price = ? WHERE id = ?", normalized, order.id());
-            }
+                if (required != null && normalized == order.price() && order.reservedCash() == required) continue;
+            } else if (normalized == order.price()) continue;
+            // A cash adjustment and its order update must commit together, or a restart
+            // would apply the same difference again. Unchanged orders skip the transaction.
+            Long reserved = required;
+            startupTransaction().executeWithoutResult(status -> applyNormalizedPrice(order, normalized, reserved));
         }
+    }
+
+    /** {@code required} is the new buy reservation, or null when it overflowed. */
+    private void applyNormalizedPrice(OpenLimitOrder order, long normalized, Long required) {
+        if (!"BUY".equals(order.side())) {
+            jdbc.update("UPDATE orders SET price = ? WHERE id = ?", normalized, order.id());
+            return;
+        }
+        if (required == null) {
+            if (order.reservedCash() > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", order.reservedCash(), order.userId());
+            jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE id = ?", order.id());
+            return;
+        }
+        long difference = order.reservedCash() - required;
+        if (difference < 0 && jdbc.update("UPDATE users SET cash = cash - ? WHERE id = ? AND cash >= ?", -difference, order.userId(), -difference) == 0) {
+            if (order.reservedCash() > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", order.reservedCash(), order.userId());
+            jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE id = ?", order.id());
+            return;
+        }
+        if (difference > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", difference, order.userId());
+        jdbc.update("UPDATE orders SET price = ?, reserved_cash = ? WHERE id = ?", normalized, required, order.id());
     }
 
     /** Finish any legacy pending deliveries left by an older T+1 database. */
@@ -2450,8 +2194,8 @@ public class MarketService {
                 SELECT s.stock_code,g.name,g.genre,s.current_price,s.previous_price,s.total_volume
                 FROM stocks s JOIN games g ON g.id=s.game_id WHERE s.stock_code=?
                 """,(rs,n)->new Stock(rs.getString(1),rs.getString(2),rs.getString(3),rs.getLong(4),
-                changePercent(rs.getLong(4),rs.getLong(5)),rs.getLong(6),protection.restriction(code)),code);
-        return rows.isEmpty()?null:rows.get(0);
+                changePercent(rs.getLong(4),rs.getLong(5)),rs.getLong(6),null),code);
+        return rows.isEmpty()?null:withRestriction(rows.get(0));
     }
 
     /** The JDBC timestamp already carries the normalized instant from the UTC DB session. */
@@ -2596,9 +2340,13 @@ public class MarketService {
                 FROM attendance_rewards
                 WHERE user_id = ?
                 """, Long.class, userId);
+        // Like attendance, mission payouts are not trading performance; clients subtract both from P&L.
+        long missionRewardCash = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(reward_cash), 0) FROM mission_rewards WHERE user_id = ?", Long.class, userId);
         long assetValue = positions.stream().mapToLong(Position::marketValue).sum();
         return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue,
-                positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash);
+                positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash,
+                missionRewardCash);
     }
 
     private long currentPrice(String code) {

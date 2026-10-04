@@ -5,7 +5,9 @@ import { firebaseAuth } from "../lib/firebase";
 import { apiFetch } from "../lib/api";
 import { openMarketStream } from "./stream";
 import { requireSignIn } from "../lib/auth";
+import { announceMissionReward } from "../components/MissionRewardToast";
 import { INITIAL_CASH, MarketEngine } from "./engine";
+import { stockMarketProfile } from "./marketCap";
 import { serverTimestamp } from "./format";
 import { LISTING_BY_CODE, roundToTick } from "./universe";
 import type { DailyMissionStatus, MarketSnapshot, OrderRequest, OrderResult, Portfolio, Position, Quote, TradingRestriction } from "./types";
@@ -27,7 +29,18 @@ export type CancelOrdersResult = {
   message: string;
 };
 
-type BackendStock = { code: string; name: string; genre: string; price: number; changePercent: number; volume: number; restriction?: TradingRestriction | null };
+type BackendStock = {
+  code: string;
+  name: string;
+  genre: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+  activeUsers?: number;
+  marketCap?: number;
+  movementWeight?: number;
+  restriction?: TradingRestriction | null;
+};
 type BackendMarketStatus = { indexValue: number; tradingDate: string; restriction?: TradingRestriction | null };
 type BackendOrderBookLevel = { price: number; quantity: number; orderCount: number };
 type BackendOrderBook = { stockCode: string; bids: BackendOrderBookLevel[]; asks: BackendOrderBookLevel[] };
@@ -45,7 +58,7 @@ type BackendEvent = {
   priceDirection?: string;
 };
 type BackendPosition = { stockCode: string; quantity: number; averagePrice: number };
-type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number };
+type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number };
 type BackendSettlement = { id: number; stockCode: string; side: string; quantity: number; grossAmount: number; createdAt: string };
 type BackendActiveOrder = { id: number; stockCode: string; status: string };
 type BackendMissionReward = { rewardCash: number; awarded: boolean; portfolio: BackendPortfolio; missions: DailyMissionStatus };
@@ -60,7 +73,7 @@ function fallbackSnapshot(): MarketSnapshot {
 }
 
 function toPortfolio(value?: BackendPortfolio): Portfolio {
-  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0 };
+  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0 };
   const positions: Record<string, Position> = {};
   for (const item of value.positions ?? []) {
     if (!LISTING_BY_CODE[item.stockCode] || item.quantity < 1) continue;
@@ -72,6 +85,7 @@ function toPortfolio(value?: BackendPortfolio): Portfolio {
     fills: [],
     realized: value.realizedProfitLoss ?? 0,
     attendanceRewardCash: value.attendanceRewardCash ?? 0,
+    missionRewardCash: value.missionRewardCash ?? 0,
   };
 }
 
@@ -86,9 +100,13 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
     const prevClose = Math.max(1, roundToTick(price / (1 + change / 100)));
     const listing = LISTING_BY_CODE[stock.code];
     if (!listing) continue;
+    const profile = stockMarketProfile(stock.code);
     quotes[stock.code] = {
       code: stock.code,
       restriction: stock.restriction,
+      activeUsers: stock.activeUsers ?? profile.activeUsers,
+      marketCap: stock.marketCap ?? profile.marketCap,
+      movementWeight: stock.movementWeight ?? profile.movementWeight,
       price,
       prevClose,
       open: price,
@@ -105,9 +123,8 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
       asks: [],
       bids: [],
     };
-    const activity = listing.activity;
-    weighted += activity * (price / prevClose);
-    weight += activity;
+    weighted += profile.marketCap * (price / prevClose);
+    weight += profile.marketCap;
     series.push(price);
   }
   const indexValue = market?.indexValue ?? (weight > 0 ? (weighted / weight) * 1000 : 1000);
@@ -354,6 +371,24 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // setSnapshot과 모듈 함수만 사용하므로 렌더마다 새로 만들어도 동작이 같다.
+  const claimMissionReward = async (missionId: string) => {
+    const claimant = firebaseAuth.currentUser;
+    if (!claimant) {
+      requireSignIn();
+      throw new Error("미션 보상은 로그인 후 받을 수 있습니다.");
+    }
+    const result = await apiFetch<BackendMissionReward>(`/api/missions/${encodeURIComponent(missionId)}/reward`, { method: "POST" });
+    if (firebaseAuth.currentUser?.uid === claimant.uid) {
+      setSnapshot((current) => ({
+        ...current,
+        portfolio: toPortfolio(result.portfolio),
+        updatedAt: Date.now(),
+      }));
+    }
+    return { rewardCash: result.rewardCash, awarded: result.awarded, missions: result.missions };
+  };
+
   const api = useMemo<MarketApi>(() => ({
     orderable: (code, side) => {
       const quote = snapshot.quotes[code];
@@ -424,6 +459,13 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       setSnapshot((current) => ({ ...current, watch: watchRef.current }));
       const seq = ++watchMutationSeq.current;
       void apiFetch(`/api/watchlist/${code}`, { method: exists ? "DELETE" : "PUT" })
+        .then(() => {
+          if (exists) return;
+          // 관심종목 미션은 서버가 등록 여부를 확인한 뒤 지급한다. 이미 받았으면 awarded=false다.
+          return claimMissionReward("watch")
+            .then((result) => { if (result.awarded) announceMissionReward(result.rewardCash); })
+            .catch(() => undefined);
+        })
         .catch(() => {
           // 실패한 토글은 다음 조회가 서버 값을 따르기 전까지 화면에 머무르지 않게 되돌린다.
           if (watchRef.current === optimistic) {
@@ -439,22 +481,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       activeDetailCodeRef.current = code;
       streamRef.current?.subscribe(code ? [code] : snapshot.codes, code);
     },
-    claimMissionReward: async (missionId) => {
-      const claimant = firebaseAuth.currentUser;
-      if (!claimant) {
-        requireSignIn();
-        throw new Error("미션 보상은 로그인 후 받을 수 있습니다.");
-      }
-      const result = await apiFetch<BackendMissionReward>(`/api/missions/${encodeURIComponent(missionId)}/reward`, { method: "POST" });
-      if (firebaseAuth.currentUser?.uid === claimant.uid) {
-        setSnapshot((current) => ({
-          ...current,
-          portfolio: toPortfolio(result.portfolio),
-          updatedAt: Date.now(),
-        }));
-      }
-      return { rewardCash: result.rewardCash, awarded: result.awarded, missions: result.missions };
-    },
+    claimMissionReward,
   }), [snapshot]);
 
   return (
