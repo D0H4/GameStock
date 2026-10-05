@@ -6,6 +6,7 @@ import static com.gamestock.backend.market.PriceLimitPolicy.*;
 
 /** Paces independently funded participant decisions from actual fills, never manufactures a trade. */
 final class BotActivityEngine {
+    private static final long LIQUIDITY_QUOTE_TTL=10_000L;
     record Observation(PriceMetricService.Metrics metrics,MarketEnvironment environment,double fundamental,double news,double scale) { }
     record Participant(long id,BotProfile profile,long stock) { }
     record Activity(long stock,String code,int fills,int orders,boolean continuous) { }
@@ -74,7 +75,7 @@ final class BotActivityEngine {
                     int quantity=quote.quantity();
                     if(quote.side().equals("BUY"))quantity=(int)Math.min(quantity,Math.max(0,book.lpCashBudgets.get(stock))/Math.max(1,price+BatchOrderBook.fee(price)));
                     else quantity=Math.min(quantity,book.available(lp,stock));
-                    book.submit(lp,stock,quote.side(),"LIMIT",quantity,price,now,4000);
+                    book.submit(lp,stock,quote.side(),"LIMIT",quantity,price,now,LIQUIDITY_QUOTE_TTL);
                 }
                 nextQuote.put(stock,now+1200+random.nextInt(600));
             }
@@ -134,6 +135,14 @@ final class BotActivityEngine {
     private static PriceMetricService.Metrics withBook(PriceMetricService.Metrics m,long last,double[] d) {
         double mid=d[2]>0&&d[3]>0?(d[0]+d[1])/2:last;
         double micro=d[2]>0&&d[3]>0?(d[1]*d[2]+d[0]*d[3])/(d[2]+d[3]):mid;
-        return new PriceMetricService.Metrics(last,mid,micro,m.vwap(),m.markPrice(),d[0],d[1],(long)d[2],(long)d[3],(d[2]-d[3])/Math.max(1,d[2]+d[3]),m.return5s(),m.return20s(),m.emaSlope(),m.recentHigh(),m.recentLow(),m.volumeTrend(),m.acceleration(),m.rsi(),m.zscore(),m.volatility(),m.volume(),m.return60s(),m.return300s(),m.referenceVwap());
+        return stabilizeQuietBook(new PriceMetricService.Metrics(last,mid,micro,m.vwap(),m.markPrice(),d[0],d[1],(long)d[2],(long)d[3],(d[2]-d[3])/Math.max(1,d[2]+d[3]),m.return5s(),m.return20s(),m.emaSlope(),m.recentHigh(),m.recentLow(),m.volumeTrend(),m.acceleration(),m.rsi(),m.zscore(),m.volatility(),m.volume(),m.return60s(),m.return300s(),m.referenceVwap(),m.recentVolume()));
+    }
+
+    /** Bot decisions must not chase a resting book after executions have gone quiet. */
+    static PriceMetricService.Metrics stabilizeQuietBook(PriceMetricService.Metrics m) {
+        if (m.recentVolume() > 0) return m;
+        long anchor=Math.round(m.lastPrice());
+        long bid=previousTickPrice(anchor),ask=nextTickPrice(anchor);
+        return new PriceMetricService.Metrics(anchor,anchor,anchor,anchor,anchor,bid,ask,m.bidDepth(),m.askDepth(),m.imbalance(),m.return5s(),m.return20s(),m.emaSlope(),m.recentHigh(),m.recentLow(),m.volumeTrend(),m.acceleration(),m.rsi(),m.zscore(),m.volatility(),m.volume(),m.return60s(),m.return300s(),anchor,m.recentVolume());
     }
 }

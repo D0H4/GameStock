@@ -173,6 +173,9 @@ final class BatchOrderBook {
             Order buy=buyBook.first(),sell=sellBook.first();
             if(!buy.market() && !sell.market() && buy.price<sell.price)return;
             if(buy.user==sell.user){cancel(earlier(buy,sell)?sell:buy);continue;}
+            // Keep LP bid depth available for human sellers. Automated sellers may trade with
+            // one another, but must not drain the finite LP cash reserve before a user can react.
+            if(accounts.get(buy.user).liquidityProvider&&accounts.get(sell.user).bot){cancel(sell);continue;}
             Order maker=buy.market()&&!sell.market()?sell:sell.market()&&!buy.market()?buy:earlier(buy,sell)?buy:sell;
             Order taker=maker==buy?sell:buy;
             long price=buy.market()&&sell.market()?stock.last:maker.price;
@@ -248,6 +251,31 @@ final class BatchOrderBook {
     static long fee(long gross) {return gross<=0?0:Math.max(1,Math.round(gross*.001));}
     private void lpCash(long user,long stock,long change) {
         if(accounts.get(user).liquidityProvider)lpCashBudgets.computeIfPresent(stock,(key,cash)->cash+change);
+    }
+    /** Reassigns existing LP cash between this lane's symbols; it never changes the account cash. */
+    long rebalanceLiquidityCash(long user,Map<Long,Long> minimums) {
+        Account account=accounts.get(user);
+        if(account==null||!account.liquidityProvider||minimums.isEmpty())return 0;
+        long moved=0;
+        for(var receiver:minimums.entrySet()) {
+            long stock=receiver.getKey();
+            if(!lpCashBudgets.containsKey(stock))continue;
+            long current=lpCashBudgets.get(stock),need=Math.max(0,receiver.getValue())-current;
+            if(need<=0)continue;
+            for(var donor:minimums.entrySet()) {
+                long donorStock=donor.getKey();
+                if(donorStock==stock||!lpCashBudgets.containsKey(donorStock))continue;
+                long donorCash=lpCashBudgets.get(donorStock);
+                long surplus=donorCash-Math.max(0,donor.getValue());
+                if(surplus<=0)continue;
+                long transfer=Math.min(need,surplus);
+                lpCashBudgets.put(donorStock,donorCash-transfer);
+                current+=transfer;lpCashBudgets.put(stock,current);
+                need-=transfer;moved+=transfer;
+                if(need==0)break;
+            }
+        }
+        return moved;
     }
     double[] depth(long stock) {
         return depth(stock,-1);

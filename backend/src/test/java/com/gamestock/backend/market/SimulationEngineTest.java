@@ -250,6 +250,15 @@ class SimulationEngineTest {
         assertEquals(4,quotes.stream().filter(q->q.side().equals("SELL")).count());
         assertTrue(engine.quotes(m,neutral,new MarketMakerEngine.RiskBook(0,0,400,1200,12000000),10,1,constraints).isEmpty());
     }
+    @Test void thinBooksRefillWithEightSharesPerEmergencyLevel() {
+        var engine=new MarketMakerEngine();
+        var empty=PriceMetricService.calculate(List.of(),10000,10000,10000,0,0,0);
+        var risk=new MarketMakerEngine.RiskBook(5000000,100,100,1200,12000000);
+        var quotes=engine.quotes(empty,neutral,risk,10,1,
+                new MarketMakerEngine.QuoteConstraints(8000,12000,0,0));
+        assertEquals(8,quotes.size());
+        assertTrue(quotes.stream().allMatch(q->q.quantity()==8));
+    }
     @Test void oldJumpsAndTradeCountTruncationDoNotInflateCurrentVolatility() {
         var sparse=List.of(new PriceMetricService.Trade(0,8000,10),
                 new PriceMetricService.Trade(10000,10000,10),new PriceMetricService.Trade(590000,10000,10));
@@ -302,7 +311,21 @@ class SimulationEngineTest {
         var metrics=PriceMetricService.calculate(trades,6500,6490,6510,10,10,60000);
         var risk=new MarketMakerEngine.RiskBook(5000000,100,100,1200,12000000);
         assertTrue(engine.fairValue(metrics,10000)>metrics.lastPrice());
+        assertTrue(engine.fairValue(metrics,10000)<=metrics.lastPrice()*1.005);
         assertTrue(engine.reservationPrice(metrics,risk,10,10000)>metrics.lastPrice());
+    }
+    @Test void lpUsesLastExecutionWhenBookHasDepthButNoRecentTrades() {
+        var engine=new MarketMakerEngine();
+        var metrics=PriceMetricService.calculate(List.of(),7710,8360,8420,171,49,60000);
+        var risk=new MarketMakerEngine.RiskBook(5000000,400,400,1200,12000000);
+        var quotes=engine.quotes(metrics,neutral,risk,10,1,
+                new MarketMakerEngine.QuoteConstraints(6000,10000,0,0),8400);
+        assertEquals(7710,engine.fairValue(metrics,8400));
+        var stabilized=BotActivityEngine.stabilizeQuietBook(metrics);
+        assertEquals(7710,stabilized.midPrice());
+        assertEquals(7710,stabilized.vwap());
+        assertTrue(quotes.stream().allMatch(q->Math.abs(q.price()-7710)<=100),
+                () -> "quotes detached from last execution: "+quotes);
     }
     @Test void metricsResistTinyLastPrintAndHaveNeutralWarmup() {
         var trades=List.of(new PriceMetricService.Trade(0,10000,1000),new PriceMetricService.Trade(1000,11000,1));

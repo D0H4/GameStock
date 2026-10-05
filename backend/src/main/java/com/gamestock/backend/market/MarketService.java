@@ -53,6 +53,8 @@ public class MarketService {
     private static final double NEWS_AGGREGATE_SPECIAL_RATE = 0.10;
     private static final String LP_USERNAME = "liquidity_provider";
     private static final long LP_STARTING_CASH = 50_000_000L;
+    private static final long LP_ONE_TIME_RESERVE = 50_000_000L;
+    private static final int LP_RESERVE_VERSION = 1;
     private static final int LP_INITIAL_INVENTORY = 100;
     private static final String TRADER_BOT_PASSWORD = "TRADER";
     private static final long TRADER_BOT_STARTING_CASH = 1_000_000L;
@@ -300,6 +302,13 @@ public class MarketService {
                 book.lpCashBudgets.put(stock.id,total-reserved);
             }
         }
+        if(inlineMarketMaker) {
+            Map<Long,Long> minimumCash=new HashMap<>();
+            for(var stock:book.stocks.values())
+                minimumCash.put(stock.id,MarketMakerEngine.emergencyCashRequirement(botBand(stock.reference).upperPrice()));
+            long moved=book.rebalanceLiquidityCash(activityLpId,minimumCash);
+            if(moved>0)pipelineMetrics.add("bot.liquidity.cashRebalanced",moved);
+        }
         long loaded=System.nanoTime();
         if(lane.lastObservation==0 || now-lane.lastObservation>=500) {
             for(var stock:book.stocks.values()) {
@@ -397,15 +406,19 @@ public class MarketService {
     // write or use in-memory simulation state (bots, environments, random) stay synchronized.
     public List<Stock> stocks() {
         List<Stock> rows = jdbc.query("""
-                SELECT stock_code, g.name, g.genre, current_price, previous_price, total_volume
-                FROM stocks s JOIN games g ON g.id = s.game_id
+                SELECT s.stock_code, g.name, g.genre, s.current_price,
+                       COALESCE(p.day_reference, s.current_price) AS day_reference,
+                       s.total_volume
+                FROM stocks s
+                JOIN games g ON g.id = s.game_id
+                LEFT JOIN stock_protection_state p ON p.stock_id = s.id
                 ORDER BY s.id
                 """, (rs, row) -> new Stock(
                 rs.getString("stock_code"),
                 rs.getString("name"),
                 rs.getString("genre"),
                 rs.getLong("current_price"),
-                changePercent(rs.getLong("current_price"), rs.getLong("previous_price")),
+                changePercent(rs.getLong("current_price"), rs.getLong("day_reference")),
                 rs.getLong("total_volume"), null));
         return rows.stream().map(this::withRestriction).toList();
     }
@@ -996,7 +1009,12 @@ public class MarketService {
     }
 
     private long previousPrice(String code) {
-        Long previous = jdbc.queryForObject("SELECT previous_price FROM stocks WHERE stock_code = ?", Long.class, code);
+        Long previous = jdbc.queryForObject("""
+                SELECT COALESCE(p.day_reference, s.current_price)
+                FROM stocks s
+                LEFT JOIN stock_protection_state p ON p.stock_id = s.id
+                WHERE s.stock_code = ?
+                """, Long.class, code);
         return previous == null ? 0 : previous;
     }
 
@@ -1164,7 +1182,7 @@ public class MarketService {
                 var fill=book.fills.get(i);if(fill.buy().stock==stock.id)
                     trades.add(new PublicTrade(fill.taker().side,fill.quantity(),fill.price(),fill.taker().type,Instant.ofEpochMilli(now).toString()));
             }
-            var quote=new Stock(stock.code,stock.name,stock.genre,stock.last,changePercent(stock.last,stock.previous),stock.totalVolume,stock.continuous?null:protection.restriction(stock.code));
+            var quote=new Stock(stock.code,stock.name,stock.genre,stock.last,changePercent(stock.last,stock.reference),stock.totalVolume,stock.continuous?null:protection.restriction(stock.code));
             updates.put(stock.code,Map.of("symbol",stock.code,"stock",quote,"orderbook",book.snapshot(stock.id),"trades",trades,
                 "chart",trades.stream().map(t->new PricePoint(t.price(),t.createdAt())).toList()));
         }
@@ -1346,7 +1364,7 @@ public class MarketService {
     }
 
     private BotObservation observeBot(BotProfile profile,long userId,String code,long equity,int symbolCount) {
-        PriceMetricService.Metrics metrics=metrics(code,profile.reactionLatency());
+        PriceMetricService.Metrics metrics=BotActivityEngine.stabilizeQuietBook(metrics(code,profile.reactionLatency()));
         long id=stockId(code);
         List<BotOrderPolicy.RestingOrder> resting=jdbc.query("SELECT id,side,price,reserved_cash,created_at FROM orders WHERE user_id=? AND stock_id=? AND status='OPEN'",
                 (rs,n)->new BotOrderPolicy.RestingOrder(rs.getLong(1),rs.getString(2),rs.getLong(3),rs.getLong(4),rs.getTimestamp(5).getTime()),userId,id);
@@ -1487,7 +1505,21 @@ public class MarketService {
                         id,stock.price(),stock.price(),stock.price());
                 sectors.put(code,stock.genre());
             }
+            ensureLiquidityCashReserve(lp,codes);
         });
+    }
+
+    /** Apply one finite simulation-only LP reserve and keep its per-symbol projection consistent. */
+    private void ensureLiquidityCashReserve(long lp,List<String> codes) {
+        jdbc.update("INSERT IGNORE INTO market_liquidity_state(id,reserve_version) VALUES (1,0)");
+        if(jdbc.update("UPDATE market_liquidity_state SET reserve_version=? WHERE id=1 AND reserve_version=0",LP_RESERVE_VERSION)!=1)return;
+        jdbc.update("UPDATE users SET cash=cash+? WHERE id=?",LP_ONE_TIME_RESERVE,lp);
+        long share=LP_ONE_TIME_RESERVE/Math.max(1,codes.size()),remainder=LP_ONE_TIME_RESERVE%Math.max(1,codes.size());
+        for(int i=0;i<codes.size();i++) {
+            long delta=share+(i<remainder?1:0),id=stockId(codes.get(i));
+            jdbc.update("UPDATE lp_risk_books SET opening_cash=opening_cash+? WHERE stock_id=?",delta,id);
+            jdbc.update("UPDATE lp_cash_projection SET cash=cash+? WHERE stock_id=?",delta,id);
+        }
     }
 
     private MarketMakerEngine.RiskBook liquidityRiskBook(String code,long lp) {
@@ -1812,15 +1844,16 @@ public class MarketService {
     }
 
     private void seedDailySummaries() {
+        LocalDate tradingDate = LocalDate.now(clock.withZone(MISSION_ZONE));
         jdbc.update("""
                 INSERT INTO daily_market_summaries (stock_id, trading_date, open_price, close_price, total_volume)
-                SELECT id, CURRENT_DATE, current_price, current_price, 0
-                FROM stocks s
+                SELECT s.id, ?, p.day_reference, p.day_reference, 0
+                FROM stocks s JOIN stock_protection_state p ON p.stock_id = s.id
                 WHERE NOT EXISTS (
                     SELECT 1 FROM daily_market_summaries d
-                    WHERE d.stock_id = s.id AND d.trading_date = CURRENT_DATE
+                    WHERE d.stock_id = s.id AND d.trading_date = ?
                 )
-                """);
+                """, tradingDate, tradingDate);
     }
 
     /** Seed only new rows so a backend restart never reapplies old headlines. */
@@ -2191,8 +2224,13 @@ public class MarketService {
     private record NewsBias(double rate, boolean special) { }
     private Stock findStock(String code) {
         List<Stock> rows = jdbc.query("""
-                SELECT s.stock_code,g.name,g.genre,s.current_price,s.previous_price,s.total_volume
-                FROM stocks s JOIN games g ON g.id=s.game_id WHERE s.stock_code=?
+                SELECT s.stock_code,g.name,g.genre,s.current_price,
+                       COALESCE(p.day_reference, s.current_price) AS day_reference,
+                       s.total_volume
+                FROM stocks s
+                JOIN games g ON g.id=s.game_id
+                LEFT JOIN stock_protection_state p ON p.stock_id=s.id
+                WHERE s.stock_code=?
                 """,(rs,n)->new Stock(rs.getString(1),rs.getString(2),rs.getString(3),rs.getLong(4),
                 changePercent(rs.getLong(4),rs.getLong(5)),rs.getLong(6),null),code);
         return rows.isEmpty()?null:withRestriction(rows.get(0));
@@ -2208,18 +2246,32 @@ public class MarketService {
     }
 
     private long dailyReferencePrice(String code) {
+        // TradingProtectionService owns the active market date in Asia/Seoul.
+        // Do not derive the execution band from MySQL CURRENT_DATE: the JDBC
+        // session is deliberately UTC, so that value is still yesterday during
+        // the first nine hours of a Korean trading day.
+        List<Long> protectionReferences = jdbc.query("""
+                SELECT p.day_reference
+                FROM stock_protection_state p
+                JOIN stocks s ON s.id = p.stock_id
+                WHERE s.stock_code = ?
+                """, (rs, row) -> rs.getLong(1), code);
+        if (!protectionReferences.isEmpty()) return protectionReferences.get(0);
+
+        LocalDate tradingDate = LocalDate.now(clock.withZone(MISSION_ZONE));
         List<Long> references = jdbc.query("""
                 SELECT d.open_price
                 FROM daily_market_summaries d
                 JOIN stocks s ON s.id = d.stock_id
-                WHERE s.stock_code = ? AND d.trading_date = CURRENT_DATE
-                """, (rs, row) -> rs.getLong(1), code);
+                WHERE s.stock_code = ? AND d.trading_date = ?
+                """, (rs, row) -> rs.getLong(1), code, tradingDate);
         if (!references.isEmpty()) return references.get(0);
+        Long currentPrice = jdbc.queryForObject("SELECT current_price FROM stocks WHERE stock_code=?", Long.class, code);
         jdbc.update("""
                 INSERT IGNORE INTO daily_market_summaries (stock_id,trading_date,open_price,close_price,total_volume)
-                SELECT id,CURRENT_DATE,current_price,current_price,0 FROM stocks WHERE stock_code=?
-                """,code);
-        return jdbc.queryForObject("SELECT d.open_price FROM daily_market_summaries d JOIN stocks s ON s.id=d.stock_id WHERE s.stock_code=? AND d.trading_date=CURRENT_DATE",Long.class,code);
+                SELECT id,?,?,?,0 FROM stocks WHERE stock_code=?
+                """, tradingDate, currentPrice, currentPrice, code);
+        return jdbc.queryForObject("SELECT d.open_price FROM daily_market_summaries d JOIN stocks s ON s.id=d.stock_id WHERE s.stock_code=? AND d.trading_date=?",Long.class,code,tradingDate);
     }
 
     private PriceBand dailyPriceBand(String code) {
@@ -2242,11 +2294,14 @@ public class MarketService {
     }
 
     private void recordDailyTrade(String code, long price, long volume) {
+        LocalDate tradingDate = LocalDate.now(clock.withZone(MISSION_ZONE));
         jdbc.update("""
                 INSERT INTO daily_market_summaries (stock_id, trading_date, open_price, close_price, total_volume)
-                SELECT id, CURRENT_DATE, ?, ?, ? FROM stocks WHERE stock_code = ?
+                SELECT s.id, ?, p.day_reference, ?, ?
+                FROM stocks s JOIN stock_protection_state p ON p.stock_id = s.id
+                WHERE s.stock_code = ?
                 ON DUPLICATE KEY UPDATE close_price = VALUES(close_price), total_volume = daily_market_summaries.total_volume + VALUES(total_volume)
-                """, price, price, Math.max(0, volume), code);
+                """, tradingDate, price, Math.max(0, volume), code);
     }
 
     private NewsBias recentNewsBias(String code) { return recentNewsBias(code, 0); }
