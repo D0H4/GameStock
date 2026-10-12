@@ -57,7 +57,10 @@ export default function App() {
     document.title = titleFor(route);
     /* 최초 렌더에서는 포커스를 옮기지 않는다. 이동할 때만 본문으로 보낸다. */
     if (previous.current === route) return;
+    const withinNews = previous.current.name === "news" && route.name === "news";
     previous.current = route;
+    /* 속보 목록에서 기사를 고를 때는 목록 스크롤과 포커스를 그대로 둔다. */
+    if (withinNews) return;
     window.requestAnimationFrame(() => {
       if (document.documentElement.dataset.appShell !== "mobile") {
         main.current?.focus({ preventScroll: true });
@@ -77,7 +80,7 @@ export default function App() {
         {route.name === "home" && <HomePage />}
         {route.name === "market" && <MarketPage ticker={route.ticker} />}
         {route.name === "trade" && <TradePage ticker={route.ticker} />}
-        {route.name === "news" && <NewsPage />}
+        {route.name === "news" && <NewsPage id={route.id} />}
         {route.name === "ranking" && <RankingPage />}
         {PRIVATE_ROUTES.has(route.name) && !auth.user && <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>}
         {route.name === "mypage" && auth.user && <MyPage />}

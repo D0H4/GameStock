@@ -92,6 +92,22 @@ function toPortfolio(value?: BackendPortfolio): Portfolio {
   };
 }
 
+/* 소식 id는 목록 순번이 아니라 내용으로 정한다. 새 소식이 앞에 끼어도 /news/:id 주소가 같은 기사를 가리킨다. */
+function stableNewsIds() {
+  const used = new Set<number>();
+  return {
+    next(event: BackendEvent): number {
+      const key = `${event.stockCode}|${event.publishedAt ?? ""}|${event.title}`;
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
+      let id = (hash >>> 0) % 2_000_000_000 + 1;
+      while (used.has(id)) id += 1;
+      used.add(id);
+      return id;
+    },
+  };
+}
+
 function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: BackendPortfolio, watch: string[] = [], market?: BackendMarketStatus): MarketSnapshot {
   const quotes: Record<string, Quote> = {};
   const series: number[] = [];
@@ -131,14 +147,15 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
     weight += profile.marketCap;
     series.push(price);
   }
+  const newsIds = stableNewsIds();
   const indexValue = market?.indexValue ?? (weight > 0 ? (weighted / weight) * 1000 : 1000);
   return {
     quotes,
     marketRestriction: market?.restriction ?? null,
     index: { value: indexValue, prevClose: 1000, series: [1000, indexValue], tradingDate: market?.tradingDate },
     codes: stocks.map((stock) => stock.code).filter((code) => Boolean(quotes[code])),
-    news: events.map((event, index) => ({
-      id: index + 1,
+    news: events.map((event) => ({
+      id: newsIds.next(event),
       at: event.publishedAt ? serverTimestamp(event.publishedAt) || Date.now() : Date.now(),
       code: event.stockCode,
       source: event.source === "업데이트 노트" ? "업데이트 노트" as const : "미디어 보도" as const,
