@@ -174,21 +174,52 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
   };
 }
 
+/* 새로고침 때 백엔드 응답을 기다리며 로딩 화면만 보이지 않도록, 마지막 공개 시세를
+   브라우저에 남겨 두고 먼저 그린다. 오래된 값은 시세가 크게 달라 보일 수 있어 쓰지 않는다. */
+const PUBLIC_CACHE_KEY = "gamestock:public-market";
+const PUBLIC_CACHE_MAX_AGE_MS = 30 * 60_000;
+type PublicMarketCache = { savedAt: number; stocks: BackendStock[]; events: BackendEvent[]; market: BackendMarketStatus };
+
+function readPublicCache(): PublicMarketCache | null {
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(PUBLIC_CACHE_KEY) ?? "null") as PublicMarketCache | null;
+    if (!cached || Date.now() - cached.savedAt > PUBLIC_CACHE_MAX_AGE_MS || !Array.isArray(cached.stocks) || cached.stocks.length === 0) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+let publicCacheSavedAt = 0;
+function writePublicCache(stocks: BackendStock[], events: BackendEvent[], market: BackendMarketStatus) {
+  // 2초 주기 조회마다 수십 KB를 다시 쓰지 않도록 저장 간격을 둔다.
+  if (Date.now() - publicCacheSavedAt < 10_000) return;
+  publicCacheSavedAt = Date.now();
+  try {
+    window.localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), stocks, events, market }));
+  } catch {
+    /* 저장 공간이 없거나 막혀 있으면 다음 새로고침에서 로딩 화면을 보여 준다. */
+  }
+}
+
 export function MarketProvider({ children }: { children: ReactNode }) {
-  const [snapshot, setSnapshot] = useState<MarketSnapshot>(fallbackSnapshot);
-  const [serverAvailable, setServerAvailable] = useState(false);
+  const [initialCache] = useState(readPublicCache);
+  const [snapshot, setSnapshot] = useState<MarketSnapshot>(() =>
+    initialCache ? toSnapshot(initialCache.stocks, initialCache.events, undefined, [], initialCache.market) : fallbackSnapshot());
+  const [serverAvailable, setServerAvailable] = useState(Boolean(initialCache));
   const watchRef = useRef<string[]>([]);
   /* 토글 요청과 2초 watchlist 조회의 경쟁 상태를 가리는 번호.
      mutation은 토글 때마다, settled은 그 요청이 끝날 때 따라 잡는다. */
   const watchMutationSeq = useRef(0);
   const watchSettledSeq = useRef(0);
-  const hasServerSnapshotRef = useRef(false);
+  const hasServerSnapshotRef = useRef(Boolean(initialCache));
   const activeDetailCodeRef = useRef<string | null>(null);
   const streamRef = useRef<ReturnType<typeof openMarketStream> | null>(null);
   const streamReadyRef = useRef(false);
   const lastRestRef = useRef(0);
   const privateRevisionRef = useRef(0);
   const refreshInFlightRef = useRef(false);
+  const refreshAgainRef = useRef(false);
   const detailRefreshInFlightRef = useRef(false);
   const snapshotFillsRef = useRef<Portfolio["fills"]>([]);
 
@@ -233,7 +264,13 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     const refresh = async () => {
       // A slow request must not overlap the next two-second poll. Overlapping
       // retries make a short backend restart look like a request storm.
-      if (refreshInFlightRef.current || streamReadyRef.current && Date.now() - lastRestRef.current < 30_000) return;
+      if (refreshInFlightRef.current) {
+        // 로그인 복원처럼 진행 중인 조회와 다른 사용자 기준의 갱신이 필요하면
+        // 다음 2초 주기를 기다리지 않고 끝나는 즉시 다시 조회한다.
+        if (lastRestRef.current === 0) refreshAgainRef.current = true;
+        return;
+      }
+      if (streamReadyRef.current && Date.now() - lastRestRef.current < 30_000) return;
       lastRestRef.current = Date.now();
       refreshInFlightRef.current = true;
       const refreshingUid = firebaseAuth.currentUser?.uid;
@@ -244,12 +281,19 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           apiFetch<BackendEvent[]>("/api/market-events"),
           apiFetch<BackendMarketStatus>("/api/market-status"),
         ]);
+        writePublicCache(stocks, events, market);
         let portfolio: BackendPortfolio | undefined;
         let fills: Portfolio["fills"] = [];
         if (firebaseAuth.currentUser) {
           try {
-            portfolio = await apiFetch<BackendPortfolio>("/api/portfolio");
-            const settlements = await apiFetch<BackendSettlement[]>("/api/settlements").catch(() => null);
+            const watchQuerySeq = watchMutationSeq.current;
+            // 세 요청은 서로 의존하지 않으므로 한 번의 왕복 시간 안에 함께 받는다.
+            const [nextPortfolio, settlements, watch] = await Promise.all([
+              apiFetch<BackendPortfolio>("/api/portfolio"),
+              apiFetch<BackendSettlement[]>("/api/settlements").catch(() => null),
+              apiFetch<{ stockCode: string }[]>("/api/watchlist").catch(() => null),
+            ]);
+            portfolio = nextPortfolio;
             if (settlements) {
             fills = settlements.map((trade) => ({
               id: trade.id,
@@ -262,14 +306,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             } else {
               fills = snapshotFillsRef.current;
             }
-            const watchQuerySeq = watchMutationSeq.current;
-            const watch = await apiFetch<{ stockCode: string }[]>("/api/watchlist");
             if (firebaseAuth.currentUser?.uid !== refreshingUid) return;
             // 조회 시작 이후 토글이 있었거나 아직 끝나지 않은 토글이 남아 있으면
             // 이 응답은 토글 이전 서버 상태일 수 있으므로 watch만 버리고 낙관 상태를 유지한다.
             // (시세 갱신은 계속 적용된다)
             const togglesSettled = watchSettledSeq.current >= watchMutationSeq.current;
-            if (watchMutationSeq.current === watchQuerySeq && togglesSettled) {
+            if (watch && watchMutationSeq.current === watchQuerySeq && togglesSettled) {
               watchRef.current = watch.map((item) => item.stockCode);
             }
           } catch {
@@ -315,6 +357,11 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         if (!cancelled && !hasServerSnapshotRef.current) setServerAvailable(false);
       } finally {
         refreshInFlightRef.current = false;
+        if (refreshAgainRef.current && !cancelled) {
+          refreshAgainRef.current = false;
+          lastRestRef.current = 0;
+          void refresh();
+        }
       }
     };
     const refreshDetails = async () => {
