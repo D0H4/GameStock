@@ -22,7 +22,7 @@ class MarketCapMatchingTest {
     }
 
     @Test void fundedSmallCapRallyStopsAtTheUniversalThirtyPercentLimit() {
-        var book=book("SD", false);long time=1000;
+        var book=book("TR", false);long time=1000;
         for(long price=10000;price<=13000;price+=500) {
             book.submit(2,1,"SELL","LIMIT",1,price,time++,10000);
             book.submit(1,1,"BUY","LIMIT",1,price,time++,10000);
@@ -38,7 +38,7 @@ class MarketCapMatchingTest {
     }
 
     @Test void dailyRangeStillRejectsAnInstantTwentyPercentBotGap() {
-        var book=book("SD");
+        var book=book("TR");
         book.submit(2,1,"SELL","LIMIT",1,12000,1000,10000);
         book.submit(1,1,"BUY","LIMIT",1,12000,1001,10000);
         assertEquals(10000,book.stocks.get(1L).last);

@@ -17,17 +17,17 @@ public final class StockMarketProfile {
 
     /** The user-selected large-cap bucket. Every other catalog symbol is small-cap. */
     private static final Set<String> LARGE_CAP_CODES = Set.of(
-            "WH", "ZZZ", "GOV", "GI", "BA", "UMA", "SR", "EL");
+            "WH", "ZZZ", "GOV", "GI", "BA", "UMA", "SR", "OW");
 
     // Game balance inputs, not measured users or valuations. Keep marketCap.ts aligned.
     private static final Map<String, Long> ACTIVE_USERS = Map.ofEntries(
             Map.entry("GI", 15_000_000L), Map.entry("SR", 12_000_000L),
-            Map.entry("EL", 10_000_000L), Map.entry("ZZZ", 8_000_000L),
+            Map.entry("OW", 10_000_000L), Map.entry("ZZZ", 8_000_000L),
             Map.entry("WH", 7_000_000L), Map.entry("GOV", 6_000_000L),
             Map.entry("BA", 4_000_000L), Map.entry("UMA", 3_000_000L),
-            Map.entry("AK", 600_000L), Map.entry("LT", 500_000L),
-            Map.entry("MH", 400_000L), Map.entry("PW", 200_000L),
-            Map.entry("PX", 150_000L), Map.entry("ES", 100_000L), Map.entry("SD", 50_000L));
+            Map.entry("AK", 600_000L), Map.entry("VR", 500_000L),
+            Map.entry("KRP", 400_000L), Map.entry("PW", 200_000L),
+            Map.entry("CRK", 150_000L), Map.entry("ES", 100_000L), Map.entry("TR", 50_000L));
 
     public record Profile(String code, long activeUsers, long marketCap,
                           double movementWeight, double liquidityWeight) { }

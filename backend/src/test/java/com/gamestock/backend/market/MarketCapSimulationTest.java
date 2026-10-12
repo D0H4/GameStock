@@ -34,7 +34,7 @@ class MarketCapSimulationTest {
     }
 
     @Test void speculativeFlowStaysWithinTheUniversalDailyBand() {
-        Result result=simulate("SD",7,3600,0);
+        Result result=simulate("TR",7,3600,0);
         System.out.println("CAP_DAILY_BAND "+result);
         assertTrue(result.high()<=13000 && result.low()>=7000,"respect the universal +/-30% daily range");
     }

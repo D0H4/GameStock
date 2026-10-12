@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StockMarketProfileTest {
     @Test
     void virtualMarketCapsDifferentiateStocksAndTheirLiquidity() {
-        var small = StockMarketProfile.of("SD");
+        var small = StockMarketProfile.of("TR");
         var large = StockMarketProfile.of("GI");
         var otherSmall = StockMarketProfile.of("AK");
         var otherLarge = StockMarketProfile.of("WH");
@@ -29,7 +29,7 @@ class StockMarketProfileTest {
     @Test
     void largerMarketCapDampensNoiseAndAddsRestoringPressure() {
         var base = new MarketEnvironment(.8, .6, 2.4, 1.8, 1.1, 1.5, .7, .5, .8, .4, 1.9, 2.1);
-        var small = StockMarketProfile.applyTo("SD", base);
+        var small = StockMarketProfile.applyTo("TR", base);
         var large = StockMarketProfile.applyTo("GI", base);
 
         assertTrue(small.directionBias() > base.directionBias());
@@ -39,7 +39,7 @@ class StockMarketProfileTest {
         assertTrue(large.spreadMultiplier() < base.spreadMultiplier());
         assertTrue(large.meanReversionStrength() > small.meanReversionStrength());
         assertEquals(.03, StockMarketProfile.normalDailyMove("GI"));
-        assertTrue(StockMarketProfile.activityTarget("GI",300)<StockMarketProfile.activityTarget("SD",300));
+        assertTrue(StockMarketProfile.activityTarget("GI",300)<StockMarketProfile.activityTarget("TR",300));
         assertEquals(10000, StockMarketProfile.valuationAnchor("GI",10000,16000,0));
         assertEquals(11000, StockMarketProfile.valuationAnchor("GI",10000,16000,.1),1e-9);
     }
@@ -55,7 +55,7 @@ class StockMarketProfileTest {
     }
 
     @Test void apiCarriesExactDailyLimitsAndReferenceForEveryStock() {
-        var small=new MarketModels.Stock("SD","SD","RPG",30000,200,1,null,10000);
+        var small=new MarketModels.Stock("TR","TR","RPG",30000,200,1,null,10000);
         assertEquals(10000,small.referencePrice());
         assertEquals(13000,small.limitUp());
         assertEquals(7000,small.limitDown());

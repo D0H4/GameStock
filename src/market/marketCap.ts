@@ -13,16 +13,16 @@ export interface StockMarketProfile {
 }
 
 const LARGE_CAP_CODES = new Set([
-  "WH", "ZZZ", "GOV", "GI", "BA", "UMA", "SR", "EL",
+  "WH", "ZZZ", "GOV", "GI", "BA", "UMA", "SR", "OW",
 ]);
 const SMALL_CAP_ACTIVE_USERS = 450_000;
 const VALUE_PER_ACTIVE_USER = 100_000;
 // Virtual game-balance values, kept identical to StockMarketProfile.java.
 const ACTIVE_USERS: Record<string, number> = {
-  GI: 15_000_000, SR: 12_000_000, EL: 10_000_000, ZZZ: 8_000_000,
+  GI: 15_000_000, SR: 12_000_000, OW: 10_000_000, ZZZ: 8_000_000,
   WH: 7_000_000, GOV: 6_000_000, BA: 4_000_000, UMA: 3_000_000,
-  AK: 600_000, LT: 500_000, MH: 400_000, PW: 200_000,
-  PX: 150_000, ES: 100_000, SD: 50_000,
+  AK: 600_000, VR: 500_000, KRP: 400_000, PW: 200_000,
+  CRK: 150_000, ES: 100_000, TR: 50_000,
 };
 
 export function stockMarketProfile(code: string): StockMarketProfile {

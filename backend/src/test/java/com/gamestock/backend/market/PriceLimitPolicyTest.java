@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PriceLimitPolicyTest {
     @Test void everyStockUsesTheSameThirtyPercentDailyBand() {
-        for(String code:java.util.List.of("AK","LT","MH","PW","PX","ES","SD")) {
+        for(String code:java.util.List.of("AK","VR","KRP","PW","CRK","ES","TR")) {
             var daily=PriceLimitPolicy.dailyBand(code,10000);
             var bots=PriceLimitPolicy.botBand(code,10000);
             assertEquals(7000,daily.lowerPrice());

@@ -19,22 +19,27 @@ public final class StockCatalog {
             new Listing("SR", "붕괴: 스타레일", "HoYoverse", "RPG"),
             new Listing("AK", "명일방주: 엔드필드", "Hypergryph", "전략 RPG"),
             new Listing("WH", "명조: 워더링 웨이브", "Kuro Games", "액션"),
-            new Listing("PX", "쿠키런: 킹덤", "Devsisters", "RPG"),
-            new Listing("LT", "발로란트", "Riot Games", "FPS"),
+            new Listing("CRK", "쿠키런: 킹덤", "Devsisters", "RPG"),
+            new Listing("VR", "발로란트", "Riot Games", "FPS"),
             new Listing("ES", "에픽세븐", "Smilegate", "RPG"),
-            new Listing("MH", "카트라이더 러쉬플러스", "Nexon", "레이싱"),
-            new Listing("EL", "오버워치", "Blizzard Entertainment", "FPS"),
+            new Listing("KRP", "카트라이더 러쉬플러스", "Nexon", "레이싱"),
+            new Listing("OW", "오버워치", "Blizzard Entertainment", "FPS"),
             new Listing("PW", "팰월드", "Pocketpair", "생존"),
-            new Listing("SD", "트릭컬 리바이브", "EPID Games", "RPG"));
+            new Listing("TR", "트릭컬 리바이브", "EPID Games", "RPG"));
 
     /** Add missing games/stocks without changing existing prices or trading data. */
     public static void ensureListings(JdbcTemplate jdbc) {
+        renameCode(jdbc, "PX", "CRK");
+        renameCode(jdbc, "LT", "VR");
+        renameCode(jdbc, "MH", "KRP");
+        renameCode(jdbc, "EL", "OW");
+        renameCode(jdbc, "SD", "TR");
         replaceListing(jdbc, "AK", "명일방주", "명일방주: 엔드필드", "Hypergryph", "전략 RPG");
-        replaceListing(jdbc, "EL", "엘든 링", "오버워치", "Blizzard Entertainment", "FPS");
-        replaceListing(jdbc, "PX", "페르소나5: 더 팬텀 X", "쿠키런: 킹덤", "Devsisters", "RPG");
-        replaceListing(jdbc, "SD", "스타듀 밸리", "트릭컬 리바이브", "EPID Games", "RPG");
-        replaceListing(jdbc, "LT", "림버스 컴퍼니", "발로란트", "Riot Games", "FPS");
-        replaceListing(jdbc, "MH", "몬스터헌터 와일즈", "카트라이더 러쉬플러스", "Nexon", "레이싱");
+        replaceListing(jdbc, "OW", "엘든 링", "오버워치", "Blizzard Entertainment", "FPS");
+        replaceListing(jdbc, "CRK", "페르소나5: 더 팬텀 X", "쿠키런: 킹덤", "Devsisters", "RPG");
+        replaceListing(jdbc, "TR", "스타듀 밸리", "트릭컬 리바이브", "EPID Games", "RPG");
+        replaceListing(jdbc, "VR", "림버스 컴퍼니", "발로란트", "Riot Games", "FPS");
+        replaceListing(jdbc, "KRP", "몬스터헌터 와일즈", "카트라이더 러쉬플러스", "Nexon", "레이싱");
         for (Listing listing : LISTINGS) {
             jdbc.update("""
                     INSERT INTO games (name, developer, genre)
@@ -52,6 +57,15 @@ public final class StockCatalog {
                     ORDER BY g.id LIMIT 1
                     """, listing.code(), 10_000L, 10_000L, listing.name(), listing.code(), listing.name());
         }
+    }
+
+    /** Rename a code in place; everything else references the stock ID, so holdings and history carry over. */
+    private static void renameCode(JdbcTemplate jdbc, String oldCode, String newCode) {
+        jdbc.update("""
+                UPDATE stocks SET stock_code = ?
+                WHERE stock_code = ?
+                  AND NOT EXISTS (SELECT 1 FROM (SELECT stock_code FROM stocks WHERE stock_code = ?) taken)
+                """, newCode, oldCode, newCode);
     }
 
     /** Retain stock IDs, codes, holdings and history when replacing a game. */
