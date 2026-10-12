@@ -1,7 +1,7 @@
 import { firebaseAuth } from "./firebase";
 
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
-const productionApiBase = "https://gamestock-production.up.railway.app";
+const productionApiBase = "https://gamestock-production-bcd2.up.railway.app";
 const localApiBase = "http://localhost:8081";
 const isLocalBase = (value: string) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(value);
 
