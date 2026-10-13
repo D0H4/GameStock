@@ -90,6 +90,28 @@ class MarketActivityPolicyTest {
         policy.requestMaintenance();
         assertTrue(policy.maintenanceDue(1000,true));
     }
+    @Test void visitorsSkipRoutineMaintenanceButWaitAtWakeOrLongOverdue() {
+        var policy=new MarketActivityPolicy();
+        assertTrue(policy.visitorMustWait(0,true),"first wake must prepare the market");
+        policy.maintain(0,true,1800000,5,()->{});
+        assertFalse(policy.visitorMustWait(3000,true),"routine 3s maintenance is the scheduler's job");
+        assertTrue(policy.visitorMustWait(3000+MarketActivityPolicy.VISITOR_OVERDUE_MILLIS,true));
+        assertTrue(policy.visitorMustWait(1000,false));
+    }
+    @Test void visitorCheckDoesNotWaitForRunningMaintenance() throws Exception {
+        var policy=new MarketActivityPolicy();policy.maintain(0,true,1800000,5,()->{});
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        var pool=Executors.newSingleThreadExecutor();
+        try {
+            var running=pool.submit(()->policy.maintain(5000,true,1800000,5,()->{
+                entered.countDown();
+                try{release.await();}catch(InterruptedException e){throw new RuntimeException(e);}
+            }));
+            assertTrue(entered.await(5,TimeUnit.SECONDS));
+            assertTimeoutPreemptively(java.time.Duration.ofSeconds(1),()->assertFalse(policy.visitorMustWait(5000,true)));
+            release.countDown();running.get(5,TimeUnit.SECONDS);
+        } finally {release.countDown();pool.shutdownNow();}
+    }
     @Test void simultaneousVisitorsRunWakeMaintenanceOnlyOnce() throws Exception {
         var policy=new MarketActivityPolicy();var count=new AtomicInteger();var start=new CountDownLatch(1);
         var pool=Executors.newFixedThreadPool(8);
