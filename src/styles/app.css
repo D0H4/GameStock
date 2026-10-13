@@ -529,9 +529,9 @@
     display: block;
     width: 40px;
     height: 40px;
-    border-radius: 22%;
+    /* 원본 아이콘에 들어간 모서리(약 15%)보다 크게 깎으면 그림 가장자리가 잘린다. */
+    border-radius: 16%;
     object-fit: cover;
-    object-position: center 30%;
     background: var(--sunken);
   }
 

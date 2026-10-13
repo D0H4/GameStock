@@ -1150,7 +1150,7 @@
     width: 46px;
     height: 46px;
     border: 1px solid color-mix(in oklab, var(--rule-ink) 70%, transparent);
-    border-radius: 14px;
+    border-radius: 16%;
     object-fit: cover;
     box-shadow: 0 2px 8px color-mix(in oklab, var(--ink) 10%, transparent);
   }
