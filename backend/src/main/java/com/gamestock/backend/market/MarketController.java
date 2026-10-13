@@ -20,17 +20,18 @@ public class MarketController {
     private final OrderService orders;
     private final MarketMetrics metrics;
     private final BotTradingScheduler scheduler;
+    private final PublicMarketCache publicCache;
 
-    public MarketController(MarketService market, AuthService auth, UserFeatureService userFeatures,OrderService orders,MarketMetrics metrics,BotTradingScheduler scheduler) { this.market = market; this.auth = auth; this.userFeatures = userFeatures;this.orders=orders;this.metrics=metrics;this.scheduler=scheduler; }
+    public MarketController(MarketService market, AuthService auth, UserFeatureService userFeatures,OrderService orders,MarketMetrics metrics,BotTradingScheduler scheduler,PublicMarketCache publicCache) { this.market = market; this.auth = auth; this.userFeatures = userFeatures;this.orders=orders;this.metrics=metrics;this.scheduler=scheduler;this.publicCache=publicCache; }
 
     @GetMapping("/health") public Map<String, Object> health() {
         return Map.of("status","ok","matchingEnabled",market.matchingEnabled(),
                 "batchBotsEnabled",market.batchBotsEnabled(),"inlineLiquidity",market.inlineLiquidity(),
                 "batchShards",market.batchShardCount(),"botScheduler",scheduler.runtimeStatus());
     }
-    @GetMapping("/stocks") public java.util.List<Stock> stocks() { return market.stocks(); }
-    @GetMapping("/market-events") public java.util.List<MarketEvent> events() { return market.marketEvents(); }
-    @GetMapping("/market-status") public MarketStatus marketStatus() { return market.marketStatus(); }
+    @GetMapping("/stocks") public java.util.List<Stock> stocks() { return publicCache.stocks(); }
+    @GetMapping("/market-events") public java.util.List<MarketEvent> events() { return publicCache.marketEvents(); }
+    @GetMapping("/market-status") public MarketStatus marketStatus() { return publicCache.marketStatus(); }
     @GetMapping("/ranking") public java.util.List<RankingEntry> ranking() { return market.ranking(); }
     @GetMapping("/stocks/{stockCode}/news")
     public java.util.List<MarketEvent> stockNews(@PathVariable String stockCode) {

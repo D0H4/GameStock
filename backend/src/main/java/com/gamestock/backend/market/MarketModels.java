@@ -11,16 +11,23 @@ public final class MarketModels {
 
     public record Stock(String code, String name, String genre, long price, double changePercent, long volume,
                         TradingRestriction restriction, long activeUsers, long marketCap,
-                        double movementWeight) {
+                        double movementWeight, long referencePrice, long limitUp, long limitDown) {
         public Stock(String code, String name, String genre, long price, double changePercent, long volume) {
             this(code, name, genre, price, changePercent, volume, null);
         }
 
         public Stock(String code, String name, String genre, long price, double changePercent, long volume,
                      TradingRestriction restriction) {
+            this(code,name,genre,price,changePercent,volume,restriction,
+                    Math.max(100,Math.round(price / Math.max(.01,1 + changePercent / 100))));
+        }
+
+        public Stock(String code, String name, String genre, long price, double changePercent, long volume,
+                     TradingRestriction restriction, long referencePrice) {
             this(code, name, genre, price, changePercent, volume, restriction,
                     StockMarketProfile.of(code).activeUsers(), StockMarketProfile.of(code).marketCap(),
-                    StockMarketProfile.of(code).movementWeight());
+                    StockMarketProfile.of(code).movementWeight(),referencePrice,
+                    PriceLimitPolicy.dailyBand(code,referencePrice).upperPrice(),PriceLimitPolicy.dailyBand(code,referencePrice).lowerPrice());
         }
     }
     public record TradingRestriction(String kind, String label, String phase, int level, String reason,
@@ -53,7 +60,8 @@ public final class MarketModels {
                     profitLossPercent, 0);
         }
     }
-    public record RankingEntry(int rank, String nickname, String profileImageUrl, long totalAsset, long assetValue, long cash, double changePercent) { }
+    public record RankingEntry(int rank, String nickname, String profileImageUrl, long totalAsset, long assetValue, long cash, double changePercent,
+                               String equippedTitle, boolean equippedTitleWeekly) { }
     /**
      * A news event plus enough context for the clients to explain the current
      * price move without pretending that a headline is a guaranteed cause.
@@ -69,6 +77,7 @@ public final class MarketModels {
     }
     public record MarketSnapshot(List<Stock> stocks, Portfolio portfolio, List<MarketEvent> events) { }
     public record DailyMissionStatus(String missionDate, String resetsAt, String serverTime,
+                                     List<String> availableMissionIds,
                                      List<String> completedMissionIds) { }
     public record MissionRewardResult(long rewardCash, boolean awarded, Portfolio portfolio,
                                       DailyMissionStatus missions) { }

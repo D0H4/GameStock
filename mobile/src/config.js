@@ -2,7 +2,7 @@
 // 로컬 Spring Boot를 테스트할 때만 EXPO_PUBLIC_API_BASE_URL에
 // PC의 LAN 주소를 지정해 덮어쓴다.
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "https://gamestock-production.up.railway.app";
+  process.env.EXPO_PUBLIC_API_BASE_URL || "https://gamestock-production-bcd2.up.railway.app";
 export const MARKET_SOCKET_URL =
   API_BASE_URL.replace(/^http/, "ws") + "/ws/market";
 

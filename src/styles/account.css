@@ -53,6 +53,7 @@
   .account-orders-table td { white-space: nowrap; }
   .account-orders-table .account-button { min-height: 32px; padding: 4px 12px; font-size: var(--step-0); }
   .account-watch-quote { display: inline-flex; align-items: baseline; gap: var(--space-2); font-weight: 600; white-space: nowrap; }
+  .titles-empty { padding-block: var(--space-6); border-top: var(--rule-heavy); color: var(--ink-muted); font-size: var(--step-1); text-align: center; }
   .charge-intro { max-width: 60ch; font-size: var(--step-1); color: var(--ink-muted); }
   .charge-page .mission-list { display: grid; gap: var(--space-3); }
   .charge-page .mission-row { display: flex; align-items: center; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--rule); }
@@ -62,6 +63,8 @@
   .charge-page .mission-copy { flex: 1; min-width: 0; }
   .charge-page .mission-copy h3 { font-size: var(--step-2); font-weight: 700; }
   .charge-page .mission-copy p, .charge-page .mission-reset-note, .charge-page .mission-status { font-size: var(--step-0); color: var(--ink-muted); }
+  .charge-page .promo-message.is-ok { color: var(--brand-deep); }
+  .charge-page .promo-message.is-error { color: var(--up-deep); }
   .charge-page .mission-action { flex-shrink: 0; font-size: var(--step-0); font-weight: 700; color: var(--brand-deep); text-decoration: none; }
   .charge-page .mission-action:hover { text-decoration: underline; text-underline-offset: 3px; }
   .charge-page .mission-action-disabled { color: var(--ink-muted); cursor: not-allowed; }
@@ -77,4 +80,96 @@
     .account-reset { align-items: flex-start; flex-direction: column; }
     .charge-page .mission-row { flex-wrap: wrap; }
   }
+}
+
+/* 칭호 페이지: 도감처럼 번호가 붙은 목록. 오른쪽 끝에 획득 도장 또는 자물쇠를 둔다. */
+@layer component {
+  .title-progress {
+    display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-5);
+    border: var(--rule-width) solid var(--rule); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow-card);
+  }
+  .title-progress-count { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+  .title-progress-label { font-size: var(--step-1); font-weight: 600; color: var(--ink-muted); }
+  .title-progress-value { font-size: var(--step-2); color: var(--ink-muted); }
+  .title-progress-value strong { font-size: var(--step-5); font-weight: 700; color: var(--brand-deep); letter-spacing: var(--tracking); }
+  .title-progress-track { position: relative; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--sunken); }
+  .title-progress-fill {
+    position: absolute; inset: 0 auto 0 0; border-radius: inherit;
+    background: linear-gradient(90deg, var(--brand), var(--brand-deep));
+    transition: width 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .title-progress-note { font-size: var(--step--1); color: var(--ink-muted); }
+
+  .title-list { margin: 0; padding: 0; list-style: none; }
+  .title-item { border-bottom: var(--rule-width) solid var(--rule); }
+  .title-item:last-child { border-bottom: 0; }
+  .title-row {
+    display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3);
+    width: 100%; min-height: 60px; padding: 10px var(--space-4);
+    font: inherit; color: inherit; text-align: left; background-color: transparent; border: 0;
+    transition: background-color 160ms ease;
+  }
+  .title-row.is-owned { background-image: linear-gradient(90deg, transparent 55%, var(--brand-wash)); }
+  .title-row:hover { background-color: color-mix(in oklab, var(--sunken) 55%, transparent); }
+  button.title-row { cursor: pointer; }
+  button.title-row:disabled { cursor: progress; }
+  button.title-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+  /* 고를 수 있는 항목 표시: 회색 고리. 장착한 칭호만 안쪽이 브랜드 색으로 채워진다. */
+  .title-dot {
+    position: relative; width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid color-mix(in oklab, var(--ink-faint) 70%, var(--rule)); background: var(--paper);
+    transition: border-color 160ms ease;
+  }
+  .title-dot::after {
+    content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--brand-deep);
+    transform: scale(0); transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1.4);
+  }
+  .title-row.is-locked .title-dot { border-color: var(--rule); }
+  button.title-row:hover .title-dot { border-color: var(--ink-muted); }
+  .title-row.is-equipped .title-dot, button.title-row.is-equipped:hover .title-dot { border-color: var(--brand-deep); }
+  .title-row.is-equipped .title-dot::after { transform: scale(1); }
+  .title-equipped {
+    padding: 1px 8px; border-radius: var(--radius-pill); font-size: var(--step--1); font-weight: 700;
+    color: var(--paper); background: var(--brand-deep);
+  }
+  .title-progress-equipped { color: var(--brand-deep); font-weight: 700; }
+  .title-progress-error { font-size: var(--step--1); color: var(--up-deep); }
+
+  .title-copy { display: grid; min-width: 0; }
+  .title-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--step-2); font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+  .title-condition { display: block; margin-top: 2px; font-size: var(--step-0); color: var(--ink-muted); }
+  .title-row.is-locked .title-name { color: var(--ink-muted); }
+  .title-row.is-locked .title-condition { color: var(--ink-faint); }
+  .title-crown {
+    padding: 1px 7px; border-radius: var(--radius-pill); font-size: var(--step--1); font-weight: 700;
+    color: var(--amber-deep); background: var(--amber-wash); border: 1px solid color-mix(in oklab, var(--amber) 45%, transparent);
+  }
+
+  /* 획득 도장: 살짝 기울인 테두리 도장으로 '받았다'는 느낌만 준다. */
+  .title-seal { display: grid; justify-items: end; gap: 3px; }
+  .title-seal-mark {
+    display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px 3px 7px;
+    border: 1.5px solid var(--brand-deep); border-radius: var(--radius-pill);
+    color: var(--brand-deep); background: var(--paper); font-size: var(--step-0); font-weight: 700; letter-spacing: 0.02em;
+    transform: rotate(-4deg);
+  }
+  .title-row.is-weekly .title-seal-mark { color: var(--amber-deep); border-color: var(--amber); }
+  .title-seal-date { font-size: var(--step--2); color: var(--ink-muted); }
+
+  .title-lock {
+    display: grid; place-items: center; width: 34px; height: 34px; margin-right: 4px;
+    border: 1.5px dashed var(--rule); border-radius: 50%; color: var(--ink-faint); background: var(--canvas);
+  }
+  .title-row.is-locked:hover .title-lock { color: var(--ink-muted); border-color: var(--ink-faint); }
+  .title-toast { bottom: calc(var(--space-4) + 52px); }
+}
+@layer responsive {
+  @media (max-width: 720px) {
+    .title-progress { padding: var(--space-3) var(--space-4); }
+    .title-row { grid-template-columns: 18px minmax(0, 1fr) auto; gap: var(--space-2); padding-inline: var(--space-3); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .title-progress-fill, .title-row, .title-dot, .title-dot::after { transition: none; }
 }

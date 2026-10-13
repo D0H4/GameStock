@@ -4,11 +4,11 @@ type Size = "small" | "default" | "large" | "xl" | "detail" | "table" | "news";
 
 const REPLACEMENT_ICONS: Record<string, string> = {
   AK: "ak-endfield.png",
-  EL: "el-overwatch-symbol.svg",
-  PX: "px-cookiekingdom.png",
-  SD: "sd-trickcal.png",
-  LT: "lt-valorant.png",
-  MH: "mh-kartrush.png",
+  OW: "el-overwatch-symbol.svg",
+  CRK: "px-cookiekingdom.png",
+  TR: "sd-trickcal.png",
+  VR: "lt-valorant.png",
+  KRP: "mh-kartrush.png",
 };
 
 export function GameIcon({
@@ -32,7 +32,7 @@ export function GameIcon({
         : size === "news"
           ? "game-icon game-icon-news"
           : `game-icon is-${size}`;
-  const classes = `${sizeClassName}${code === "EL" ? " is-overwatch-symbol" : ""}${className ? ` ${className}` : ""}`;
+  const classes = `${sizeClassName}${code === "OW" ? " is-overwatch-symbol" : ""}${className ? ` ${className}` : ""}`;
 
   if (!source) return <span className={classes} aria-hidden="true" />;
 

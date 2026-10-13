@@ -202,6 +202,26 @@ class SimulationEngineTest {
         assertTrue(budget<750000);
         assertNotEquals(engine.targetQuantity(p,"ES",0,1000000,15,10000),engine.targetQuantity(p,"ES",60000,1000000,15,10000));
     }
+
+    @Test void deepDrawdownCreatesCashBackedDipBuyersAndDoesNotPanicSellFreshInventory() {
+        var engine=new BotStrategyEngine(91);
+        var m=PriceMetricService.calculate(List.of(),8000,7990,8010,0,100,0);
+        int buys=0,actionableSells=0,heldSells=0,capitulationSells=0;
+        for(BotProfile p:BotProfile.defaults(91)) {
+            var empty=engine.decide(p,m,neutral,new BotStrategyEngine.Position(0,1_000_000,0,0),8000,0,10,1,"ES",10000);
+            if(empty.side().equals("BUY") && empty.quantity()>0) buys++;
+            if(empty.side().equals("SELL") && empty.quantity()>0) actionableSells++;
+            var held=engine.decide(p,m,neutral,new BotStrategyEngine.Position(1,1_000_000,8000,0),8000,0,10,1,"ES",10000);
+            if(held.side().equals("SELL") && held.quantity()>0) heldSells++;
+            var stopped=engine.decide(p,m,neutral,new BotStrategyEngine.Position(1,1_000_000,9500,0),8000,0,10,1,"ES",10000);
+            if(stopped.side().equals("SELL") && stopped.quantity()>0) capitulationSells++;
+        }
+        assertTrue(buys>6,"deep drawdown should create a material buy side");
+        assertEquals(0,actionableSells,"cash-only bots must not create naked sells");
+        assertEquals(0,heldSells,"fresh inventory should not be panic-sold without a risk exit");
+        assertEquals(0,capitulationSells,"a stop-loss must not stack a sell into an empty bid book at a deep floor");
+    }
+
     @Test void swingCanSeeAMultiMinuteTrendAfterShortTermReturnsGoFlat() {
         var trades=List.of(new PriceMetricService.Trade(0,10000,10),new PriceMetricService.Trade(240000,10200,10),
                 new PriceMetricService.Trade(300000,10200,10));
@@ -327,6 +347,16 @@ class SimulationEngineTest {
         assertTrue(quotes.stream().allMatch(q->Math.abs(q.price()-7710)<=100),
                 () -> "quotes detached from last execution: "+quotes);
     }
+    @Test void quietBookPreservesNearbyExecutableQuotesInsteadOfInventingAnInsideSpread() {
+        var quiet=PriceMetricService.calculate(List.of(),10000,9980,10020,50,50,1000);
+        var stabilized=BotActivityEngine.stabilizeQuietBook(quiet);
+        assertEquals(9980,stabilized.bestBid());assertEquals(10020,stabilized.bestAsk());
+        assertEquals(10000,stabilized.markPrice());
+        var atDailyFloor=BotActivityEngine.stabilizeQuietBook(PriceMetricService.calculate(List.of(),2000,2015,2025,30,30,1000));
+        assertEquals(2025,atDailyFloor.bestAsk(),"buyers must be able to lift the real offer after a limit-down period");
+        assertEquals(2000,atDailyFloor.markPrice());
+    }
+
     @Test void metricsResistTinyLastPrintAndHaveNeutralWarmup() {
         var trades=List.of(new PriceMetricService.Trade(0,10000,1000),new PriceMetricService.Trade(1000,11000,1));
         var m=PriceMetricService.calculate(trades,10000,9990,10010,100,100,1000);

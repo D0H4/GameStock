@@ -1,4 +1,5 @@
 import type { Listing } from "./types";
+import { stockMarketProfile } from "./marketCap";
 
 /**
  * 상장 종목. 게임명·퍼블리셔는 실제 제품 정보, 가격은 전부 모의 시세다.
@@ -14,20 +15,20 @@ export const LISTINGS: Listing[] = [
   { code: "ZZZ", name: "젠레스 존 제로", publisher: "호요버스", genre: "액션", prevClose: 27150, activity: 2.1, detail: "신규 요원" },
   { code: "AK", name: "명일방주: 엔드필드", publisher: "하이퍼그리프", genre: "전략 RPG", prevClose: 18240, activity: 1.8, detail: "신규 오퍼레이터" },
   { code: "WH", name: "명조: 워더링 웨이브", publisher: "쿠로게임즈", genre: "액션", prevClose: 13700, activity: 1.7, detail: "공명자 에코" },
-  { code: "PX", name: "쿠키런: 킹덤", publisher: "데브시스터즈", genre: "RPG", prevClose: 15300, activity: 1.4, detail: "신규 쿠키" },
-  { code: "LT", name: "발로란트", publisher: "라이엇 게임즈", genre: "FPS", prevClose: 7860, activity: 1.3, detail: "신규 요원" },
+  { code: "CRK", name: "쿠키런: 킹덤", publisher: "데브시스터즈", genre: "RPG", prevClose: 15300, activity: 1.4, detail: "신규 쿠키" },
+  { code: "VR", name: "발로란트", publisher: "라이엇 게임즈", genre: "FPS", prevClose: 7860, activity: 1.3, detail: "신규 요원" },
   { code: "ES", name: "에픽세븐", publisher: "스마일게이트", genre: "RPG", prevClose: 6480, activity: 1.2, detail: "월광 영웅" },
-  { code: "MH", name: "카트라이더 러쉬플러스", publisher: "넥슨", genre: "레이싱", prevClose: 38500, activity: 2.5, detail: "신규 카트" },
-  { code: "EL", name: "오버워치", publisher: "블리자드", genre: "FPS", prevClose: 42000, activity: 2.0, detail: "영웅 밸런스" },
+  { code: "KRP", name: "카트라이더 러쉬플러스", publisher: "넥슨", genre: "레이싱", prevClose: 38500, activity: 2.5, detail: "신규 카트" },
+  { code: "OW", name: "오버워치", publisher: "블리자드", genre: "FPS", prevClose: 42000, activity: 2.0, detail: "영웅 밸런스" },
   { code: "PW", name: "팰월드", publisher: "포켓페어", genre: "생존", prevClose: 19800, activity: 1.9, detail: "신규 팰" },
-  { code: "SD", name: "트릭컬 리바이브", publisher: "에피드게임즈", genre: "RPG", prevClose: 5600, activity: 0.9, detail: "신규 사도" },
+  { code: "TR", name: "트릭컬 리바이브", publisher: "에피드게임즈", genre: "RPG", prevClose: 5600, activity: 0.9, detail: "신규 사도" },
 ];
 
 export const LISTING_BY_CODE: Record<string, Listing> = Object.fromEntries(
   LISTINGS.map((listing) => [listing.code, listing]),
 );
 
-/** 게임 공식 아트워크 경로. 백엔드가 사용하는 네 종목 코드를 그대로 유지한다. */
+/** 게임 공식 아트워크 경로. 현재 상장 종목 코드를 사용한다. */
 const GAME_ICON_BY_CODE: Record<string, string> = {
   GOV: "/game-icons/nk.jpg",
   UMA: "/game-icons/uma.jpg",
@@ -37,13 +38,13 @@ const GAME_ICON_BY_CODE: Record<string, string> = {
   ZZZ: "/game-icons/zzz.jpg",
   AK: "/game-icons/ak.jpg",
   WH: "/game-icons/wh.jpg",
-  PX: "/game-icons/px.jpg",
-  LT: "/game-icons/lt.jpg",
+  CRK: "/game-icons/px.jpg",
+  VR: "/game-icons/lt.jpg",
   ES: "/game-icons/es.jpg",
-  MH: "/game-icons/mh.jpg",
-  EL: "/game-icons/el.jpg",
+  KRP: "/game-icons/mh.jpg",
+  OW: "/game-icons/el.jpg",
   PW: "/game-icons/pw.jpg",
-  SD: "/game-icons/sd.jpg",
+  TR: "/game-icons/sd.jpg",
 };
 
 export function gameIcon(code: string): string | null {
@@ -63,8 +64,19 @@ export function tickSize(price: number): number {
   return 1000;
 }
 
-/** 가격제한폭 ±30%. 실제 시장 규칙을 모의 시세에도 적용한다. */
-export const DAILY_LIMIT = 0.3;
+/** Match server tick rounding and each virtual stock's daily price limits. */
+export function dailyPriceBand(code: string, reference: number): { limitUp: number; limitDown: number } {
+  const profile = stockMarketProfile(code);
+  const tick = tickSize(reference);
+  const down = Math.max(tick, Math.floor(reference * profile.dailyDownRate / tick) * tick);
+  const up = Math.max(tick, Math.floor(reference * profile.dailyUpRate / tick) * tick);
+  const low = Math.max(100, reference - down);
+  const high = reference + up;
+  return {
+    limitDown: Math.ceil(low / tickSize(low)) * tickSize(low),
+    limitUp: Math.floor(high / tickSize(high)) * tickSize(high),
+  };
+}
 
 export function roundToTick(price: number): number {
   const size = tickSize(price);

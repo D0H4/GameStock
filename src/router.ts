@@ -4,11 +4,12 @@ export type Route =
   | { name: "home" }
   | { name: "market"; ticker: string | null }
   | { name: "trade"; ticker: string | null }
-  | { name: "news" }
+  | { name: "news"; id: number | null }
   | { name: "ranking" }
   | { name: "mypage" }
   | { name: "settings" }
   | { name: "charge" }
+  | { name: "titles" }
   | { name: "login"; method: LoginMethod };
 
 export type LoginMethod = "choose" | "google" | "email" | "register" | "reset";
@@ -23,11 +24,15 @@ function parse(pathname: string): Route {
   }
   if (parts[0] === "market") return { name: "market", ticker: parts[1] ? parts[1].toUpperCase() : null };
   if (parts[0] === "trade") return { name: "trade", ticker: parts[1] ? parts[1].toUpperCase() : null };
-  if (parts[0] === "news") return { name: "news" };
+  if (parts[0] === "news") {
+    const id = Number(parts[1]);
+    return { name: "news", id: parts[1] && Number.isFinite(id) ? id : null };
+  }
   if (parts[0] === "ranking") return { name: "ranking" };
   if (parts[0] === "mypage") return { name: "mypage" };
   if (parts[0] === "settings") return { name: "settings" };
   if (parts[0] === "charge") return { name: "charge" };
+  if (parts[0] === "titles") return { name: "titles" };
   return { name: "home" };
 }
 
@@ -70,4 +75,5 @@ export function navigate(to: string, options: { replace?: boolean } = {}): void 
 }
 
 export const MARKET_PATH = (ticker: string | null): string => (ticker ? `/market/${ticker}` : "/market");
+export const NEWS_PATH = (id: number | null): string => (id === null ? "/news" : `/news/${id}`);
 export const TRADE_PATH = (ticker: string | null): string => (ticker ? `/trade/${ticker}` : "/trade");

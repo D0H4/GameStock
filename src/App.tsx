@@ -12,14 +12,17 @@ import { NewsPage } from "./pages/NewsPage";
 import { RankingPage } from "./pages/RankingPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ChargePage } from "./pages/ChargePage";
+import { TitlesPage } from "./pages/TitlesPage";
 import { MissionRewardToast } from "./components/MissionRewardToast";
+import { TitleWatcher } from "./components/TitleWatcher";
 import { CircuitBreakerNotice } from "./components/CircuitBreakerNotice";
+import { SiteNoticeDialog } from "./components/SiteNoticeDialog";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
 import type { Route } from "./router";
 
-const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "charge"]);
+const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge"]);
 
 function titleFor(route: Route): string {
   if (route.name === "market") {
@@ -34,6 +37,7 @@ function titleFor(route: Route): string {
   if (route.name === "ranking") return "투자 랭킹 · 슈엔증권";
   if (route.name === "mypage") return "내 계좌 · 슈엔증권";
   if (route.name === "settings") return "설정 · 슈엔증권";
+  if (route.name === "titles") return "칭호 설정 · 슈엔증권";
   if (route.name === "charge") return "충전하기 · 슈엔증권";
   if (route.name === "login") return "로그인 · 슈엔증권";
   return "슈엔증권";
@@ -52,7 +56,10 @@ export default function App() {
   useEffect(() => {
     document.title = titleFor(route);
     if (previous.current === route) return;
+    const withinNews = previous.current.name === "news" && route.name === "news";
     previous.current = route;
+    /* 속보 목록에서 기사를 고를 때는 목록 스크롤과 포커스를 그대로 둔다. */
+    if (withinNews) return;
     window.requestAnimationFrame(() => {
       if (document.documentElement.dataset.appShell !== "mobile") {
         main.current?.focus({ preventScroll: true });
@@ -72,17 +79,20 @@ export default function App() {
         {route.name === "home" && <HomePage />}
         {route.name === "market" && <MarketPage ticker={route.ticker} />}
         {route.name === "trade" && <TradePage ticker={route.ticker} />}
-        {route.name === "news" && <NewsPage />}
+        {route.name === "news" && <NewsPage id={route.id} />}
         {route.name === "ranking" && <RankingPage />}
         {PRIVATE_ROUTES.has(route.name) && !auth.user && <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>}
         {route.name === "mypage" && auth.user && <MyPage />}
         {route.name === "settings" && auth.user && <SettingsPage />}
+        {route.name === "titles" && auth.user && <TitlesPage />}
         {route.name === "charge" && auth.user && <ChargePage />}
         {route.name === "login" && <LoginPage method={route.method} />}
       </main>
       <StatusBar />
       <MissionRewardToast />
+      <TitleWatcher />
       <LoginModal />
+      <SiteNoticeDialog />
       <CircuitBreakerNotice />
     </div>
   );

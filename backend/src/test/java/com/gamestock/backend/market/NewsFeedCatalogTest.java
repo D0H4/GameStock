@@ -19,7 +19,7 @@ class NewsFeedCatalogTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         doAnswer(invocation -> {
             RowMapper<?> mapper = invocation.getArgument(1);
-            List<String> codes = List.of("BA", "AK", "LT");
+            List<String> codes = List.of("BA", "AK", "VR");
             List<String> names = List.of("블루 아카이브", "명일방주: 엔드필드", "발로란트");
             for (int index = 0; index < codes.size(); index++) {
                 ResultSet rs = mock(ResultSet.class);
