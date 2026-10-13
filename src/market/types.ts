@@ -108,6 +108,10 @@ export interface NewsItem {
   title: string;
   /** 공식 업데이트 노트의 원문. 화면에서 생략 없이 펼쳐 보인다. */
   description?: string;
+  /** 서버가 원문 기사에서 미리 뽑아 둔 첫 문단. 있으면 본문 패널이 따로 묻지 않는다. */
+  excerpt?: string[];
+  /** Google News 링크를 푼 언론사 원문 주소. */
+  articleUrl?: string;
   /** 발행 시점의 시세. 이후 가격 변화로 시세 반영률을 계산한다. */
   priceAtPublish: number;
   /** 서버가 계산한 발행 시점 대비 현재가 변화율. 비율(0.0012 = 0.12%)로 저장한다. */

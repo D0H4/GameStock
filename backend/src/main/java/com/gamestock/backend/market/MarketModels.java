@@ -69,10 +69,11 @@ public final class MarketModels {
     public record MarketEvent(String stockCode, String title, int impact, String sentiment,
                               String source, String description, String publishedAt, long priceAtPublish,
                               double priceChangePercent,
-                              String priceDirection, String priceReason) {
+                              String priceDirection, String priceReason,
+                              List<String> excerpt, String articleUrl) {
         /** Backward-compatible constructor for older callers. */
         public MarketEvent(String stockCode, String title, int impact, String sentiment) {
-            this(stockCode, title, impact, sentiment, "미디어 보도", "", null, 0, 0, "flat", "가격 변동 정보가 없습니다.");
+            this(stockCode, title, impact, sentiment, "미디어 보도", "", null, 0, 0, "flat", "가격 변동 정보가 없습니다.", List.of(), null);
         }
     }
     public record MarketSnapshot(List<Stock> stocks, Portfolio portfolio, List<MarketEvent> events) { }

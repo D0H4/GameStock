@@ -46,13 +46,13 @@ function readDescription(raw: string | undefined, title: string): { paragraphs: 
 type Excerpt = { paragraphs: string[]; url: string | null };
 const excerptCache = new Map<string, Excerpt>();
 
-/** 서버가 원문 기사에서 뽑은 첫 두 문단. Google News 링크가 있는 소식만 묻는다. */
-function useExcerpt(link: string | null): { excerpt: Excerpt | null; loading: boolean } {
+/** 서버가 원문 기사에서 뽑은 첫 두 문단. 목록에 미리 실려 왔으면 그대로 쓰고, 아니면 Google News 링크가 있는 소식만 묻는다. */
+function useExcerpt(link: string | null, preloaded: Excerpt | null): { excerpt: Excerpt | null; loading: boolean } {
   const [state, setState] = useState<{ link: string | null; excerpt: Excerpt | null }>(() => ({
     link,
     excerpt: link ? excerptCache.get(link) ?? null : null,
   }));
-  const remote = link !== null && link.startsWith("https://news.google.com/");
+  const remote = preloaded === null && link !== null && link.startsWith("https://news.google.com/");
 
   useEffect(() => {
     if (!remote || !link) return;
@@ -75,6 +75,7 @@ function useExcerpt(link: string | null): { excerpt: Excerpt | null; loading: bo
     return () => controller.abort();
   }, [link, remote]);
 
+  if (preloaded) return { excerpt: preloaded, loading: false };
   const current = state.link === link ? state.excerpt : null;
   return { excerpt: current, loading: remote && current === null };
 }
@@ -97,7 +98,11 @@ export function NewsDetail({ item }: Props) {
   const name = LISTING_BY_CODE[item.code]?.name ?? item.code;
   const watched = snapshot.watch.includes(item.code);
   const stored = useMemo(() => readDescription(item.description, item.title), [item.description, item.title]);
-  const { excerpt, loading } = useExcerpt(stored.link);
+  const preloaded = useMemo<Excerpt | null>(
+    () => (item.articleUrl ? { paragraphs: (item.excerpt ?? []).slice(0, EXCERPT_PARAGRAPHS), url: item.articleUrl } : null),
+    [item.articleUrl, item.excerpt],
+  );
+  const { excerpt, loading } = useExcerpt(stored.link, preloaded);
   const paragraphs = excerpt?.paragraphs.length ? excerpt.paragraphs : loading ? [] : stored.paragraphs;
   const original = excerpt?.url ?? stored.link;
 

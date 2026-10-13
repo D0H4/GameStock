@@ -59,6 +59,8 @@ type BackendEvent = {
   priceAtPublish?: number;
   priceChangePercent?: number;
   priceDirection?: string;
+  excerpt?: string[];
+  articleUrl?: string | null;
 };
 type BackendPosition = { stockCode: string; quantity: number; averagePrice: number };
 type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number };
@@ -161,6 +163,8 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
       source: event.source === "업데이트 노트" ? "업데이트 노트" as const : "미디어 보도" as const,
       title: event.title,
       description: event.description,
+      excerpt: event.excerpt?.length ? event.excerpt : undefined,
+      articleUrl: event.articleUrl ?? undefined,
       priceAtPublish: Number(event.priceAtPublish ?? quotes[event.stockCode]?.price ?? 0),
       priceChangeRatio: Number.isFinite(Number(event.priceChangePercent))
         ? Number(event.priceChangePercent) / 100

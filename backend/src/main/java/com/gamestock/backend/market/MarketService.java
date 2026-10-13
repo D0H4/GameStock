@@ -157,7 +157,7 @@ public class MarketService {
     boolean botWorkDue(String worker){return !adaptiveActivity||activityPolicy.workDue(worker,clock.millis(),activeSimulation());}
     boolean claimLegacyBotWork(String worker){return !adaptiveActivity||activityPolicy.claim(worker,clock.millis(),activeSimulation())>=0;}
     private void prepareVisitor() {
-        if(simulationInitialized&&adaptiveActivity&&activityPolicy.maintenanceDue(clock.millis(),true))maintainScheduledMarket();
+        if(simulationInitialized&&adaptiveActivity&&activityPolicy.visitorMustWait(clock.millis(),true))maintainScheduledMarket();
     }
     /** Idle heartbeats do not acquire a JDBC connection. Only due work opens a transaction. */
     public void maintainScheduledMarket() {
@@ -447,7 +447,7 @@ public class MarketService {
 
     public List<MarketEvent> marketEvents() {
         List<MarketEvent> relevant = jdbc.query("""
-                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at,
+                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at, e.excerpt,
                        s.current_price, s.previous_price,
                        COALESCE(e.price_at_publish, (
                            SELECT h.price FROM stock_price_history h
@@ -515,7 +515,7 @@ public class MarketService {
 
     public List<MarketEvent> stockNews(String code) {
         List<MarketEvent> candidates = jdbc.query("""
-                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at,
+                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at, e.excerpt,
                        s.current_price, s.previous_price,
                        COALESCE(e.price_at_publish, (
                            SELECT h.price FROM stock_price_history h
@@ -560,9 +560,10 @@ public class MarketService {
         String reason = priceReason(priceChangePercent, impact);
         var publishedAt = rs.getTimestamp("published_at");
         String published = publishedAt == null ? null : databaseInstant(publishedAt).toString();
+        NewsExcerptService.Excerpt excerpt = NewsExcerptService.readStored(rs.getString("excerpt"));
         return new MarketEvent(rs.getString("stock_code"), rs.getString("title"), impact,
                 sentiment, rs.getString("source"), rs.getString("description"), published, priceAtPublish, priceChangePercent,
-                priceDirection, reason);
+                priceDirection, reason, excerpt == null ? List.of() : excerpt.paragraphs(), excerpt == null ? null : excerpt.url());
     }
 
     private String priceReason(double priceChangePercent, int impact) {

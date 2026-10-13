@@ -195,6 +195,9 @@ final class MarketSchema {
         Integer priceAtPublishCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'price_at_publish'", Integer.class);
         if (priceAtPublishCount != null && priceAtPublishCount == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN price_at_publish BIGINT NULL AFTER published_at");
         jdbc.update("UPDATE market_events SET published_at = created_at WHERE published_at IS NULL");
+        // 속보 본문 미리보기. NewsExcerptService가 수집된 소식의 원문 첫 문단을 미리 뽑아 두고 목록과 함께 내려 준다.
+        Integer excerptCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'excerpt'", Integer.class);
+        if (excerptCount != null && excerptCount == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN excerpt TEXT NULL, ADD COLUMN excerpt_checked_at TIMESTAMP NULL");
         // Existing events predate the persisted baseline. Reuse the closest
         // historical quote when available and fall back to the current quote
         // only for rows without enough history. Newly collected events receive
