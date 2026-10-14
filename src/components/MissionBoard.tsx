@@ -16,13 +16,13 @@ type MissionId = (typeof MISSION_IDS)[number];
 type MissionProgress = { userId: string; status: DailyMissionStatus; expiresAt: number };
 
 const labels: Record<MissionId, { title: string; description: string; action: string; href: string }> = {
-  market: { title: "시장 둘러보기", description: "시세표에서 오늘 움직이는 종목을 찾아봐.", action: "시장 보기", href: "/market" },
-  news: { title: "뉴스 읽기", description: "가격이 왜 움직였는지 뉴스에서 확인해봐.", action: "뉴스 보기", href: "/news" },
-  watch: { title: "관심종목 등록", description: "마음에 드는 종목 하나를 관심 목록에 담아봐. 담으면 보상이 자동 지급돼.", action: "종목 고르기", href: "/market" },
-  ranking: { title: "투자 랭킹 확인", description: "다른 투자자와 내 자산 순위를 확인해봐.", action: "랭킹 보기", href: "/ranking" },
-  portfolio: { title: "내 계좌 확인", description: "보유 종목과 평가손익을 한눈에 확인해봐.", action: "내 계좌 보기", href: "/mypage" },
-  home: { title: "오늘의 시세 요약", description: "홈에서 인기 종목과 오늘의 소식을 확인해봐.", action: "홈 보기", href: "/" },
-  settings: { title: "내 투자 환경 확인", description: "프로필과 투자 환경을 확인해봐.", action: "설정 보기", href: "/settings" },
+  market: { title: "시장 둘러보기", description: "시세표에서 오늘 움직이는 종목을 찾아보세요.", action: "시장 보기", href: "/market" },
+  news: { title: "뉴스 읽기", description: "가격이 왜 움직였는지 뉴스에서 확인해보세요.", action: "뉴스 보기", href: "/news" },
+  watch: { title: "관심종목 등록", description: "마음에 드는 종목 하나를 관심 목록에 담아보세요. 담으면 보상이 자동으로 지급됩니다.", action: "종목 고르기", href: "/market" },
+  ranking: { title: "투자 랭킹 확인", description: "다른 투자자와 내 자산 순위를 확인해보세요.", action: "랭킹 보기", href: "/ranking" },
+  portfolio: { title: "내 계좌 확인", description: "보유 종목과 평가손익을 한눈에 확인해보세요.", action: "내 계좌 보기", href: "/mypage" },
+  home: { title: "오늘의 시세 요약", description: "홈에서 인기 종목과 오늘의 소식을 확인해보세요.", action: "홈 보기", href: "/" },
+  settings: { title: "내 투자 환경 확인", description: "프로필과 투자 환경을 확인해보세요.", action: "설정 보기", href: "/settings" },
 };
 
 const missionIdSet = new Set<string>(MISSION_IDS);

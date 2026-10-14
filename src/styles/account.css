@@ -2,7 +2,6 @@
 @layer component {
   .account-settings { display: grid; gap: var(--space-6); min-width: 0; }
   .account-settings .panel { min-width: 0; }
-  .account-profile-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-7); }
   .account-form, .account-field { display: grid; align-content: start; gap: 6px; min-width: 0; }
   .account-form label, .account-label { font-size: var(--step-0); color: var(--ink-muted); }
   .account-input-row { display: flex; align-items: stretch; gap: var(--space-2); min-width: 0; }
@@ -21,8 +20,6 @@
   .account-button.is-danger { color: var(--up-deep); }
   .account-button:disabled { background: var(--sunken); color: var(--ink-muted); opacity: .65; }
   .account-hint { font-size: var(--step-0); color: var(--ink-muted); }
-  .account-identity { display: grid; align-content: start; justify-items: start; gap: 6px; min-width: 0; }
-  .account-identity p { font-size: var(--step-2); overflow-wrap: anywhere; word-break: break-all; }
   .account-avatar-picker { display: grid; gap: var(--space-3); min-width: 0; margin: 0; padding: 0; border: 0; }
   .account-avatar-picker legend { padding: 0; font-size: var(--step-1); font-weight: 700; }
   .account-avatar-current { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-muted); font-size: var(--step--1); }
@@ -73,7 +70,7 @@
 }
 @layer responsive {
   @media (max-width: 720px) {
-    .account-profile-grid, .account-alert-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+    .account-alert-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
     .account-avatar-grid { grid-template-columns: repeat(4, minmax(70px, 1fr)); }
     .account-avatar-footer { align-items: flex-start; flex-direction: column; }
     .account-alert-form { grid-template-columns: minmax(0, 1fr); }

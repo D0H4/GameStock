@@ -237,12 +237,6 @@
     white-space: nowrap;
   }
 
-  .profile-panel-sub {
-    margin-top: 2px;
-    font-size: var(--step-0);
-    color: var(--ink-muted);
-  }
-
   .profile-panel-close {
     display: grid;
     flex: 0 0 auto;

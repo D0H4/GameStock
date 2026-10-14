@@ -126,7 +126,6 @@ export function ProfileMenu({ route }: { route: Route }) {
               <img className="profile-panel-avatar" src={avatar} alt="" onError={fallbackAvatar} />
               <div className="profile-panel-who">
                 <p className="profile-panel-name">{nickname}</p>
-                <p className="profile-panel-sub">모의 투자 계정</p>
               </div>
               <button type="button" className="profile-panel-close" aria-label="메뉴 닫기" onClick={close}>
                 <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
