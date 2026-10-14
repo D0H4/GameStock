@@ -40,14 +40,23 @@
   /* 닉네임 머리글은 프로필 사진이 아니라 닉네임 글자의 시작점(사진 폭 + 간격)에 맞춘다. */
   .integration-ranking th.ranking-col-name { text-indent: calc(var(--ranking-avatar) + var(--space-3)); }
   .integration-ranking .ranking-rank-content { display: inline-grid; place-items: center; min-width: 28px; }
+  .integration-ranking { --ranking-avatar: 42px; }
+  .integration-ranking .ranking-asset-change { display: none; }
   @media (max-width: 640px) {
-    .integration-ranking { --ranking-avatar: 32px; }
-    .integration-ranking col.ranking-col-rank { width: 48px; }
-    .integration-ranking col.ranking-col-change { width: 64px; }
-    .integration-ranking col.ranking-col-asset { width: 96px; }
-    .integration-ranking .ranking-nickname { font-size: var(--step-1); }
+    .integration-ranking { --ranking-avatar: 28px; }
+    .integration-ranking col.ranking-col-rank { width: 40px; }
+    /* 수익률은 총 자산 아래로 옮겨 10글자 닉네임이 한 줄에 다 들어갈 폭을 확보한다. */
+    .integration-ranking col.ranking-col-change, .integration-ranking .ranking-col-change, .integration-ranking .ranking-page-change { display: none; }
+    .integration-ranking col.ranking-col-asset { width: 108px; }
+    .integration-ranking .ranking-asset-change { display: block; font-size: var(--step--1); }
+    .integration-ranking .ranking-nickname { font-size: var(--step-0); }
     .integration-ranking .ranking-name-cell { gap: var(--space-2); }
     .integration-ranking th.ranking-col-name { text-indent: calc(var(--ranking-avatar) + var(--space-2)); }
+  }
+  /* 320px대 아주 좁은 화면에서는 프로필 사진을 빼서 닉네임 10글자가 잘리지 않게 한다. */
+  @media (max-width: 340px) {
+    .integration-ranking .ranking-avatar { display: none; }
+    .integration-ranking th.ranking-col-name { text-indent: 0; }
   }
   /* 좁은 화면(앱)에서도 "+0.00%", "1,100,000원"이 두 줄로 끊기지 않게 한다. 남는 폭은 닉네임 칸이 줄인다. */
   .integration-ranking .ranking-page-change, .integration-ranking .ranking-page-asset { white-space: nowrap; }
@@ -65,7 +74,6 @@
   .ranking-nickname { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--step-2); }
   .integration-ranking .ranking-page-rank { font-size: var(--step-2); }
   .integration-ranking .ranking-medal { font-size: var(--step-4); line-height: 1; }
-  .integration-ranking { --ranking-avatar: 42px; }
   .ranking-avatar { width: var(--ranking-avatar); height: var(--ranking-avatar); flex: 0 0 var(--ranking-avatar); object-fit: cover; border: 1px solid var(--rule); border-radius: 50%; background: var(--sunken); }
   .integration-trading .chart-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
   .integration-trading .chart-range, .integration-trading .chart-modes { display: flex; flex-wrap: wrap; gap: 8px; }

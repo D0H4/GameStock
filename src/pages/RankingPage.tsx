@@ -30,6 +30,9 @@ const medalByRank: Record<number, { emoji: string; label: string }> = {
   3: { emoji: "🥉", label: "동메달 3위" },
 };
 
+const changeTone = (percent: number) => (percent > 0 ? "is-up" : percent < 0 ? "is-down" : "is-flat");
+const formatChange = (percent: number) => `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`;
+
 export function RankingPage() {
   const [ranking, setRanking] = useState<RankingEntry[]>(readRankingCache);
   // 지난번 랭킹이 남아 있으면 그것부터 보여 주고 뒤에서 갱신한다. 로딩 문구는 처음 방문할 때만 보인다.
@@ -140,10 +143,12 @@ export function RankingPage() {
                         </span>
                       </span>
                     </td>
-                    <td className={`ranking-page-change num${entry.changePercent > 0 ? " is-up" : entry.changePercent < 0 ? " is-down" : " is-flat"}`}>
-                      {entry.changePercent >= 0 ? "+" : ""}{entry.changePercent.toFixed(2)}%
+                    <td className={`ranking-page-change num ${changeTone(entry.changePercent)}`}>{formatChange(entry.changePercent)}</td>
+                    <td className="ranking-page-asset num">
+                      <span className="ranking-asset-value">{Math.round(entry.totalAsset).toLocaleString("ko-KR")}원</span>
+                      {/* 좁은 화면에서는 수익률 칸을 숨기고 총 자산 아래에 붙여 닉네임 칸을 넓힌다. */}
+                      <span className={`ranking-asset-change ${changeTone(entry.changePercent)}`}>{formatChange(entry.changePercent)}</span>
                     </td>
-                    <td className="ranking-page-asset num">{Math.round(entry.totalAsset).toLocaleString("ko-KR")}원</td>
                   </tr>
                 ))}
               </tbody>
