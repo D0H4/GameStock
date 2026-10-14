@@ -56,6 +56,16 @@ class AuthServiceTest {
         verify(jdbc).update(contains("nickname_changed_at = ?"), eq("새닉네임"), eq(""), eq(Timestamp.from(NOW)), eq(7L));
     }
 
+    @Test void newNicknameMustBeTwoToTenCharacters() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        AuthService auth = service(jdbc, null);
+        assertThrows(IllegalArgumentException.class, () -> auth.updateProfile(7L, new AuthService.ProfileUpdate("가", "")));
+        assertThrows(IllegalArgumentException.class, () -> auth.updateProfile(7L, new AuthService.ProfileUpdate("열한글자닉네임입니다요", "")));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+        auth.updateProfile(7L, new AuthService.ProfileUpdate("열글자닉네임입니다", ""));
+        verify(jdbc).update(contains("nickname_changed_at = ?"), eq("열글자닉네임입니다"), eq(""), eq(Timestamp.from(NOW)), eq(7L));
+    }
+
     @Test void unchangedNicknameDoesNotRestartCooldown() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         AuthService auth = service(jdbc, NOW.minusSeconds(30));

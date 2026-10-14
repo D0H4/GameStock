@@ -116,13 +116,18 @@ public class AuthService {
                 }, userId);
     }
 
+    static final int NICKNAME_MIN_LENGTH = 2;
+    static final int NICKNAME_MAX_LENGTH = 10;
+
     @Transactional
     public Profile updateProfile(long userId, ProfileUpdate update) {
         String nickname = update.nickname() == null ? "" : update.nickname().trim();
-        if (nickname.length() < 2 || nickname.length() > 50)
-            throw new IllegalArgumentException("닉네임은 2~50자로 입력해 주세요.");
         // Serialize concurrent profile changes on the user's row.
         Profile current = readProfile(userId, true);
+        boolean changed = !nickname.equals(current.nickname());
+        // Nicknames saved before the 10-character limit stay valid until the user changes them.
+        if (changed && (nickname.length() < NICKNAME_MIN_LENGTH || nickname.length() > NICKNAME_MAX_LENGTH))
+            throw new IllegalArgumentException("닉네임은 2~10자로 입력해 주세요.");
         // Nickname-only updates from older clients must not erase an existing
         // selected avatar or the Firebase provider photo. A legacy external URL
         // stored before validation existed is dropped instead of blocking the update.
@@ -132,7 +137,6 @@ public class AuthService {
         if (image.length() > 500) throw new IllegalArgumentException("프로필 이미지 주소가 너무 깁니다.");
         if (!ProfileImages.allowed(image))
             throw new IllegalArgumentException("제공된 캐릭터 이미지나 Google 프로필 사진만 사용할 수 있습니다.");
-        boolean changed = !nickname.equals(current.nickname());
         if (changed && !current.nicknameChangeAvailable())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "닉네임은 3일에 한 번 변경할 수 있습니다.");
         try {
