@@ -213,13 +213,17 @@ public class AuthService {
     }
 
     /**
-     * 관리자 현금은 사실상 무제한이다. 인증된 요청마다 바닥난 만큼 다시 채우므로
-     * 주문 직전에는 항상 가득 차 있다. 체결 엔진은 커밋 시점에 현금 변동을 다시
-     * 읽으므로 출석 보상처럼 바깥에서 늘리는 갱신과 충돌하지 않는다.
+     * 관리자 현금은 사실상 무제한이다. 인증된 요청마다 현금과 미체결 주문에 묶인
+     * 예약금의 합을 1000조로 맞춘다. 현금만 채우면 예약금이 묶인 채로 다시 채운 뒤
+     * 주문을 취소할 때 환불액만큼 상한을 넘어 계속 불어나기 때문이다. 이미 맞으면
+     * 쓰지 않는다. 체결 엔진은 커밋 시점에 현금을 다시 읽어 바뀐 현금이면 다시 계산한다.
      * 화면의 숫자 정밀도(2^53)를 넘지 않도록 1000조로 둔다.
      */
     void refillAdminCash(long userId) {
-        jdbc.update("UPDATE users SET cash = ? WHERE id = ? AND cash < ?", ADMIN_CASH, userId, ADMIN_CASH);
+        Long reserved = jdbc.queryForObject("SELECT COALESCE(SUM(reserved_cash), 0) FROM orders WHERE user_id = ? AND status = 'OPEN'",
+                Long.class, userId);
+        long target = Math.max(0, ADMIN_CASH - (reserved == null ? 0 : reserved));
+        jdbc.update("UPDATE users SET cash = ? WHERE id = ? AND cash <> ?", target, userId, target);
     }
 
     static final long ADMIN_CASH = 1_000_000_000_000_000L;

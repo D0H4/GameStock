@@ -155,20 +155,35 @@ public class LoanService {
                     SELECT id, loan_balance, DATEDIFF(?, loan_interest_on) FROM users
                     WHERE loan_balance > 0 AND loan_interest_on IS NOT NULL AND loan_interest_on < ?
                     """, (rs, row) -> new long[]{rs.getLong(1), rs.getLong(2), rs.getLong(3)}, Date.valueOf(today), Date.valueOf(today));
-            for (long[] row : due) {
-                long balance = row[1];
-                long interest = interestFor(balance, row[2]);
-                transaction.executeWithoutResult(state -> {
-                    int updated = jdbc.update("""
-                            UPDATE users SET loan_balance = loan_balance + ?, loan_interest_on = ?
-                            WHERE id = ? AND loan_balance = ? AND loan_interest_on < ?
-                            """, interest, Date.valueOf(today), row[0], balance, Date.valueOf(today));
-                    if (updated > 0 && interest > 0) record(row[0], "INTEREST", interest, balance + interest);
-                });
-            }
+            for (long[] row : due)
+                transaction.executeWithoutResult(state -> applyInterest(row[0], row[1], row[2], today));
         } catch (RuntimeException error) {
             log.warn("대출 이자 정산에 실패했습니다. 다음 주기에 다시 시도합니다.", error);
         }
+    }
+
+    /** 날짜 조건으로 이미 붙은 이자를 다시 붙이지 않는다. 잔액이 그사이 바뀌었으면 건너뛴다. */
+    private void applyInterest(long userId, long balance, long days, LocalDate today) {
+        long interest = interestFor(balance, days);
+        int updated = jdbc.update("""
+                UPDATE users SET loan_balance = loan_balance + ?, loan_interest_on = ?
+                WHERE id = ? AND loan_balance = ? AND loan_interest_on < ?
+                """, interest, Date.valueOf(today), userId, balance, Date.valueOf(today));
+        if (updated > 0 && interest > 0) record(userId, "INTEREST", interest, balance + interest);
+    }
+
+    /**
+     * 잔액을 바꾸기 전에 밀린 이자를 먼저 붙인다. 자정 뒤 스케줄러보다 먼저 빌리면
+     * 새 대출금에 지난날 이자가 붙고, 먼저 다 갚으면 밀린 이자가 사라지기 때문이다.
+     * 사용자 행을 잠근 트랜잭션 안에서만 부른다.
+     */
+    private void accrueDueInterest(long userId) {
+        LocalDate today = today();
+        jdbc.query("""
+                SELECT loan_balance, DATEDIFF(?, loan_interest_on) FROM users
+                WHERE id = ? AND loan_balance > 0 AND loan_interest_on IS NOT NULL AND loan_interest_on < ?
+                """, (rs, row) -> new long[]{rs.getLong(1), rs.getLong(2)}, Date.valueOf(today), userId, Date.valueOf(today))
+                .forEach(row -> applyInterest(userId, row[0], row[1], today));
     }
 
     static long interestFor(long balance, long days) {
@@ -262,7 +277,10 @@ public class LoanService {
     }
 
     private Account account(long userId, boolean lock) {
-        if (lock) jdbc.queryForObject("SELECT id FROM users WHERE id = ? FOR UPDATE", Long.class, userId);
+        if (lock) {
+            jdbc.queryForObject("SELECT id FROM users WHERE id = ? FOR UPDATE", Long.class, userId);
+            accrueDueInterest(userId);
+        }
         return jdbc.query("SELECT u.cash, u.loan_balance, (" + GROSS_ASSET + ") AS gross, (" + HUMAN_FILTER + ") AS human FROM users u WHERE u.id = ?",
                         (rs, row) -> new Account(rs.getLong("cash"), rs.getLong("loan_balance"), rs.getLong("gross"), rs.getBoolean("human")), userId)
                 .stream().findFirst().orElseThrow(() -> new IllegalArgumentException("계정을 찾을 수 없습니다."));

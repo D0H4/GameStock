@@ -1,5 +1,6 @@
 package com.gamestock.backend.auth;
 
+import com.gamestock.backend.market.MarketBookCache;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ public class AccountResetService {
         jdbc.update("DELETE FROM stock_comments WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_tags WHERE created_by = ?", userId);
         jdbc.update("DELETE FROM user_watchlists WHERE user_id = ?", userId);
+        // 리셋 닉네임을 바로 바꿀 수 있도록 이전 닉네임 변경 제한도 지운다.
         jdbc.update("""
                 UPDATE users
                 SET cash = ?,
@@ -53,6 +55,7 @@ public class AccountResetService {
                     nickname = LEFT(CONCAT('reset_', id, '_', UNIX_TIMESTAMP()), 50),
                     profile_image_url = '',
                     profile_completed = FALSE,
+                    nickname_changed_at = NULL,
                     account_reset_at = CURRENT_TIMESTAMP,
                     reset_used_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND reset_used_at IS NULL
@@ -64,6 +67,9 @@ public class AccountResetService {
 
     private void lockMarket() {
         jdbc.queryForObject("SELECT id FROM market_locks WHERE id = 1 FOR UPDATE", Integer.class);
+        // The bot matching cache still holds this user's open orders and holdings.
+        // Bumping the revisions in this transaction makes the next batch reload them.
+        MarketBookCache.invalidate(jdbc, null);
     }
 
     private void cancelOpenOrders(long userId) {

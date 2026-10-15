@@ -133,6 +133,29 @@ class LoanServiceIntegrationTest {
         assertEquals(175_000, cash(human));
     }
 
+    @Test
+    void borrowingBeforeTheSchedulerChargesOnlyTheOldBalanceForPastDays() {
+        loans.borrow(human, 100_000L);
+        // 자정이 지났지만 스케줄러가 아직 돌지 않은 상태
+        db.update("UPDATE users SET loan_interest_on = '2026-10-14' WHERE id = ?", human);
+        loans.borrow(human, 100_000L);
+        // 어제치 이자는 기존 10만에만 붙는다: 100
+        assertEquals(200_100, balance(human));
+        loans.accrueInterest();
+        assertEquals(200_100, balance(human), "스케줄러가 같은 날 이자를 다시 붙이지 않는다");
+    }
+
+    @Test
+    void fullRepaymentPaysInterestThatTheSchedulerHasNotAddedYet() {
+        loans.borrow(human, 100_000L);
+        db.update("UPDATE users SET loan_interest_on = '2026-10-14' WHERE id = ?", human);
+        loans.repay(human, 10_000_000L);
+        assertEquals(0, balance(human));
+        assertEquals(999_900, cash(human), "미정산 이자 100원도 함께 갚는다");
+        assertEquals(java.util.List.of("BORROW", "INTEREST", "REPAY"),
+                db.queryForList("SELECT kind FROM loan_ledger WHERE user_id = ? ORDER BY id", String.class, human));
+    }
+
     private long cash(long id) { return db.queryForObject("SELECT cash FROM users WHERE id = ?", Long.class, id); }
     private long balance(long id) { return db.queryForObject("SELECT loan_balance FROM users WHERE id = ?", Long.class, id); }
 }

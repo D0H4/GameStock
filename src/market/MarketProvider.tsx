@@ -329,7 +329,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         if (!cancelled && firebaseAuth.currentUser?.uid === refreshingUid) {
           const nextSnapshot = toSnapshot(stocks, events, portfolio, watchRef.current, market);
           nextSnapshot.portfolio.fills = fills;
-          if (privateRevision === privateRevisionRef.current) snapshotFillsRef.current = fills;
+          // 로그인 상태에서 계좌 조회만 실패하면 portfolio가 비어 초기 자산으로 바뀐다.
+          // 그 응답으로 마지막 정상 계좌를 덮어쓰지 않는다.
+          const portfolioLoaded = portfolio !== undefined || !firebaseAuth.currentUser;
+          if (portfolioLoaded && privateRevision === privateRevisionRef.current) snapshotFillsRef.current = fills;
           // The two-second quote refresh must not clear the one-second detail
           // data while the order book/trade requests are in flight. Keeping
           // the previous rows prevents a visible empty-frame flicker.
@@ -352,7 +355,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               } : { ...quote, series: nextSeries.slice(-60) }];
             }));
             hasServerSnapshotRef.current = true;
-            return { ...nextSnapshot, quotes, portfolio: privateRevision === privateRevisionRef.current ? nextSnapshot.portfolio : current.portfolio };
+            return { ...nextSnapshot, quotes, portfolio: portfolioLoaded && privateRevision === privateRevisionRef.current ? nextSnapshot.portfolio : current.portfolio };
           });
           setServerAvailable(true);
           stream.subscribe(activeDetailCodeRef.current ? [activeDetailCodeRef.current] : nextSnapshot.codes, activeDetailCodeRef.current);

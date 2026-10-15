@@ -199,10 +199,21 @@ class AuthServiceTest {
         assertDoesNotThrow(() -> auth.requireTradingAllowed(7L));
     }
 
-    @Test void adminCashIsRefilledOnlyWhenBelowCeiling() {
+    @Test void adminCashIsRefilledToTheCeilingWithoutOpenOrders() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(contains("SUM(reserved_cash)"), eq(Long.class), eq(7L))).thenReturn(0L);
         new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC)).refillAdminCash(7L);
-        verify(jdbc).update("UPDATE users SET cash = ? WHERE id = ? AND cash < ?", AuthService.ADMIN_CASH, 7L, AuthService.ADMIN_CASH);
+        verify(jdbc).update("UPDATE users SET cash = ? WHERE id = ? AND cash <> ?", AuthService.ADMIN_CASH, 7L, AuthService.ADMIN_CASH);
         assertTrue(AuthService.ADMIN_CASH < (1L << 53), "must stay exact as a JavaScript number");
+    }
+
+    @Test void adminCashCountsReservedCashSoCancellingCannotExceedTheCeiling() {
+        // 예약금 300조가 묶여 있으면 현금은 700조까지만 채운다. 취소해 환불받아도 합은 1000조다.
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        long reserved = 300_000_000_000_000L;
+        when(jdbc.queryForObject(contains("SUM(reserved_cash)"), eq(Long.class), eq(7L))).thenReturn(reserved);
+        new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC)).refillAdminCash(7L);
+        long target = AuthService.ADMIN_CASH - reserved;
+        verify(jdbc).update("UPDATE users SET cash = ? WHERE id = ? AND cash <> ?", target, 7L, target);
     }
 }

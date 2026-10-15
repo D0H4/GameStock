@@ -312,6 +312,7 @@ CREATE TABLE user_titles (
 CREATE TABLE weekly_return_weeks (
   week_start DATE NOT NULL PRIMARY KEY,
   snapshot_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  closing_at TIMESTAMP NULL,
   awarded_at TIMESTAMP NULL
 );
 
@@ -319,6 +320,7 @@ CREATE TABLE weekly_return_snapshots (
   week_start DATE NOT NULL,
   user_id BIGINT NOT NULL,
   baseline_asset BIGINT NOT NULL,
+  closing_asset BIGINT NULL,
   PRIMARY KEY (week_start, user_id),
   CONSTRAINT fk_weekly_snapshot_user FOREIGN KEY (user_id) REFERENCES users(id)
 );

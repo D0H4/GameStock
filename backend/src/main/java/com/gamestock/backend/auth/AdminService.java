@@ -69,7 +69,7 @@ public class AdminService {
 
     /**
      * 3일 변경 제한을 건너뛰고 닉네임을 바꾼다. 빈 값이면 신규 가입과 같은 자동
-     * 닉네임을 붙인다. 변경 시각은 그대로 두어 사용자가 곧바로 적절한 닉네임을 고를 수 있다.
+     * 닉네임을 붙인다. 변경 시각을 지워 사용자가 곧바로 적절한 닉네임을 고를 수 있다.
      */
     @Transactional
     public AdminUser forceNickname(long adminId, long userId, NicknameChange request) {
@@ -80,7 +80,7 @@ public class AdminService {
         AdminUser target = lockUser(userId);
         if (nickname.equals(target.nickname())) return target;
         try {
-            jdbc.update("UPDATE users SET nickname = ? WHERE id = ?", nickname, userId);
+            jdbc.update("UPDATE users SET nickname = ?, nickname_changed_at = NULL WHERE id = ?", nickname, userId);
         } catch (DuplicateKeyException error) {
             throw new IllegalArgumentException("이미 사용 중인 닉네임입니다.");
         }

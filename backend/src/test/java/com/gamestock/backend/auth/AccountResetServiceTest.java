@@ -44,6 +44,17 @@ class AccountResetServiceTest {
         verify(jdbc).update(contains("reset_used_at = CURRENT_TIMESTAMP"), eq(1_000_000L), eq(7L));
     }
 
+    @Test void resetInvalidatesTheMatchingCacheAndClearsTheNicknameCooldown() throws Exception {
+        JdbcTemplate jdbc = database(null);
+        new AccountResetService(jdbc).reset(7L);
+        var order = inOrder(jdbc);
+        order.verify(jdbc).queryForObject(contains("market_locks"), eq(Integer.class));
+        // 봇 매칭 캐시가 취소된 주문과 지운 보유 수량을 다시 쓰지 않도록 같은 트랜잭션에서 버전을 올린다.
+        order.verify(jdbc).update("UPDATE market_book_revisions SET revision=revision+1");
+        order.verify(jdbc).update(contains("DELETE FROM portfolios"), eq(7L));
+        verify(jdbc).update(contains("nickname_changed_at = NULL"), eq(1_000_000L), eq(7L));
+    }
+
     @Test void alreadyUsedResetDoesNotDeleteMissions() throws Exception {
         JdbcTemplate jdbc = database(Timestamp.from(Instant.parse("2026-10-01T03:00:00Z")));
         assertThrows(IllegalArgumentException.class, () -> new AccountResetService(jdbc).reset(7L));

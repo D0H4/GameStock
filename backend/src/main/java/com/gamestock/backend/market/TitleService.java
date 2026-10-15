@@ -11,6 +11,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -30,7 +31,8 @@ import java.util.Set;
  * a single INSERT IGNORE, so parallel checks award a title once. Weekly titles are
  * awarded by {@link #awardWeeklyTitles} at Korean Monday midnight: every week the
  * service stores each investor's starting asset, and the following Monday ranks the
- * week's return against it.
+ * week's return against it. During the week's last hour every tick refreshes each
+ * investor's closing asset, so a late Monday run still ranks the week as it closed.
  */
 @Service
 public class TitleService {
@@ -42,6 +44,8 @@ public class TitleService {
     /** Every ranking page polls the weekly ranking; one computation serves them all briefly. */
     private static final long WEEKLY_RANKING_CACHE_MILLIS = 10_000L;
     private static final int WEEKLY_RANKING_LIMIT = 100;
+    /** Closing assets are refreshed on every tick within this span before the week ends. */
+    private static final Duration CLOSING_WINDOW = Duration.ofHours(1);
     /** Real investors only, the same population as the public ranking. */
     private static final String INVESTOR_FILTER = """
             u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
@@ -147,16 +151,26 @@ public class TitleService {
                 CREATE TABLE IF NOT EXISTS weekly_return_weeks (
                   week_start DATE NOT NULL PRIMARY KEY,
                   snapshot_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  closing_at TIMESTAMP NULL,
                   awarded_at TIMESTAMP NULL
                 )
                 """);
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS weekly_return_snapshots (
                   week_start DATE NOT NULL, user_id BIGINT NOT NULL, baseline_asset BIGINT NOT NULL,
+                  closing_asset BIGINT NULL,
                   PRIMARY KEY (week_start, user_id),
                   CONSTRAINT fk_weekly_snapshot_user FOREIGN KEY (user_id) REFERENCES users(id)
                 )
                 """);
+        addColumnIfMissing("weekly_return_weeks", "closing_at", "TIMESTAMP NULL AFTER snapshot_at");
+        addColumnIfMissing("weekly_return_snapshots", "closing_asset", "BIGINT NULL AFTER baseline_asset");
+    }
+
+    private void addColumnIfMissing(String table, String column, String definition) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+                Integer.class, table, column);
+        if (count != null && count == 0) jdbc.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
     }
 
     /** Lists every title with the user's progress, without granting anything. */
@@ -393,6 +407,7 @@ public class TitleService {
     void awardWeeklyTitles() {
         LocalDate thisWeek = LocalDate.now(clock.withZone(TITLE_ZONE)).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate lastWeek = thisWeek.minusWeeks(1);
+        recordClosingAssets(thisWeek);
         transactions.executeWithoutResult(status -> {
             int claimed = jdbc.update("UPDATE weekly_return_weeks SET awarded_at = ? WHERE week_start = ? AND awarded_at IS NULL",
                     now(), java.sql.Date.valueOf(lastWeek));
@@ -402,14 +417,57 @@ public class TitleService {
             int created = jdbc.update("INSERT IGNORE INTO weekly_return_weeks (week_start, snapshot_at) VALUES (?, ?)",
                     java.sql.Date.valueOf(thisWeek), now());
             if (created == 0) return;
+            // The new week starts where last week closed, so the stretch between the
+            // closing snapshot and this run is not dropped from both weeks.
+            Closing previous = closing(lastWeek);
             for (InvestorAsset investor : investorAssets())
                 jdbc.update("INSERT IGNORE INTO weekly_return_snapshots (week_start, user_id, baseline_asset) VALUES (?, ?, ?)",
-                        java.sql.Date.valueOf(thisWeek), investor.userId, investor.adjustedAsset);
+                        java.sql.Date.valueOf(thisWeek), investor.userId,
+                        previous == null ? investor.adjustedAsset : previous.assets.getOrDefault(investor.userId, investor.adjustedAsset));
         });
     }
 
+    /**
+     * In the week's last hour, stores every investor's current asset as the week's
+     * closing asset. The Monday award ranks these, so trades and price moves after
+     * the last refresh before midnight do not count, however late the award runs.
+     */
+    private void recordClosingAssets(LocalDate weekStart) {
+        Instant now = clock.instant();
+        Instant end = weekStart.plusWeeks(1).atStartOfDay(TITLE_ZONE).toInstant();
+        if (now.isBefore(end.minus(CLOSING_WINDOW)) || !now.isBefore(end)) return;
+        List<InvestorAsset> investors = investorAssets();
+        transactions.executeWithoutResult(status -> {
+            if (jdbc.update("UPDATE weekly_return_weeks SET closing_at = ? WHERE week_start = ?", Timestamp.from(now), java.sql.Date.valueOf(weekStart)) == 0)
+                return;
+            // Accounts without a baseline row start from the initial cash, as weeklyReturns assumes.
+            jdbc.batchUpdate("""
+                    INSERT INTO weekly_return_snapshots (week_start, user_id, baseline_asset, closing_asset) VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE closing_asset = VALUES(closing_asset)
+                    """, investors.stream().map(investor -> new Object[]{java.sql.Date.valueOf(weekStart), investor.userId,
+                    STARTING_CASH, investor.adjustedAsset}).toList());
+        });
+    }
+
+    /** The week's last closing snapshot, or null when none was taken before it ended. */
+    private Closing closing(LocalDate weekStart) {
+        Timestamp at = jdbc.query("SELECT closing_at FROM weekly_return_weeks WHERE week_start = ?",
+                (rs, row) -> rs.getTimestamp(1), java.sql.Date.valueOf(weekStart)).stream()
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (at == null) return null;
+        Map<Long, Long> assets = new HashMap<>();
+        jdbc.query("SELECT user_id, closing_asset FROM weekly_return_snapshots WHERE week_start = ? AND closing_asset IS NOT NULL",
+                rs -> { assets.put(rs.getLong(1), rs.getLong(2)); }, java.sql.Date.valueOf(weekStart));
+        return new Closing(at.toInstant(), assets);
+    }
+
     private void awardWeek(LocalDate weekStart, LocalDate weekEnd) {
-        List<WeeklyReturn> returns = weeklyReturns(weekStart, weekEnd.atStartOfDay(TITLE_ZONE).toInstant());
+        Closing closing = closing(weekStart);
+        if (closing == null)
+            log.warn("{} 주간 마감 자산이 없어 지급 시점 자산으로 주간 칭호를 계산합니다.", weekStart);
+        List<WeeklyReturn> returns = closing == null
+                ? weeklyReturns(weekStart, weekEnd.atStartOfDay(TITLE_ZONE).toInstant(), null)
+                : weeklyReturns(weekStart, closing.at, closing.assets);
         for (int index = 0; index < Math.min(3, returns.size()); index++) {
             long userId = returns.get(index).userId;
             int rank = index + 1;
@@ -422,8 +480,10 @@ public class TitleService {
     /**
      * Returns from the week's baseline, best first. Only investors who traded between
      * the week start and {@code to} take part; the Monday award and the live ranking share this.
+     * With {@code closingAssets} the returns use those stored assets instead of the live ones,
+     * and investors without a closing asset did not exist when the week closed.
      */
-    private List<WeeklyReturn> weeklyReturns(LocalDate weekStart, Instant to) {
+    private List<WeeklyReturn> weeklyReturns(LocalDate weekStart, Instant to, Map<Long, Long> closingAssets) {
         Instant from = weekStart.atStartOfDay(TITLE_ZONE).toInstant();
         Map<Long, Long> baselines = new HashMap<>();
         jdbc.query("SELECT user_id, baseline_asset FROM weekly_return_snapshots WHERE week_start = ?",
@@ -438,11 +498,15 @@ public class TitleService {
         for (InvestorAsset investor : investorAssets()) {
             // Only investors who traded that week compete for the weekly titles.
             if (!traded.contains(investor.userId)) continue;
-            // Accounts created or reset during the week start from the initial cash.
-            boolean resetDuringWeek = investor.resetAt != null && !investor.resetAt.toInstant().isBefore(from);
+            Long asset = closingAssets == null ? Long.valueOf(investor.adjustedAsset) : closingAssets.get(investor.userId);
+            if (asset == null) continue;
+            // Accounts created or reset during the week start from the initial cash. A reset
+            // after the close leaves the stored closing asset as it was.
+            boolean resetDuringWeek = investor.resetAt != null && !investor.resetAt.toInstant().isBefore(from)
+                    && investor.resetAt.toInstant().isBefore(to);
             long baseline = resetDuringWeek ? STARTING_CASH : baselines.getOrDefault(investor.userId, STARTING_CASH);
             if (baseline <= 0) continue;
-            returns.add(new WeeklyReturn(investor.userId, (investor.adjustedAsset - baseline) * 100.0 / baseline));
+            returns.add(new WeeklyReturn(investor.userId, (asset - baseline) * 100.0 / baseline));
         }
         returns.sort(Comparator.<WeeklyReturn>comparingDouble(entry -> -entry.percent).thenComparingLong(entry -> entry.userId));
         return returns;
@@ -457,7 +521,7 @@ public class TitleService {
         LiveWeek current = liveWeek;
         long nowMillis = clock.millis();
         if (current == null || !current.weekStart.equals(weekStart) || nowMillis - current.loadedAt >= WEEKLY_RANKING_CACHE_MILLIS) {
-            current = new LiveWeek(weekStart, weeklyReturns(weekStart, clock.instant()), nowMillis);
+            current = new LiveWeek(weekStart, weeklyReturns(weekStart, clock.instant(), null), nowMillis);
             liveWeek = current;
         }
         List<WeeklyReturn> returns = current.returns;
@@ -535,6 +599,7 @@ public class TitleService {
 
     private record InvestorAsset(long userId, long adjustedAsset, Timestamp resetAt) { }
     private record WeeklyReturn(long userId, double percent) { }
+    private record Closing(Instant at, Map<Long, Long> assets) { }
     private record LiveWeek(LocalDate weekStart, List<WeeklyReturn> returns, long loadedAt) { }
 
     private record Population(Map<Long, Integer> positionFromBottom, int size, long loadedAt) {
