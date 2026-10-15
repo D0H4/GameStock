@@ -182,17 +182,16 @@
     opacity: 1;
   }
 
-  /* 화면 가장자리에서 띄운 플로팅 패널. 닫힐 때는 띄운 간격까지 더해 완전히 빠져나간다. */
+  /* 화면 가장자리에서 띄운 플로팅 패널. 높이는 내용만큼이고, 닫힐 때는 띄운 간격까지 더해 완전히 빠져나간다. */
   .profile-panel {
     --panel-gap: var(--space-3);
     position: absolute;
     top: max(var(--panel-gap), env(safe-area-inset-top));
     right: max(var(--panel-gap), env(safe-area-inset-right));
-    bottom: max(var(--panel-gap), env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
-    width: min(380px, calc(100vw - 2 * var(--panel-gap)));
-    padding-bottom: var(--space-4);
+    width: min(300px, calc(100vw - 2 * var(--panel-gap)));
+    max-height: calc(100% - 2 * var(--panel-gap));
     border: 1px solid var(--rule);
     border-radius: 16px;
     background: var(--paper);
@@ -209,20 +208,20 @@
     transform: none;
   }
 
-  /* 머리 · 메뉴 · 로그아웃 세 줄. 메뉴는 남은 높이를 항목 수로 나눠 패널을 위아래로 채운다. */
+  /* 머리 · 메뉴 · 로그아웃 세 줄. 구분선은 머리 아래와 로그아웃 위에만 둔다. */
   .profile-panel-head {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-5) var(--space-3) var(--space-5) var(--space-5);
+    padding: var(--space-4) var(--space-3) var(--space-4) var(--space-4);
     border-bottom: 1px solid var(--rule);
   }
 
   .profile-panel-avatar {
     flex: 0 0 auto;
-    width: 52px;
-    height: 52px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: var(--sunken);
     object-fit: cover;
@@ -235,7 +234,7 @@
 
   .profile-panel-name {
     overflow: hidden;
-    font-size: var(--step-3);
+    font-size: var(--step-2);
     line-height: 1.3;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -263,17 +262,15 @@
 
   .profile-panel-list {
     display: flex;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     flex-direction: column;
     min-height: 0;
+    padding: var(--space-2) 0;
   }
 
   /* 항목은 패널이 들어온 뒤 살짝 늦게 따라 들어온다. */
   .profile-panel-list > li {
     display: flex;
-    flex: 1 1 0;
-    min-height: 76px;
-    border-bottom: 1px solid var(--rule);
     opacity: 0;
     transform: translateX(16px);
     transition: opacity 0.2s ease, transform 0.2s ease;
@@ -297,9 +294,9 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
     align-content: center;
-    column-gap: var(--space-4);
-    row-gap: var(--space-1);
-    padding: var(--space-3) var(--space-5);
+    column-gap: var(--space-3);
+    row-gap: 2px;
+    padding: var(--space-3) var(--space-4);
     color: var(--ink);
     text-decoration: none;
     transition: background-color 0.15s ease;
@@ -309,8 +306,8 @@
   .profile-panel-item::before {
     content: "";
     position: absolute;
-    top: var(--space-3);
-    bottom: var(--space-3);
+    top: var(--space-2);
+    bottom: var(--space-2);
     left: 0;
     width: 3px;
     background: var(--brand);
@@ -323,7 +320,9 @@
     grid-row: 1 / span 2;
     align-self: center;
     box-sizing: content-box;
-    padding: var(--space-3);
+    width: 20px;
+    height: 20px;
+    padding: var(--space-2);
     border-radius: 50%;
     background: var(--sunken);
     color: var(--ink-muted);
@@ -332,13 +331,13 @@
 
   .profile-panel-label {
     grid-column: 2;
-    font-size: var(--step-3);
+    font-size: var(--step-2);
     line-height: 1.3;
   }
 
   .profile-panel-hint {
     grid-column: 2;
-    font-size: var(--step-0);
+    font-size: var(--step--1);
     line-height: 1.4;
     color: var(--ink-muted);
   }
@@ -388,18 +387,20 @@
 
   .profile-panel-logout {
     flex: 0 0 auto;
-    margin: var(--space-4) var(--space-5) 0;
-    padding: var(--space-3);
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    border-top: 1px solid var(--rule);
+    background: none;
     font-size: var(--step-1);
     color: var(--ink-muted);
-    text-align: center;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .profile-panel-logout:hover,
   .profile-panel-logout:focus-visible {
-    border-color: var(--ink);
+    background: var(--sunken);
     color: var(--ink);
   }
 
