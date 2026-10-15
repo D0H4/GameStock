@@ -19,6 +19,8 @@ import { TitleWatcher } from "./components/TitleWatcher";
 import { LoginModal } from "./components/LoginModal";
 import { CircuitBreakerNotice } from "./components/CircuitBreakerNotice";
 import { SiteNoticeDialog } from "./components/SiteNoticeDialog";
+import { SuspensionNotice, useSuspendedUntil } from "./components/SuspensionNotice";
+import { useProfile } from "./lib/profile";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
@@ -50,6 +52,8 @@ function titleFor(route: Route): string {
 export default function App() {
   const route = useRoute();
   const auth = useAuthUser();
+  const profile = useProfile();
+  const suspendedUntil = useSuspendedUntil(auth.user ? profile : null);
   const main = useRef<HTMLElement>(null);
   const previous = useRef(route);
 
@@ -81,6 +85,7 @@ export default function App() {
       <AuthBridge />
       <Topbar route={route} />
       <main id="content" className="content" ref={main} tabIndex={-1}>
+        {suspendedUntil ? <SuspensionNotice until={suspendedUntil} reason={profile?.tradeBanReason} /> : <>
         {route.name === "home" && <HomePage />}
         {route.name === "market" && <MarketPage ticker={route.ticker} />}
         {route.name === "trade" && <TradePage ticker={route.ticker} />}
@@ -94,6 +99,7 @@ export default function App() {
         {route.name === "loan" && auth.user && <LoanPage />}
         {route.name === "admin" && auth.user && <AdminPage />}
         {route.name === "login" && <LoginPage method={route.method} />}
+        </>}
       </main>
       <StatusBar />
       <MissionRewardToast />

@@ -42,7 +42,7 @@ class LoanServiceIntegrationTest {
         config.setPassword(root.getPassword());
         source = new HikariDataSource(config);
         db = new JdbcTemplate(source);
-        db.execute("CREATE TABLE users (id BIGINT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50), password_hash VARCHAR(100), cash BIGINT NOT NULL, loan_balance BIGINT NOT NULL DEFAULT 0, loan_interest_on DATE NULL)");
+        db.execute("CREATE TABLE users (id BIGINT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50), password_hash VARCHAR(100), role VARCHAR(20) NOT NULL DEFAULT 'USER', cash BIGINT NOT NULL, loan_balance BIGINT NOT NULL DEFAULT 0, loan_interest_on DATE NULL)");
         db.execute("CREATE TABLE stocks (id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10), current_price BIGINT)");
         db.execute("CREATE TABLE market_price_metrics (stock_id BIGINT PRIMARY KEY, mark_price BIGINT)");
         db.execute("CREATE TABLE portfolios (id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT, stock_id BIGINT, quantity INT, settled_quantity INT)");
@@ -110,6 +110,14 @@ class LoanServiceIntegrationTest {
         assertThrows(IllegalArgumentException.class, () -> loans.borrow(bot, 10_000L));
         assertEquals(0, loans.status(bot).available());
         assertEquals(0, balance(bot));
+    }
+
+    @Test
+    void adminsCannotBorrow() {
+        db.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", human);
+        assertThrows(IllegalArgumentException.class, () -> loans.borrow(human, 10_000L));
+        assertEquals(0, loans.status(human).available());
+        assertEquals(0, balance(human));
     }
 
     @Test

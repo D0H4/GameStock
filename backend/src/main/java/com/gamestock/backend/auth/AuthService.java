@@ -23,6 +23,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class AuthService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthService.class);
     private static final long MOBILE_CODE_TTL_SECONDS = 120;
     /** Attendance resets at Korean midnight, the same boundary as daily missions. */
     private static final ZoneId ATTENDANCE_ZONE = ZoneId.of("Asia/Seoul");
@@ -50,14 +51,27 @@ public class AuthService {
     /**
      * Only token verification maps to 401. Database failures while loading the
      * account propagate as server errors instead of looking like an expired login.
+     * 이용 정지된 계정은 정지가 풀릴 때까지 모든 개인 기능에서 403을 받는다.
      */
     @Transactional
     public LoginUser requireUser(String authorization) {
-        return findOrCreate(verifyToken(authorization));
+        LoginUser user = findOrCreate(verifyToken(authorization));
+        requireNotSuspended(user.id());
+        return grantAttendanceReward(user);
+    }
+
+    /**
+     * 로그인과 프로필 조회만 정지된 계정에도 열어 둔다. 화면이 정지 기간과 사유를
+     * 받아 안내해야 하기 때문이다. 정지 중에는 출석 보상을 주지 않는다.
+     */
+    @Transactional
+    public LoginUser requireUserAllowingSuspended(String authorization) {
+        LoginUser user = findOrCreate(verifyToken(authorization));
+        return suspension(user.id()) == null ? grantAttendanceReward(user) : user;
     }
 
     @Transactional
-    public LoginUser login(String authorization) { return requireUser(authorization); }
+    public LoginUser login(String authorization) { return requireUserAllowingSuspended(authorization); }
 
     public MobileCode issueMobileCode(String authorization) {
         FirebaseToken token = verifyToken(authorization);
@@ -120,16 +134,22 @@ public class AuthService {
                 }, userId);
     }
 
-    /** 관리자가 건 거래 제한이 남아 있으면 주문을 받지 않는다. 기존 주문 취소는 막지 않는다. */
-    public void requireTradingAllowed(long userId) {
+    /** 관리자가 건 거래 제한(이용 정지)이 남아 있으면 어떤 개인 기능도 쓸 수 없다. */
+    public void requireNotSuspended(long userId) {
+        Object[] ban = suspension(userId);
+        if (ban == null) return;
+        String until = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .format(((Instant) ban[0]).atZone(ATTENDANCE_ZONE));
+        String reason = (String) ban[1];
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "이용이 정지된 계정입니다. " + until + "까지 서비스를 이용할 수 없습니다." + (reason == null || reason.isBlank() ? "" : " (사유: " + reason + ")"));
+    }
+
+    /** 남은 정지의 {종료 시각, 사유}. 정지가 없거나 끝났으면 null. */
+    private Object[] suspension(long userId) {
         var rows = jdbc.query("SELECT trade_banned_until, trade_ban_reason FROM users WHERE id = ?",
                 (rs, row) -> new Object[] { activeBan(rs.getTimestamp(1)), rs.getString(2) }, userId);
-        if (rows.isEmpty() || rows.get(0)[0] == null) return;
-        String until = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-                .format(((Instant) rows.get(0)[0]).atZone(ATTENDANCE_ZONE));
-        String reason = (String) rows.get(0)[1];
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "거래가 제한된 계정입니다. " + until + "까지 주문할 수 없습니다." + (reason == null || reason.isBlank() ? "" : " (사유: " + reason + ")"));
+        return rows.isEmpty() || rows.get(0)[0] == null ? null : rows.get(0);
     }
 
     private Instant activeBan(Timestamp until) {
@@ -200,33 +220,37 @@ public class AuthService {
             }
             // A locking read sees a row committed by a concurrent first login,
             // which this transaction's earlier consistent snapshot may not include.
-            user = jdbc.queryForObject("SELECT id, nickname, email, profile_image_url, profile_completed, role FROM users WHERE google_uid = ? FOR UPDATE",
+            var created = jdbc.query("SELECT id, nickname, email, profile_image_url, profile_completed, role FROM users WHERE google_uid = ? FOR UPDATE",
                     (rs, row) -> new LoginUser(rs.getLong("id"), rs.getString("nickname"), rs.getString("email"), rs.getString("profile_image_url"), 0, 0, !rs.getBoolean("profile_completed"), rs.getString("role")), token.getUid());
+            // 자동 닉네임이 재시도 내내 겹쳐 계정을 만들지 못한 경우다. 500 대신 다시 시도하라고 알린다.
+            if (created.isEmpty())
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "계정을 만들지 못했습니다. 잠시 후 다시 로그인해 주세요.");
+            user = created.get(0);
         }
-        if (isConfiguredAdmin(token) && !"ADMIN".equalsIgnoreCase(user.role())) {
+        boolean admin = "ADMIN".equalsIgnoreCase(user.role());
+        if (isConfiguredAdmin(token) && !admin) {
             jdbc.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", user.id());
-            user = new LoginUser(user.id(), user.nickname(), user.email(), user.profileImageUrl(),
-                    user.attendanceReward(), user.attendanceStreak(), user.requiresNickname(), "ADMIN");
+            user = withRole(user, "ADMIN");
+        } else if (admin && adminConfigured() && !isConfiguredAdmin(token)) {
+            // 설정에서 빠진 관리자는 다음 요청부터 일반 회원이 된다. 설정이 통째로 비어
+            // 있으면 배포 실수일 수 있으므로 회수하지 않고 경고만 남긴다.
+            jdbc.update("UPDATE users SET role = 'USER' WHERE id = ? AND role = 'ADMIN'", user.id());
+            log.warn("관리자 설정에 없는 계정 {}의 관리자 권한을 회수했습니다.", user.id());
+            user = withRole(user, "USER");
+        } else if (admin && !adminConfigured()) {
+            log.warn("관리자 설정이 비어 있어 계정 {}의 관리자 권한을 확인하지 못했습니다.", user.id());
         }
-        if ("ADMIN".equalsIgnoreCase(user.role())) refillAdminCash(user.id());
-        return grantAttendanceReward(user);
+        return user;
     }
 
-    /**
-     * 관리자 현금은 사실상 무제한이다. 인증된 요청마다 현금과 미체결 주문에 묶인
-     * 예약금의 합을 1000조로 맞춘다. 현금만 채우면 예약금이 묶인 채로 다시 채운 뒤
-     * 주문을 취소할 때 환불액만큼 상한을 넘어 계속 불어나기 때문이다. 이미 맞으면
-     * 쓰지 않는다. 체결 엔진은 커밋 시점에 현금을 다시 읽어 바뀐 현금이면 다시 계산한다.
-     * 화면의 숫자 정밀도(2^53)를 넘지 않도록 1000조로 둔다.
-     */
-    void refillAdminCash(long userId) {
-        Long reserved = jdbc.queryForObject("SELECT COALESCE(SUM(reserved_cash), 0) FROM orders WHERE user_id = ? AND status = 'OPEN'",
-                Long.class, userId);
-        long target = Math.max(0, ADMIN_CASH - (reserved == null ? 0 : reserved));
-        jdbc.update("UPDATE users SET cash = ? WHERE id = ? AND cash <> ?", target, userId, target);
+    private static LoginUser withRole(LoginUser user, String role) {
+        return new LoginUser(user.id(), user.nickname(), user.email(), user.profileImageUrl(),
+                user.attendanceReward(), user.attendanceStreak(), user.requiresNickname(), role);
     }
 
-    static final long ADMIN_CASH = 1_000_000_000_000_000L;
+    private boolean adminConfigured() {
+        return (adminGoogleUid != null && !adminGoogleUid.isBlank()) || (adminGoogleEmail != null && !adminGoogleEmail.isBlank());
+    }
 
     private boolean isConfiguredAdmin(FirebaseToken token) {
         String uid = adminGoogleUid == null ? "" : adminGoogleUid.trim();

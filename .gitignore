@@ -17,3 +17,7 @@ backend/.m2-repository/
 logs/
 .expo/
 .firebase/
+
+# Local run logs and stale compiled output
+*.log
+/build/

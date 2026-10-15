@@ -88,6 +88,13 @@ public class AdminService {
         return lockUser(userId);
     }
 
+    public AdminUser user(long userId) {
+        var rows = jdbc.query("SELECT id, google_uid, email, nickname, role, cash, created_at, nickname_changed_at, trade_banned_until, trade_ban_reason FROM users WHERE id = ?",
+                this::mapUser, userId);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "계정을 찾을 수 없습니다.");
+        return rows.get(0);
+    }
+
     private AdminUser lockUser(long userId) {
         var rows = jdbc.query("SELECT id, google_uid, email, nickname, role, cash, created_at, nickname_changed_at, trade_banned_until, trade_ban_reason FROM users WHERE id = ? FOR UPDATE",
                 this::mapUser, userId);

@@ -13,6 +13,12 @@
   .admin-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
   .admin-presets .is-active { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 
+  /* 이용 정지 계정이 보는 안내. */
+  .suspension { display: grid; justify-items: start; gap: var(--space-3); max-width: 560px; padding-block: var(--space-7); }
+  .suspension-title { font-size: var(--step-2); font-weight: 700; }
+  .suspension-reason { color: var(--up-deep); font-weight: 600; }
+  .suspension-help { color: var(--ink-muted); font-size: var(--step--1); }
+
   @media (max-width: 720px) {
     .admin-actions { grid-template-columns: minmax(0, 1fr); }
   }

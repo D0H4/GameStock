@@ -90,7 +90,8 @@ public class MarketController {
 
     @GetMapping("/profile")
     public AuthService.Profile profile(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return auth.profile(auth.requireUser(authorization).id());
+        // 정지된 계정도 프로필은 받아야 화면에 정지 기간과 사유를 보여 줄 수 있다.
+        return auth.profile(auth.requireUserAllowingSuspended(authorization).id());
     }
 
     @PatchMapping("/profile")
@@ -102,9 +103,11 @@ public class MarketController {
     @PostMapping("/orders")
     @ResponseStatus(HttpStatus.CREATED)
     public java.util.concurrent.CompletableFuture<OrderResult> order(@RequestBody OrderRequest request, @RequestHeader(value = "Authorization", required = false) String authorization) {
-        long userId = auth.requireUser(authorization).id();
-        auth.requireTradingAllowed(userId);
-        return orders.submit(userId, request);
+        AuthService.LoginUser user = auth.requireUser(authorization);
+        // 관리자는 시장 밖의 계정이다. 관리자 주문이 다른 플레이어의 시세와 수익률을 움직이지 않게 막는다.
+        if ("ADMIN".equalsIgnoreCase(user.role()))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN, "관리자 계정은 주문할 수 없습니다.");
+        return orders.submit(user.id(), request);
     }
 
     @DeleteMapping("/orders/{orderId}")

@@ -147,7 +147,7 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
       setMessage("제한 기간은 1~365일로 입력해 주세요.");
       return;
     }
-    if (!window.confirm(`${user.nickname} 계정의 거래를 ${value}일 동안 제한할까요?`)) return;
+    if (!window.confirm(`${user.nickname} 계정의 거래를 ${value}일 동안 제한할까요?\n제한 중에는 모든 서비스를 이용할 수 없고, 미체결 주문은 모두 취소됩니다.`)) return;
     void run(() => apiFetch<AdminUser>(`/api/admin/users/${user.id}/trade-ban`, {
       method: "PUT",
       body: JSON.stringify({ days: value, reason }),
@@ -186,7 +186,7 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
           {user.tradeBannedUntil ? (
             <>
               <p className="account-hint">
-                {formatTime(user.tradeBannedUntil)}까지 주문이 막혀 있습니다.
+                {formatTime(user.tradeBannedUntil)}까지 모든 서비스 이용이 정지되어 있습니다.
                 {user.tradeBanReason && <> 사유: {user.tradeBanReason}</>}
               </p>
               <div className="account-input-row">

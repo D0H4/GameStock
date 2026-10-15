@@ -48,8 +48,8 @@ public class LoanService {
     /** 반대매매 매도 수량은 체결 미끄러짐과 수수료를 생각해 조금 넉넉히 잡는다. */
     private static final double LIQUIDATION_BUFFER = 1.03;
 
-    /** 봇과 시연용 계정은 대출 대상이 아니다. 랭킹의 투자자 기준과 같다. */
-    private static final String HUMAN_FILTER = "u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'";
+    /** 봇·시연용·관리자 계정은 대출 대상이 아니다. 랭킹의 투자자 기준과 같다. */
+    private static final String HUMAN_FILTER = "u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo' AND COALESCE(u.role, 'USER') <> 'ADMIN'";
     private static final String GROSS_ASSET = """
             u.cash
             + COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0)
