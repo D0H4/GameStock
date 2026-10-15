@@ -10,40 +10,40 @@
 
 웹·백엔드·DB·Firebase 인증을 연결한 핵심 거래 기능이 구현돼 있다. 최근에는 뉴스 상세 화면, 주간 수익률 랭킹, 칭호, 모의 대출, 관리자 기능까지 범위가 확장됐다. 현재 단계는 기능을 추가한 상태에서 거래 정합성과 전체 이용 흐름을 검증·보완하는 단계다.
 
-| 영역 | 현재 구현 범위 | 확인이 더 필요한 부분 |
-| --- | --- | --- |
-| 시장 조회 | 15개 종목, 검색·정렬·필터, 차트, 호가, 최근 체결, 상·하한가 표시 | 운영 중 전 종목의 호가·체결 지속성 |
-| 주문·계좌 | 지정가·시장가, 부분 체결, 미체결 취소, 예약금, 수수료, 정산, 보유·손익·거래 내역 | 인증된 주문부터 정산까지 통합 검증, 동시 주문·재시작 복구 |
-| 시장 시뮬레이션 | 전략별 참여자 봇, 유동성 공급, 접속 상태에 따른 작업 조절 | 실제 사용자가 원하는 수량을 체결할 수 있는 유동성과 장시간 안정성 |
-| 거래 보호 | 가격제한폭, VI, 시장 서킷브레이커, 단일가 처리 | 발동·주문 제한·해제까지 이어지는 시나리오 검증 |
-| 뉴스 | RSS 수집, 관련성 필터·중복 처리, 규칙 기반 영향 분석, 목록·상세·기사 발췌·원문 링크 | 분석 정확도, 수집·본문 추출 실패 처리 품질 |
-| 인증·프로필 | Google·이메일 로그인, 회원가입·비밀번호 재설정, 닉네임·프로필 사진, 계좌 리셋 | 최신 웹·앱 로그인 및 계정 복구 흐름 |
-| 참여 기능 | 관심종목, 출석, 일일 미션, 전체·주간 랭킹, 칭호 획득·장착·프로모션 코드 | 페이지 방문 미션의 실제 수행 확인, 주간 경계 동작 |
-| 모의 대출 | 대출·상환·원장, 일일 이자, 담보 경고·반대매매 | 시세 급변·체결 부족 상황의 반대매매 통합 검증 |
-| 관리자 | 사용자 검색, 거래 제한·해제, 강제 닉네임 변경, 관리자 권한 검사 | 운영 계정 권한·조치 이력 검증 |
-| 모바일 | Expo WebView로 웹 공통 화면 표시, 외부 브라우저 인증 연결 | 실제 기기 로그인·거래·딥링크, 서명 APK 릴리스 |
-| 배포 | Firebase Hosting 설정·GitHub Actions, Railway 빌드·시작 설정 | 현재 활성 커밋과 운영 동작은 별도 확인 필요 |
+| 영역            | 현재 구현 범위                                                                      | 확인이 더 필요한 부분                                             |
+| --------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 시장 조회       | 15개 종목, 검색·정렬·필터, 차트, 호가, 최근 체결, 상·하한가 표시                    | 운영 중 전 종목의 호가·체결 지속성                                |
+| 주문·계좌       | 지정가·시장가, 부분 체결, 미체결 취소, 예약금, 수수료, 정산, 보유·손익·거래 내역    | 인증된 주문부터 정산까지 통합 검증, 동시 주문·재시작 복구         |
+| 시장 시뮬레이션 | 전략별 참여자 봇, 유동성 공급, 접속 상태에 따른 작업 조절                           | 실제 사용자가 원하는 수량을 체결할 수 있는 유동성과 장시간 안정성 |
+| 거래 보호       | 가격제한폭, VI, 시장 서킷브레이커, 단일가 처리                                      | 발동·주문 제한·해제까지 이어지는 시나리오 검증                    |
+| 뉴스            | RSS 수집, 관련성 필터·중복 처리, 규칙 기반 영향 분석, 목록·상세·기사 발췌·원문 링크 | 분석 정확도, 수집·본문 추출 실패 처리 품질                        |
+| 인증·프로필     | Google·이메일 로그인, 회원가입·비밀번호 재설정, 닉네임·프로필 사진, 계좌 리셋       | 최신 웹·앱 로그인 및 계정 복구 흐름                               |
+| 참여 기능       | 관심종목, 출석, 일일 미션, 전체·주간 랭킹, 칭호 획득·장착·프로모션 코드             | 페이지 방문 미션의 실제 수행 확인, 주간 경계 동작                 |
+| 모의 대출       | 대출·상환·원장, 일일 이자, 담보 경고·반대매매                                       | 시세 급변·체결 부족 상황의 반대매매 통합 검증                     |
+| 관리자          | 사용자 검색, 거래 제한·해제, 강제 닉네임 변경, 관리자 권한 검사                     | 운영 계정 권한·조치 이력 검증                                     |
+| 모바일          | Expo WebView로 웹 공통 화면 표시, 외부 브라우저 인증 연결                           | 실제 기기 로그인·거래·딥링크, 서명 APK 릴리스                     |
+| 배포            | Firebase Hosting 설정·GitHub Actions, Railway 빌드·시작 설정                        | 현재 활성 커밋과 운영 동작은 별도 확인 필요                       |
 
 가격 변동 이유를 제공하는 `price-drivers` API는 있지만 공통 화면에 연결되지 않았다. 가격 알림·댓글·태그도 API와 저장 구조가 있으며, 알림 발동과 사용자 화면은 완성 범위에서 제외한다. 시즌별 자산 초기화나 투자 성적 공유 카드도 현재 기능으로 안내하지 않는다.
 
 ## 주요 화면
 
-| 경로 | 내용 |
-| --- | --- |
-| `/` | 게임주 지수·내 자산, 많이 오른 게임, 거래량 상위 종목, 속보, 보유 종목 |
-| `/market`, `/market/:code` | 종목 목록과 상세 차트·호가·체결·주문 |
-| `/trade`, `/trade/:code` | 종목 선택, 호가, 주문 티켓, 보유·체결·미체결 계좌 패널 |
-| `/news`, `/news/:id` | 뉴스 목록과 선택 기사 상세, 기사 발췌·원문 링크·발행 이후 가격 변화 |
-| `/ranking` | 순자산 기준 전체 랭킹과 이번 주 수익률 랭킹, 프로필·장착 칭호 |
-| `/mypage` | 내 계좌, 보유·손익, 주문·체결·정산 내역 |
-| `/settings` | 닉네임·프로필 사진 설정, 계좌 리셋 |
-| `/charge` | 오늘의 투자 미션과 모의 자금 보상 |
-| `/loan` | 모의 대출·상환, 한도·담보비율·이자·원장 |
-| `/titles` | 칭호 조건·획득 현황·장착 |
-| `/admin` | 관리자 전용 사용자 조회와 거래 제한·닉네임 조치 |
-| `/login` | 로그인 방법 선택 |
-| `/login/google`, `/login/email` | Google·이메일 로그인 |
-| `/login/register`, `/login/reset` | 회원가입·비밀번호 재설정 |
+| 경로                              | 내용                                                                   |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `/`                               | 게임주 지수·내 자산, 많이 오른 게임, 거래량 상위 종목, 속보, 보유 종목 |
+| `/market`, `/market/:code`        | 종목 목록과 상세 차트·호가·체결·주문                                   |
+| `/trade`, `/trade/:code`          | 종목 선택, 호가, 주문 티켓, 보유·체결·미체결 계좌 패널                 |
+| `/news`, `/news/:id`              | 뉴스 목록과 선택 기사 상세, 기사 발췌·원문 링크·발행 이후 가격 변화    |
+| `/ranking`                        | 순자산 기준 전체 랭킹과 이번 주 수익률 랭킹, 프로필·장착 칭호          |
+| `/mypage`                         | 내 계좌, 보유·손익, 주문·체결·정산 내역                                |
+| `/settings`                       | 닉네임·프로필 사진 설정, 계좌 리셋                                     |
+| `/charge`                         | 오늘의 투자 미션과 모의 자금 보상                                      |
+| `/loan`                           | 모의 대출·상환, 한도·담보비율·이자·원장                                |
+| `/titles`                         | 칭호 조건·획득 현황·장착                                               |
+| `/admin`                          | 관리자 전용 사용자 조회와 거래 제한·닉네임 조치                        |
+| `/login`                          | 로그인 방법 선택                                                       |
+| `/login/google`, `/login/email`   | Google·이메일 로그인                                                   |
+| `/login/register`, `/login/reset` | 회원가입·비밀번호 재설정                                               |
 
 내 계좌·설정·충전·대출·칭호·관리자 화면은 로그인이 필요하다. 관리자 API는 서버에서도 ADMIN 권한을 확인한다. 라이트·다크 모드와 모바일 화면을 지원한다.
 
@@ -51,16 +51,16 @@
 
 기본 카탈로그는 프론트의 `src/market/universe.ts`와 백엔드의 `StockCatalog.java`에 있다.
 
-| 코드 | 게임 | 코드 | 게임 |
-| --- | --- | --- | --- |
-| UMA | 우마무스메 프리티더비 | BA | 블루 아카이브 |
-| GOV | 승리의 여신: 니케 | ZZZ | 젠레스 존 제로 |
-| GI | 원신 | SR | 붕괴: 스타레일 |
-| AK | 명일방주: 엔드필드 | WH | 명조: 워더링 웨이브 |
-| CRK | 쿠키런: 킹덤 | VR | 발로란트 |
-| ES | 에픽세븐 | KRP | 카트라이더 러쉬플러스 |
-| OW | 오버워치 | PW | 팰월드 |
-| TR | 트릭컬 리바이브 | | |
+| 코드 | 게임                  | 코드 | 게임                  |
+| ---- | --------------------- | ---- | --------------------- |
+| UMA  | 우마무스메 프리티더비 | BA   | 블루 아카이브         |
+| GOV  | 승리의 여신: 니케     | ZZZ  | 젠레스 존 제로        |
+| GI   | 원신                  | SR   | 붕괴: 스타레일        |
+| AK   | 명일방주: 엔드필드    | WH   | 명조: 워더링 웨이브   |
+| CRK  | 쿠키런: 킹덤          | VR   | 발로란트              |
+| ES   | 에픽세븐              | KRP  | 카트라이더 러쉬플러스 |
+| OW   | 오버워치              | PW   | 팰월드                |
+| TR   | 트릭컬 리바이브       |      |                       |
 
 시작 시 누락 종목을 추가하고 일부 구 종목 코드·이름을 이전하는 로직이 있다. 운영 DB의 종목 구성은 기본 카탈로그와 별도로 확인해야 한다.
 
@@ -92,13 +92,13 @@ React 웹 ── Firebase SDK ── Google / 이메일 인증
 Expo 앱 → WebView → 같은 React 웹
 ```
 
-| 구분 | 사용 기술 |
-| --- | --- |
-| 웹 | React 19, TypeScript, Vite 7, Firebase Web SDK, CSS |
-| 서버 | Java 17, Spring Boot 3.5, JDBC, WebSocket, Firebase Admin SDK |
-| DB | MySQL, 시작 시 보완 스키마·초기 데이터 처리 |
-| 모바일 | Expo 57, React Native, react-native-webview |
-| 배포 설정 | Firebase Hosting, GitHub Actions, Railway |
+| 구분      | 사용 기술                                                     |
+| --------- | ------------------------------------------------------------- |
+| 웹        | React 19, TypeScript, Vite 7, Firebase Web SDK, CSS           |
+| 서버      | Java 17, Spring Boot 3.5, JDBC, WebSocket, Firebase Admin SDK |
+| DB        | MySQL, 시작 시 보완 스키마·초기 데이터 처리                   |
+| 모바일    | Expo 57, React Native, react-native-webview                   |
+| 배포 설정 | Firebase Hosting, GitHub Actions, Railway                     |
 
 시세·뉴스·시장 상태를 REST로 가져온 뒤 WebSocket을 구독한다. 스트림이 연결되지 않으면 2초 간격 REST 갱신을 사용하고, 연결 중에도 30초마다 REST로 보정한다. 로그인한 요청과 스트림에는 Firebase ID 토큰을 사용한다.
 
@@ -181,15 +181,15 @@ npm start
 
 ## 환경변수와 배포 설정
 
-| 위치 | 주요 설정 |
-| --- | --- |
+| 위치                           | 주요 설정                                                                                                                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 웹 `.env.local` 또는 빌드 환경 | `VITE_API_BASE_URL`, `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` |
-| 백엔드 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `GAMESTOCK_CORS_ORIGIN`, 선택적 `PORT` |
-| Firebase Admin | `FIREBASE_SERVICE_ACCOUNT_PATH` 또는 `FIREBASE_SERVICE_ACCOUNT_JSON`(JSON 문자열·파일 경로 지원) |
-| 관리자 지정 | `GAMESTOCK_ADMIN_GOOGLE_UID`, `GAMESTOCK_ADMIN_GOOGLE_EMAIL` |
-| 시뮬레이션 | `GAMESTOCK_BOT_PARTICIPANTS`, `GAMESTOCK_MATCHING_ENABLED`, `GAMESTOCK_BATCH_BOTS_ENABLED` 등. 전체 기본값은 `application.yml` 참고 |
-| 모바일 | `EXPO_PUBLIC_WEB_APP_URL`, 기존 네이티브 경로용 `EXPO_PUBLIC_API_BASE_URL` |
-| GitHub Actions | `FIREBASE_SERVICE_ACCOUNT` 저장소 시크릿 |
+| 백엔드                         | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `GAMESTOCK_CORS_ORIGIN`, 선택적 `PORT`                                                                                                                     |
+| Firebase Admin                 | `FIREBASE_SERVICE_ACCOUNT_PATH` 또는 `FIREBASE_SERVICE_ACCOUNT_JSON`(JSON 문자열·파일 경로 지원)                                                                                                   |
+| 관리자 지정                    | `GAMESTOCK_ADMIN_GOOGLE_UID`, `GAMESTOCK_ADMIN_GOOGLE_EMAIL`                                                                                                                                       |
+| 시뮬레이션                     | `GAMESTOCK_BOT_PARTICIPANTS`, `GAMESTOCK_MATCHING_ENABLED`, `GAMESTOCK_BATCH_BOTS_ENABLED` 등. 전체 기본값은 `application.yml` 참고                                                                |
+| 모바일                         | `EXPO_PUBLIC_WEB_APP_URL`, 기존 네이티브 경로용 `EXPO_PUBLIC_API_BASE_URL`                                                                                                                         |
+| GitHub Actions                 | `FIREBASE_SERVICE_ACCOUNT` 저장소 시크릿                                                                                                                                                           |
 
 서비스 계정 JSON, DB 비밀번호, Firebase ID 토큰은 Git에 넣지 않는다. `VITE_*`는 브라우저에 포함되는 공개 설정이므로 관리자 자격증명을 넣으면 안 된다.
 
@@ -202,10 +202,10 @@ Firebase Hosting은 `firebase.json`에 따라 `dist/`를 제공하고 SPA 경로
 
 Railway 설정은 서비스 루트에 따라 선택한다.
 
-| 서비스 루트 | 설정 파일 | 빌드·실행 |
-| --- | --- | --- |
-| 저장소 루트 | `railway.json` | `cd backend && mvn -DskipTests clean package` → `java -jar backend/target/gamestock-backend-0.1.0.jar` |
-| `backend/` | `backend/railway.json` | `mvn -DskipTests clean package` → `java -jar target/gamestock-backend-0.1.0.jar` |
+| 서비스 루트 | 설정 파일              | 빌드·실행                                                                                              |
+| ----------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| 저장소 루트 | `railway.json`         | `cd backend && mvn -DskipTests clean package` → `java -jar backend/target/gamestock-backend-0.1.0.jar` |
+| `backend/`  | `backend/railway.json` | `mvn -DskipTests clean package` → `java -jar target/gamestock-backend-0.1.0.jar`                       |
 
 헬스체크는 `/api/health`, 서버 포트는 `PORT`가 우선이다. 두 Railway 빌드 설정은 테스트를 생략하므로 배포 성공과 테스트 통과는 별도로 확인한다. 웹과 백엔드도 각각 배포된다.
 
