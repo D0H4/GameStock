@@ -96,7 +96,9 @@ export function TradeAccountPanel({ code, tab, onTabChange }: { code: string; ta
         <label className="terminal-filter"><input type="checkbox" checked={onlyCurrent} onChange={(event) => setOnlyCurrent(event.target.checked)} />현재 종목만</label>
         <span className="terminal-currency">원화</span>
       </div>
-      <div className="terminal-table-scroll" tabIndex={0} role="region" aria-label="계좌 내역 표" aria-busy={tab === "orders" && loading}>
+      {/* 가로·세로 스크롤을 서로 다른 상자에 맡겨 한 번 밀 때 한 방향으로만 움직이게 한다. */}
+      <div className="terminal-table-scroll">
+      <div className="terminal-table-rows" tabIndex={0} role="region" aria-label="계좌 내역 표" aria-busy={tab === "orders" && loading}>
         <table className="terminal-table">
           <caption className="vh">{tab === "holdings" ? "실시간 보유 잔고" : tab === "fills" ? "체결 내역" : "미체결 주문"}</caption>
           <thead><tr>
@@ -142,6 +144,7 @@ export function TradeAccountPanel({ code, tab, onTabChange }: { code: string; ta
             </td></tr>}
           </tbody>
         </table>
+      </div>
       </div>
       <div className={`terminal-status${tab === "orders" && error ? " is-error" : ""}`} role="status" aria-live="polite">
         <span>{tab === "orders" && error ? error : !user ? "로그인 후 이용할 수 있습니다." : tab === "orders" && message ? message : tab === "orders" ? `최근 미체결 ${count}건 · 최대 5건 표시` : `${count}건 · ${clock(snapshot.updatedAt)} 기준`}</span>
