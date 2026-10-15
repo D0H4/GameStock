@@ -46,6 +46,15 @@ const ITEMS = [
   },
 ] as const;
 
+/* 관리자 계정에만 설정 아래에 붙는다. 실제 권한은 서버가 매 요청마다 확인한다. */
+const ADMIN_ITEM = {
+  label: "관리자",
+  hint: "계정 조회 · 거래 제한 · 닉네임 변경",
+  to: "/admin",
+  match: "admin",
+  icon: "M12 3.5l7.5 3v5.5c0 4.2-3.1 7.4-7.5 8.5-4.4-1.1-7.5-4.3-7.5-8.5V6.5zM9 12l2.2 2.2L15.5 10",
+} as const;
+
 /** 상단 오른쪽 프로필 버튼. 누르면 오른쪽에서 계좌·설정·칭호·충전·로그아웃 패널이 밀려 나온다. */
 export function ProfileMenu({ route }: { route: Route }) {
   const auth = useAuthUser();
@@ -87,7 +96,8 @@ export function ProfileMenu({ route }: { route: Route }) {
 
   const nickname = profile?.nickname ?? auth.user.displayName ?? "내 계정";
   const avatar = profile?.profileImageUrl || DEFAULT_PROFILE_AVATAR;
-  const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge";
+  const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge" || route.name === "admin";
+  const items = profile?.admin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
 
   const logout = async () => {
     setOpen(false);
@@ -141,7 +151,7 @@ export function ProfileMenu({ route }: { route: Route }) {
               </button>
             </div>
             <ul className="profile-panel-list">
-              {ITEMS.map((item) => (
+              {items.map((item) => (
                 <li key={item.to}>
                   <Link
                     className={`profile-panel-item${route.name === item.match ? " is-active" : ""}`}

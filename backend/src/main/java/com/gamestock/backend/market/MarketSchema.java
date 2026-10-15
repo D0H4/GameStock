@@ -102,6 +102,17 @@ final class MarketSchema {
         addUserColumnIfMissing("account_reset_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("reset_used_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("nickname_changed_at", "TIMESTAMP NULL");
+        // 관리자가 부계정 의심 계정에 거는 기간제 거래 제한.
+        addUserColumnIfMissing("trade_banned_until", "TIMESTAMP NULL");
+        addUserColumnIfMissing("trade_ban_reason", "VARCHAR(200) NULL");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS admin_actions (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY, admin_id BIGINT NOT NULL, target_user_id BIGINT NOT NULL,
+                  action VARCHAR(32) NOT NULL, detail VARCHAR(300) NOT NULL DEFAULT '',
+                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  KEY ix_admin_actions_target (target_user_id, id)
+                )
+                """);
         // 모의 자금 대출: 잔액에는 쌓인 이자가 포함되고, 이자는 한국시간 하루에 한 번 붙는다.
         addUserColumnIfMissing("loan_balance", "BIGINT NOT NULL DEFAULT 0");
         addUserColumnIfMissing("loan_interest_on", "DATE NULL");

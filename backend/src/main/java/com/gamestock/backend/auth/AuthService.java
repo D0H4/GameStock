@@ -104,16 +104,36 @@ public class AuthService {
     }
 
     private Profile readProfile(long userId, boolean lock) {
-        return jdbc.queryForObject("SELECT nickname, email, profile_image_url, profile_completed, reset_used_at, nickname_changed_at FROM users WHERE id = ?" + (lock ? " FOR UPDATE" : ""),
+        return jdbc.queryForObject("SELECT nickname, email, profile_image_url, profile_completed, reset_used_at, nickname_changed_at, role, trade_banned_until, trade_ban_reason FROM users WHERE id = ?" + (lock ? " FOR UPDATE" : ""),
                 (rs, row) -> {
                     Timestamp changedAt = rs.getTimestamp("nickname_changed_at");
                     Instant nextChange = changedAt == null ? null : changedAt.toInstant().plus(Duration.ofDays(3));
+                    Instant bannedUntil = activeBan(rs.getTimestamp("trade_banned_until"));
                     return new Profile(rs.getString("nickname"), rs.getString("email"),
                             rs.getString("profile_image_url"), rs.getBoolean("profile_completed"),
                             rs.getTimestamp("reset_used_at") == null,
                             nextChange == null || !clock.instant().isBefore(nextChange),
-                            nextChange == null ? null : nextChange.toString());
+                            nextChange == null ? null : nextChange.toString(),
+                            "ADMIN".equalsIgnoreCase(rs.getString("role")),
+                            bannedUntil == null ? null : bannedUntil.toString(),
+                            bannedUntil == null ? null : rs.getString("trade_ban_reason"));
                 }, userId);
+    }
+
+    /** 관리자가 건 거래 제한이 남아 있으면 주문을 받지 않는다. 기존 주문 취소는 막지 않는다. */
+    public void requireTradingAllowed(long userId) {
+        var rows = jdbc.query("SELECT trade_banned_until, trade_ban_reason FROM users WHERE id = ?",
+                (rs, row) -> new Object[] { activeBan(rs.getTimestamp(1)), rs.getString(2) }, userId);
+        if (rows.isEmpty() || rows.get(0)[0] == null) return;
+        String until = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .format(((Instant) rows.get(0)[0]).atZone(ATTENDANCE_ZONE));
+        String reason = (String) rows.get(0)[1];
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "거래가 제한된 계정입니다. " + until + "까지 주문할 수 없습니다." + (reason == null || reason.isBlank() ? "" : " (사유: " + reason + ")"));
+    }
+
+    private Instant activeBan(Timestamp until) {
+        return until != null && clock.instant().isBefore(until.toInstant()) ? until.toInstant() : null;
     }
 
     static final int NICKNAME_MIN_LENGTH = 2;
@@ -199,6 +219,9 @@ public class AuthService {
         return uidMatches || emailMatches;
     }
 
+    /** 관리자가 부적절한 닉네임을 비울 때도 신규 가입과 같은 형식을 쓴다. */
+    String generateNickname() { return defaultNickname(); }
+
     private String defaultNickname() {
         for (int attempt = 0; attempt < 20; attempt++) {
             String nickname = String.format("슈엔단%04d", ThreadLocalRandom.current().nextInt(10_000));
@@ -239,9 +262,10 @@ public class AuthService {
         }
     }
     public record Profile(String nickname, String email, String profileImageUrl, boolean profileCompleted,
-                          boolean resetAvailable, boolean nicknameChangeAvailable, String nicknameChangeAvailableAt) {
+                          boolean resetAvailable, boolean nicknameChangeAvailable, String nicknameChangeAvailableAt,
+                          boolean admin, String tradeBannedUntil, String tradeBanReason) {
         public Profile(String nickname, String email, String profileImageUrl, boolean profileCompleted) {
-            this(nickname, email, profileImageUrl, profileCompleted, true, true, null);
+            this(nickname, email, profileImageUrl, profileCompleted, true, true, null, false, null, null);
         }
     }
     public record ProfileUpdate(String nickname, String profileImageUrl) { }

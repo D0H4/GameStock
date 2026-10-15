@@ -168,4 +168,34 @@ class AuthServiceTest {
 
         verify(jdbc).update("UPDATE users SET profile_image_url = ?, profile_completed = TRUE WHERE id = ?", "", 7L);
     }
+
+    @Test void activeTradeBanBlocksOrdersAndShowsOnProfile() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("nickname")).thenReturn("원래닉네임");
+        when(rs.getTimestamp("trade_banned_until")).thenReturn(Timestamp.from(NOW.plus(Duration.ofDays(2))));
+        when(rs.getTimestamp(1)).thenReturn(Timestamp.from(NOW.plus(Duration.ofDays(2))));
+        when(rs.getString(2)).thenReturn("부계정 의심");
+        when(jdbc.queryForObject(anyString(), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                ((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0));
+        when(jdbc.query(startsWith("SELECT trade_banned_until"), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                java.util.List.of(((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0)));
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertEquals(NOW.plus(Duration.ofDays(2)).toString(), auth.profile(7L).tradeBannedUntil());
+        var error = assertThrows(ResponseStatusException.class, () -> auth.requireTradingAllowed(7L));
+        assertEquals(403, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("부계정 의심"));
+    }
+
+    @Test void expiredTradeBanAllowsOrders() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getTimestamp(1)).thenReturn(Timestamp.from(NOW.minusSeconds(1)));
+        when(jdbc.query(startsWith("SELECT trade_banned_until"), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                java.util.List.of(((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0)));
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertDoesNotThrow(() -> auth.requireTradingAllowed(7L));
+    }
 }

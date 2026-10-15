@@ -27,7 +27,7 @@ export function Panel({ id, title, meta, action, hideHeader = false, level = 2, 
         ? "/news"
         : route.name === "ranking"
           ? "/ranking"
-          : route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge" || route.name === "loan"
+          : route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge" || route.name === "loan" || route.name === "admin"
             ? `/${route.name}`
           : "/";
   const Heading = level === 2 ? "h2" : "h3";

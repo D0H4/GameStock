@@ -11,6 +11,7 @@ export type Route =
   | { name: "charge" }
   | { name: "loan" }
   | { name: "titles" }
+  | { name: "admin" }
   | { name: "login"; method: LoginMethod };
 
 export type LoginMethod = "choose" | "google" | "email" | "register" | "reset";
@@ -35,6 +36,7 @@ function parse(pathname: string): Route {
   if (parts[0] === "charge") return { name: "charge" };
   if (parts[0] === "loan") return { name: "loan" };
   if (parts[0] === "titles") return { name: "titles" };
+  if (parts[0] === "admin") return { name: "admin" };
   return { name: "home" };
 }
 

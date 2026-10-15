@@ -101,7 +101,11 @@ public class MarketController {
 
     @PostMapping("/orders")
     @ResponseStatus(HttpStatus.CREATED)
-    public java.util.concurrent.CompletableFuture<OrderResult> order(@RequestBody OrderRequest request, @RequestHeader(value = "Authorization", required = false) String authorization) { return orders.submit(auth.requireUser(authorization).id(),request); }
+    public java.util.concurrent.CompletableFuture<OrderResult> order(@RequestBody OrderRequest request, @RequestHeader(value = "Authorization", required = false) String authorization) {
+        long userId = auth.requireUser(authorization).id();
+        auth.requireTradingAllowed(userId);
+        return orders.submit(userId, request);
+    }
 
     @DeleteMapping("/orders/{orderId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -15,6 +15,8 @@ CREATE TABLE users (
   role VARCHAR(20) NOT NULL DEFAULT 'USER',
   account_reset_at TIMESTAMP NULL,
   reset_used_at TIMESTAMP NULL,
+  trade_banned_until TIMESTAMP NULL,
+  trade_ban_reason VARCHAR(200) NULL,
   cash BIGINT NOT NULL DEFAULT 1000000,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
