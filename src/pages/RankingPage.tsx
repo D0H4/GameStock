@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "../lib/api";
 import { useAuthUser } from "../lib/auth";
 import { DEFAULT_PROFILE_AVATAR } from "../lib/profileAvatars";
+import { titleColor } from "../lib/titles";
 
 type RankingEntry = {
   rank: number;
@@ -157,7 +158,7 @@ function RankingRow({ entry, percent, mine = false }: { entry: Omit<RankingEntry
           />
           <span className="ranking-name-text">
             {entry.equippedTitle && (
-              <span className={`ranking-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`} title={entry.equippedTitle}>{entry.equippedTitle}</span>
+              <span className={`ranking-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`} title={entry.equippedTitle} style={{ color: titleColor(entry.equippedTitle) }}>{entry.equippedTitle}</span>
             )}
             <span className="ranking-nickname" title={entry.nickname}>{entry.nickname}</span>
           </span>

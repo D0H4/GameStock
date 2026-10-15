@@ -137,6 +137,8 @@
   .title-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--step-2); font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
   .title-condition { display: block; margin-top: 2px; font-size: var(--step-0); color: var(--ink-muted); }
   .title-row.is-locked .title-name { color: var(--ink-muted); }
+  /* 미획득 칭호도 고유 색을 보여 주되 흐리게 둔다. */
+  .title-row.is-locked .title-name-text { opacity: 0.55; }
   .title-row.is-locked .title-condition { color: var(--ink-faint); }
   .title-crown {
     padding: 1px 7px; border-radius: var(--radius-pill); font-size: var(--step--1); font-weight: 700;

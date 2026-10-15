@@ -48,6 +48,48 @@ function withSpecialTitles(status: TitleStatus): TitleStatus {
   return { ...status, titles: [...status.titles, ...missing], totalCount: status.totalCount + missing.length };
 }
 
+/** 칭호 이름마다 뜻에 어울리는 글씨색. 칭호 페이지와 랭킹에서 같이 쓴다. */
+const TITLE_COLORS: Record<string, string> = {
+  "뉴비": "#5a9a2f",
+  "개미": "#7a5230",
+  "소액 자산가": "#2f8f83",
+  "중산층 자산가": "#2f6fb5",
+  "1억원의 사나이": "#2e8b57",
+  "10억원의 사나이": "#0f7f73",
+  "30억원의 사나이": "#1f5fae",
+  "50억원의 사나이": "#3346b8",
+  "100억의 사나이": "#c2410c",
+  "세계1위 부자": "#d6336c",
+  "흑우": "#1a1a1a",
+  "호구": "#e0708f",
+  "주식못함": "#5b6b8c",
+  "큰손": "#b45309",
+  "대주주": "#1e3a8a",
+  "스타터": "#0891b2",
+  "일주일 개근": "#65a30d",
+  "한달 개근": "#16a34a",
+  "개근상": "#d97706",
+  "투자 준비생": "#0284c7",
+  "단타충": "#dc2626",
+  "존버의 신": "#0f766e",
+  "인생은 한방": "#ea580c",
+  "칭호 수집가": "#4b7bec",
+  "칭호 컬렉터": "#0d9488",
+  "칭호 컬렉팅 마스터": "#be185d",
+  "칭호 올컬렉터": "#b91c1c",
+  "슈엔젤": "#8b3fd9",
+  "미실리스 대주주": "#8b3fd9",
+  "슈아가": "#8b3fd9",
+  "주간 수익률 3위": "#b8916a",
+  "주간 수익률 2위": "#a0a4ab",
+  "주간 수익률 1위": "#d4a017",
+};
+
+/** 칭호 이름(주간 칭호의 "n관왕" 꼬리 포함)에 맞는 글씨색. 모르는 칭호면 undefined. */
+export function titleColor(label: string): string | undefined {
+  return TITLE_COLORS[label] ?? TITLE_COLORS[label.replace(/\s+\d+관왕$/, "")];
+}
+
 /** 주간 칭호는 "주간 수익률 1위 2관왕"처럼 횟수를 붙여 보여 준다. */
 export function titleLabel(title: UserTitle): string {
   return title.weekly && title.owned ? `${title.name} ${title.count}관왕` : title.name;
