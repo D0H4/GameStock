@@ -9,8 +9,13 @@ import { useMarketApi } from "../market/MarketProvider";
 import type { DailyMissionStatus } from "../market/types";
 import { navigate } from "../router";
 
-const MISSION_IDS = ["market", "news", "watch", "ranking", "portfolio", "home", "settings"] as const;
-const DAILY_MISSION_COUNT = 5;
+const MISSION_IDS = [
+  "market", "news", "watch", "ranking", "portfolio", "home", "settings",
+  "trade", "loan", "titles",
+  "stock-gov", "stock-uma", "stock-ba", "stock-gi", "stock-sr",
+  "stock-zzz", "stock-crk", "stock-vr", "stock-ow", "stock-pw",
+] as const;
+const DAILY_MISSION_COUNT = 3;
 const MISSION_REWARD_CASH = 50_000;
 type MissionId = (typeof MISSION_IDS)[number];
 type MissionProgress = { userId: string; status: DailyMissionStatus; expiresAt: number };
@@ -23,7 +28,24 @@ const labels: Record<MissionId, { title: string; description: string; action: st
   portfolio: { title: "내 계좌 확인", description: "보유 종목과 평가손익을 한눈에 확인해보세요.", action: "내 계좌 보기", href: "/mypage" },
   home: { title: "오늘의 시세 요약", description: "홈에서 인기 종목과 오늘의 소식을 확인해보세요.", action: "홈 보기", href: "/" },
   settings: { title: "내 투자 환경 확인", description: "프로필과 투자 환경을 확인해보세요.", action: "설정 보기", href: "/settings" },
+  trade: { title: "주문 화면 살펴보기", description: "호가와 주문창을 보며 매매 방법을 익혀보세요.", action: "주문 보기", href: "/trade" },
+  loan: { title: "대출 한도 확인", description: "내 대출 한도와 상환 조건을 확인해보세요.", action: "대출 보기", href: "/loan" },
+  titles: { title: "칭호 둘러보기", description: "획득한 칭호와 다음 칭호 조건을 확인해보세요.", action: "칭호 보기", href: "/titles" },
+  "stock-gov": stockMission("승리의 여신: 니케", "GOV"),
+  "stock-uma": stockMission("우마무스메 프리티더비", "UMA"),
+  "stock-ba": stockMission("블루 아카이브", "BA"),
+  "stock-gi": stockMission("원신", "GI"),
+  "stock-sr": stockMission("붕괴: 스타레일", "SR"),
+  "stock-zzz": stockMission("젠레스 존 제로", "ZZZ"),
+  "stock-crk": stockMission("쿠키런: 킹덤", "CRK"),
+  "stock-vr": stockMission("발로란트", "VR"),
+  "stock-ow": stockMission("오버워치", "OW"),
+  "stock-pw": stockMission("팰월드", "PW"),
 };
+
+function stockMission(name: string, code: string) {
+  return { title: `${name} 종목 분석`, description: `${name}의 차트와 시세 흐름을 확인해보세요.`, action: "종목 보기", href: `/market/${code}` };
+}
 
 const missionIdSet = new Set<string>(MISSION_IDS);
 const previewMissionIds = MISSION_IDS.slice(0, DAILY_MISSION_COUNT);

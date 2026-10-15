@@ -40,17 +40,14 @@ public class MarketService {
     private static final long STARTING_CASH = 1_000_000L;
     private static final ZoneId MISSION_ZONE = ZoneId.of("Asia/Seoul");
     private static final long MISSION_REWARD_CASH = 50_000L;
-    private static final List<String> CORE_MISSION_IDS = List.of("market", "news", "watch");
-    private static final List<String> ROTATING_MISSION_IDS = List.of("ranking", "portfolio", "home", "settings");
-    private static final int DAILY_ROTATING_MISSION_COUNT = 2;
-    private static final Map<String, Long> MISSION_REWARDS = Map.ofEntries(
-            Map.entry("market", MISSION_REWARD_CASH),
-            Map.entry("news", MISSION_REWARD_CASH),
-            Map.entry("watch", MISSION_REWARD_CASH),
-            Map.entry("ranking", MISSION_REWARD_CASH),
-            Map.entry("portfolio", MISSION_REWARD_CASH),
-            Map.entry("home", MISSION_REWARD_CASH),
-            Map.entry("settings", MISSION_REWARD_CASH));
+    static final List<String> MISSION_IDS = List.of(
+            "market", "news", "watch", "ranking", "portfolio", "home", "settings",
+            "trade", "loan", "titles",
+            "stock-gov", "stock-uma", "stock-ba", "stock-gi", "stock-sr",
+            "stock-zzz", "stock-crk", "stock-vr", "stock-ow", "stock-pw");
+    static final int DAILY_MISSION_COUNT = 3;
+    private static final Map<String, Long> MISSION_REWARDS = MISSION_IDS.stream()
+            .collect(java.util.stream.Collectors.toUnmodifiableMap(id -> id, id -> MISSION_REWARD_CASH));
     /** GameStock charges a small, transparent 0.10% commission per side. */
     private static final double TRADING_FEE_RATE = 0.001;
     /** Per-headline news influence limits used to update fair value only. */
@@ -641,12 +638,11 @@ public class MarketService {
     }
 
     static List<String> dailyMissionIds(LocalDate day) {
-        List<String> selected = new ArrayList<>(CORE_MISSION_IDS);
-        int offset = Math.floorMod(day.toEpochDay(), ROTATING_MISSION_IDS.size());
-        for (int index = 0; index < DAILY_ROTATING_MISSION_COUNT; index++) {
-            selected.add(ROTATING_MISSION_IDS.get((offset + index) % ROTATING_MISSION_IDS.size()));
-        }
-        return List.copyOf(selected);
+        // Seeding by the Korean date gives every server and every user the same random draw
+        // for the whole day, and a fresh draw at Korean midnight.
+        List<String> shuffled = new ArrayList<>(MISSION_IDS);
+        Collections.shuffle(shuffled, new Random(day.toEpochDay() * 0x9E3779B97F4A7C15L));
+        return List.copyOf(shuffled.subList(0, DAILY_MISSION_COUNT));
     }
 
     private DailyMissionStatus dailyMissionsAt(long userId, Instant now) {
