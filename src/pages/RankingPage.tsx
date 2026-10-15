@@ -156,10 +156,10 @@ function RankingRow({ entry, percent, mine = false }: { entry: Omit<RankingEntry
             }}
           />
           <span className="ranking-name-text">
-            <span className="ranking-nickname" title={entry.nickname}>{entry.nickname}</span>
             {entry.equippedTitle && (
-              <span className={`ranking-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`}>{entry.equippedTitle}</span>
+              <span className={`ranking-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`} title={entry.equippedTitle}>{entry.equippedTitle}</span>
             )}
+            <span className="ranking-nickname" title={entry.nickname}>{entry.nickname}</span>
           </span>
         </span>
       </td>

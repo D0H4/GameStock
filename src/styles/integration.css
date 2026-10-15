@@ -61,14 +61,13 @@
   /* 좁은 화면(앱)에서도 "+0.00%", "1,100,000원"이 두 줄로 끊기지 않게 한다. 남는 폭은 닉네임 칸이 줄인다. */
   .integration-ranking .ranking-page-change, .integration-ranking .ranking-page-asset { white-space: nowrap; }
   .ranking-name-cell { display: flex; align-items: center; gap: var(--space-3); min-width: 0; text-align: left; }
-  /* 장착한 칭호는 닉네임 뒤 작은 배지로 붙이고, 칸이 좁으면 닉네임 아래로 줄을 바꾼다. */
-  .ranking-name-text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; max-width: 100%; }
+  /* 장착한 칭호는 닉네임 위에 작은 색 글씨로 얹는다. 박스 없이 글자색으로만 구분한다. */
+  .ranking-name-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 100%; line-height: 1.25; }
   .ranking-title {
-    flex: none; padding: 1px 8px; border-radius: var(--radius-pill);
-    font-size: var(--step--1); font-weight: 700; line-height: 1.6; white-space: nowrap;
-    color: var(--brand-deep); background: var(--brand-wash); border: 1px solid color-mix(in oklab, var(--brand) 40%, transparent);
+    max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    font-size: var(--step--1); font-weight: 700; color: var(--brand-deep);
   }
-  .ranking-title.is-weekly { color: var(--amber-deep); background: var(--amber-wash); border-color: color-mix(in oklab, var(--amber) 45%, transparent); }
+  .ranking-title.is-weekly { color: var(--amber-deep); }
   /* 시장·속보 목록의 종목명/제목과 같은 크기로 맞춘다. */
   /* 닉네임은 글자 중간에서 줄을 바꾸지 않고 한 줄로 두며, 칸보다 길면 말줄임표로 줄인다. */
   .ranking-nickname { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--step-2); }
