@@ -74,6 +74,18 @@ class TitleServiceTest {
                     when(rs.getBoolean(anyString())).thenAnswer(i -> (Boolean) user.getOrDefault(i.getArgument(0), false));
                     return List.of(((RowMapper<?>) args[1]).mapRow(rs, 0));
                 }
+                // Checked before the portfolio branch: the display query also joins portfolios.
+                if (sql.contains("u.id IN (") && args[1] instanceof RowCallbackHandler handler) {
+                    for (Object id : java.util.Arrays.copyOfRange(args, 2, args.length)) {
+                        ResultSet rs = mock(ResultSet.class);
+                        when(rs.getLong("id")).thenReturn((Long) id);
+                        when(rs.getString("nickname")).thenReturn("user" + id);
+                        when(rs.getString("profile_image_url")).thenReturn(null);
+                        when(rs.getLong("total_asset")).thenReturn(adjustedAssets.get((Long) id));
+                        handler.processRow(rs);
+                    }
+                    return null;
+                }
                 if (sql.contains("FROM portfolios p JOIN stocks s") && args[1] instanceof RowCallbackHandler handler) {
                     for (long[] position : positions) {
                         ResultSet rs = mock(ResultSet.class);
@@ -156,6 +168,25 @@ class TitleServiceTest {
         // A second tick in the same week must not award again.
         service.awardWeeklyTitles();
         assertEquals(1, titles.get("weekly_1"));
+    }
+
+    @Test void weeklyRankingRanksTradersByReturnAndAddsViewerRow() {
+        TitleService service = service();
+        adjustedAssets.put(1L, 1_100_000L);
+        adjustedAssets.put(2L, 1_300_000L);
+        adjustedAssets.put(3L, 900_000L);
+        adjustedAssets.put(4L, 5_000_000L);
+        tradedLastWeek.addAll(List.of(1L, 2L, 3L));
+        var ranking = service.weeklyRanking(3L);
+        // User 4 did not trade this week, so a large asset does not place them.
+        assertEquals(3, ranking.participants());
+        assertEquals(List.of("user2", "user1", "user3"), ranking.entries().stream().map(TitleService.WeeklyRankingEntry::nickname).toList());
+        assertEquals(30.0, ranking.entries().get(0).weeklyReturnPercent(), 1e-9);
+        assertEquals(3, ranking.me().rank());
+        assertEquals("2026-10-12", ranking.weekStart());
+        assertEquals("2026-10-18", ranking.weekEnd());
+        assertEquals("2026-10-18T15:00:00Z", ranking.awardAt());
+        assertNull(service.weeklyRanking(4L).me());
     }
 
     @Test void onlyOwnedTitlesCanBeEquippedAndOneAtATime() {

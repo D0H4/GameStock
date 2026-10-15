@@ -39,6 +39,9 @@ public class TitleService {
     private static final ZoneId TITLE_ZONE = ZoneId.of("Asia/Seoul");
     /** Bottom-percentile cutoffs need the whole investor population; reuse it briefly. */
     private static final long POPULATION_CACHE_MILLIS = 60_000L;
+    /** Every ranking page polls the weekly ranking; one computation serves them all briefly. */
+    private static final long WEEKLY_RANKING_CACHE_MILLIS = 10_000L;
+    private static final int WEEKLY_RANKING_LIMIT = 100;
     /** Real investors only, the same population as the public ranking. */
     private static final String INVESTOR_FILTER = """
             u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
@@ -49,6 +52,11 @@ public class TitleService {
     public record UserTitle(String id, String name, String description, String category, boolean weekly,
                             boolean owned, boolean equipped, int count, String acquiredAt, String updatedAt) { }
     public record TitleStatus(List<UserTitle> titles, List<UserTitle> newlyAwarded, int ownedCount, int totalCount) { }
+    public record WeeklyRankingEntry(int rank, String nickname, String profileImageUrl, long totalAsset,
+                                     double weeklyReturnPercent, String equippedTitle, boolean equippedTitleWeekly) { }
+    /** The running week's return ranking; {@code me} is the viewer's row when they take part. */
+    public record WeeklyRanking(String weekStart, String weekEnd, String awardAt, int participants,
+                                List<WeeklyRankingEntry> entries, WeeklyRankingEntry me) { }
 
     public static final List<TitleDefinition> TITLES = List.of(
             new TitleDefinition("newbie", "뉴비", "계정으로 처음 로그인", "자산", false),
@@ -111,6 +119,7 @@ public class TitleService {
     private final TransactionTemplate transactions;
     private Clock clock = Clock.systemUTC();
     private volatile Population population;
+    private volatile LiveWeek liveWeek;
 
     public TitleService(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
@@ -400,17 +409,32 @@ public class TitleService {
     }
 
     private void awardWeek(LocalDate weekStart, LocalDate weekEnd) {
+        List<WeeklyReturn> returns = weeklyReturns(weekStart, weekEnd.atStartOfDay(TITLE_ZONE).toInstant());
+        for (int index = 0; index < Math.min(3, returns.size()); index++) {
+            long userId = returns.get(index).userId;
+            int rank = index + 1;
+            // "N위 이내" titles: 1st place also earns the 2nd and 3rd place titles.
+            for (int title = rank; title <= 3; title++) awardWeekly(userId, "weekly_" + title);
+        }
+        log.info("{} 주간 수익률 칭호 지급 완료 ({}명 참여)", weekStart, returns.size());
+    }
+
+    /**
+     * Returns from the week's baseline, best first. Only investors who traded between
+     * the week start and {@code to} take part; the Monday award and the live ranking share this.
+     */
+    private List<WeeklyReturn> weeklyReturns(LocalDate weekStart, Instant to) {
         Instant from = weekStart.atStartOfDay(TITLE_ZONE).toInstant();
-        Instant to = weekEnd.atStartOfDay(TITLE_ZONE).toInstant();
         Map<Long, Long> baselines = new HashMap<>();
         jdbc.query("SELECT user_id, baseline_asset FROM weekly_return_snapshots WHERE week_start = ?",
                 rs -> { baselines.put(rs.getLong(1), rs.getLong(2)); }, java.sql.Date.valueOf(weekStart));
+        // Per-user EXISTS probes ride the (buyer_id|seller_id, created_at) indexes instead of scanning the week.
         Set<Long> traded = new java.util.HashSet<>(jdbc.queryForList("""
-                SELECT buyer_id FROM trades WHERE created_at >= ? AND created_at < ?
-                UNION
-                SELECT seller_id FROM trades WHERE created_at >= ? AND created_at < ?
-                """, Long.class, Timestamp.from(from), Timestamp.from(to), Timestamp.from(from), Timestamp.from(to)));
-        List<double[]> returns = new ArrayList<>();
+                SELECT u.id FROM users u
+                WHERE (EXISTS (SELECT 1 FROM trades t WHERE t.buyer_id = u.id AND t.created_at >= ? AND t.created_at < ?)
+                   OR EXISTS (SELECT 1 FROM trades t WHERE t.seller_id = u.id AND t.created_at >= ? AND t.created_at < ?))
+                  AND """ + " " + INVESTOR_FILTER, Long.class, Timestamp.from(from), Timestamp.from(to), Timestamp.from(from), Timestamp.from(to)));
+        List<WeeklyReturn> returns = new ArrayList<>();
         for (InvestorAsset investor : investorAssets()) {
             // Only investors who traded that week compete for the weekly titles.
             if (!traded.contains(investor.userId)) continue;
@@ -418,16 +442,75 @@ public class TitleService {
             boolean resetDuringWeek = investor.resetAt != null && !investor.resetAt.toInstant().isBefore(from);
             long baseline = resetDuringWeek ? STARTING_CASH : baselines.getOrDefault(investor.userId, STARTING_CASH);
             if (baseline <= 0) continue;
-            returns.add(new double[]{investor.userId, (investor.adjustedAsset - baseline) * 100.0 / baseline});
+            returns.add(new WeeklyReturn(investor.userId, (investor.adjustedAsset - baseline) * 100.0 / baseline));
         }
-        returns.sort(Comparator.<double[]>comparingDouble(entry -> -entry[1]).thenComparingDouble(entry -> entry[0]));
-        for (int index = 0; index < Math.min(3, returns.size()); index++) {
-            long userId = (long) returns.get(index)[0];
-            int rank = index + 1;
-            // "N위 이내" titles: 1st place also earns the 2nd and 3rd place titles.
-            for (int title = rank; title <= 3; title++) awardWeekly(userId, "weekly_" + title);
+        returns.sort(Comparator.<WeeklyReturn>comparingDouble(entry -> -entry.percent).thenComparingLong(entry -> entry.userId));
+        return returns;
+    }
+
+    /**
+     * The running Korean week's return ranking, ranked the way Monday's award will rank
+     * it. The population is shared and cached briefly; only the viewer's row is per request.
+     */
+    public WeeklyRanking weeklyRanking(Long viewerId) {
+        LocalDate weekStart = LocalDate.now(clock.withZone(TITLE_ZONE)).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LiveWeek current = liveWeek;
+        long nowMillis = clock.millis();
+        if (current == null || !current.weekStart.equals(weekStart) || nowMillis - current.loadedAt >= WEEKLY_RANKING_CACHE_MILLIS) {
+            current = new LiveWeek(weekStart, weeklyReturns(weekStart, clock.instant()), nowMillis);
+            liveWeek = current;
         }
-        log.info("{} 주간 수익률 칭호 지급 완료 ({}명 참여)", weekStart, returns.size());
+        List<WeeklyReturn> returns = current.returns;
+        int viewerIndex = -1;
+        if (viewerId != null)
+            for (int index = 0; index < returns.size(); index++)
+                if (returns.get(index).userId == viewerId) { viewerIndex = index; break; }
+        int shown = Math.min(WEEKLY_RANKING_LIMIT, returns.size());
+        List<Long> ids = new ArrayList<>();
+        for (int index = 0; index < shown; index++) ids.add(returns.get(index).userId);
+        if (viewerIndex >= shown) ids.add(returns.get(viewerIndex).userId);
+        Map<Long, WeeklyRankingEntry> display = rankingDisplay(ids);
+        List<WeeklyRankingEntry> entries = new ArrayList<>(shown);
+        for (int index = 0; index < shown; index++) {
+            WeeklyRankingEntry entry = rankedEntry(display, returns.get(index), index + 1);
+            if (entry != null) entries.add(entry);
+        }
+        WeeklyRankingEntry me = viewerIndex < 0 ? null : rankedEntry(display, returns.get(viewerIndex), viewerIndex + 1);
+        return new WeeklyRanking(weekStart.toString(), weekStart.plusDays(6).toString(),
+                weekStart.plusWeeks(1).atStartOfDay(TITLE_ZONE).toInstant().toString(), returns.size(), entries, me);
+    }
+
+    private static WeeklyRankingEntry rankedEntry(Map<Long, WeeklyRankingEntry> display, WeeklyReturn result, int rank) {
+        WeeklyRankingEntry base = display.get(result.userId);
+        return base == null ? null : new WeeklyRankingEntry(rank, base.nickname(), base.profileImageUrl(), base.totalAsset(),
+                result.percent, base.equippedTitle(), base.equippedTitleWeekly());
+    }
+
+    /** Nickname, avatar, equipped title and the same net asset the overall ranking shows. */
+    private Map<Long, WeeklyRankingEntry> rankingDisplay(List<Long> userIds) {
+        Map<Long, WeeklyRankingEntry> display = new HashMap<>();
+        if (userIds.isEmpty()) return display;
+        String placeholders = String.join(",", java.util.Collections.nCopies(userIds.size(), "?"));
+        jdbc.query("""
+                SELECT u.id, u.nickname, u.profile_image_url,
+                       u.cash
+                       + COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0)
+                       + COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0)
+                       + COALESCE((SELECT SUM(p.quantity * COALESCE(pm.mark_price, s.current_price))
+                                   FROM portfolios p JOIN stocks s ON s.id = p.stock_id
+                                   LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
+                                   WHERE p.user_id = u.id AND p.quantity > 0), 0)
+                       - u.loan_balance AS total_asset,
+                       (SELECT ut.title_id FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_title,
+                       (SELECT ut.win_count FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_count
+                FROM users u WHERE u.id IN (""" + placeholders + ")", (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+            String image = com.gamestock.backend.auth.ProfileImages.sanitize(rs.getString("profile_image_url"));
+            TitleDefinition title = definition(rs.getString("equipped_title"));
+            display.put(rs.getLong("id"), new WeeklyRankingEntry(0, rs.getString("nickname"), image.isEmpty() ? null : image,
+                    rs.getLong("total_asset"), 0, title == null ? null : displayName(title, rs.getInt("equipped_count")),
+                    title != null && title.weekly()));
+        }, userIds.toArray());
+        return display;
     }
 
     /** First win starts at 1관왕; every later win adds one. */
@@ -451,6 +534,8 @@ public class TitleService {
     }
 
     private record InvestorAsset(long userId, long adjustedAsset, Timestamp resetAt) { }
+    private record WeeklyReturn(long userId, double percent) { }
+    private record LiveWeek(LocalDate weekStart, List<WeeklyReturn> returns, long loadedAt) { }
 
     private record Population(Map<Long, Integer> positionFromBottom, int size, long loadedAt) {
         /** True when the user is within the worst {@code share} of investors (at least one full slot). */

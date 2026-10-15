@@ -22,6 +22,23 @@ public class TitleController {
         return titles.status(auth.requireUser(authorization).id());
     }
 
+    /**
+     * The running week's return ranking. Public like the overall ranking; a signed-in
+     * viewer also gets their own row even when it falls below the shown list.
+     */
+    @GetMapping("/weekly-ranking")
+    public TitleService.WeeklyRanking weeklyRanking(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        Long viewerId = null;
+        if (authorization != null && !authorization.isBlank()) {
+            try {
+                viewerId = auth.requireUser(authorization).id();
+            } catch (RuntimeException expiredOrInvalid) {
+                // An expired token still sees the public ranking, just without "me".
+            }
+        }
+        return titles.weeklyRanking(viewerId);
+    }
+
     /** Grants every title whose condition now holds and reports the ones not yet announced. */
     @PostMapping("/check")
     public TitleService.TitleStatus check(@RequestHeader(value = "Authorization", required = false) String authorization) {
