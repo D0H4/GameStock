@@ -124,6 +124,8 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
     if (shortcutPending) return;
     setShortcutPending(true);
     const outcome = all ? await api.cancelAllOpenOrders() : await api.cancelOpenOrder(code);
+    // 상태 줄은 직전 주문 결과를 먼저 보여 주므로, 지우지 않으면 취소 결과가 가려진다.
+    setResult(null);
     setShortcutMessage(outcome.message);
     setShortcutPending(false);
   };

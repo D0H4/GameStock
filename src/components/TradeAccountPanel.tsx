@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { openLoginPrompt, useAuthUser } from "../lib/auth";
-import { clock, won } from "../market/format";
+import { clock, fillTime, won } from "../market/format";
 import { useMarket } from "../market/MarketProvider";
 import { LISTING_BY_CODE } from "../market/universe";
 import { TRADE_PATH } from "../router";
@@ -118,7 +118,7 @@ export function TradeAccountPanel({ code, tab, onTabChange }: { code: string; ta
             {tab === "fills" && fills.map((fill) => <tr key={fill.id}>
               <th scope="row"><Link to={TRADE_PATH(fill.code)}>{LISTING_BY_CODE[fill.code]?.name ?? fill.code}</Link></th>
               <td className={fill.side === "buy" ? "is-up" : "is-down"}>{fill.side === "buy" ? "매수" : "매도"}</td>
-              <td>{fill.qty.toLocaleString()}주</td><td>{won(fill.price)}</td><td>{won(fill.price * fill.qty)}</td><td>{clock(fill.at)}</td>
+              <td>{fill.qty.toLocaleString()}주</td><td>{won(fill.price)}</td><td>{won(fill.price * fill.qty)}</td><td>{fillTime(fill.at)}</td>
             </tr>)}
             {tab === "orders" && visibleOrders.map((order) => <tr key={order.id}>
               <th scope="row"><Link to={TRADE_PATH(order.stockCode)}>{LISTING_BY_CODE[order.stockCode]?.name ?? order.stockCode}</Link></th>

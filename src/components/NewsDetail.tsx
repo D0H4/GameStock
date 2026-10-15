@@ -3,7 +3,7 @@ import { Delta } from "./Delta";
 import { GameIcon } from "./GameIcon";
 import { Link } from "./Link";
 import { apiFetch } from "../lib/api";
-import { kstDateTime, since, won } from "../market/format";
+import { kstDateTime, recentSince, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { newsEffect } from "../market/selectors";
 import type { NewsItem } from "../market/types";
@@ -105,6 +105,7 @@ export function NewsDetail({ item }: Props) {
   const { excerpt, loading } = useExcerpt(stored.link, preloaded);
   const paragraphs = excerpt?.paragraphs.length ? excerpt.paragraphs : loading ? [] : stored.paragraphs;
   const original = excerpt?.url ?? stored.link;
+  const recent = recentSince(item.at, snapshot.updatedAt);
 
   /* 기사를 바꿀 때마다 제목으로 포커스를 옮겨 화면 낭독기가 새 본문을 읽게 한다. */
   useEffect(() => {
@@ -129,7 +130,9 @@ export function NewsDetail({ item }: Props) {
         {item.title}
       </h2>
       <p className="news-detail-time">
-        <time dateTime={new Date(item.at).toISOString()}>{kstDateTime(item.at)}</time> · {since(item.at, snapshot.updatedAt)}
+        {/* 날짜와 시각은 이미 보이므로, 1시간 안의 소식에만 "3분 전" 같은 경과 시간을 붙인다. */}
+        <time dateTime={new Date(item.at).toISOString()}>{kstDateTime(item.at)}</time>
+        {recent && <> · {recent}</>}
       </p>
 
       <dl className="news-detail-stats">

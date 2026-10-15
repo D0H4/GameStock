@@ -6,7 +6,7 @@ import { Link } from "../components/Link";
 import { Panel } from "../components/Panel";
 import { RestrictionBadge } from "../components/RestrictionBadge";
 import { apiFetch } from "../lib/api";
-import { clock as hm, serverTimestamp, won } from "../market/format";
+import { fillTime, serverTimestamp, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate, totals } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -135,7 +135,7 @@ export function MyPage() {
                     <td>{order.orderType === "LIMIT" ? "지정가" : "시장가"}</td>
                     <td className="cell-num num">{order.price > 0 ? won(order.price) : "—"}</td>
                     <td className="cell-num num">{order.quantity.toLocaleString("ko-KR")} / {order.remainingQuantity.toLocaleString("ko-KR")}주</td>
-                    <td className="cell-num num">{Number.isNaN(serverTimestamp(order.createdAt)) ? "—" : hm(serverTimestamp(order.createdAt))}</td>
+                    <td className="cell-num num">{Number.isNaN(serverTimestamp(order.createdAt)) ? "—" : fillTime(serverTimestamp(order.createdAt))}</td>
                     <td className="cell-num"><button type="button" className="account-button" onClick={() => void cancelOrder(order.id)}>취소</button></td>
                   </tr>
                 ))}
@@ -179,7 +179,7 @@ export function MyPage() {
                     <td className={fill.side === "buy" ? "is-up" : "is-down"}>{fill.side === "buy" ? "매수" : "매도"}</td>
                     <td className="cell-num num">{fill.qty}주</td>
                     <td className="cell-num num">{won(fill.price * fill.qty)}</td>
-                    <td className="cell-num num">{hm(fill.at)}</td>
+                    <td className="cell-num num">{fillTime(fill.at)}</td>
                   </tr>
                 ))}
               </tbody>

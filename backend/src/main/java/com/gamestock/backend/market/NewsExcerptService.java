@@ -63,6 +63,8 @@ public class NewsExcerptService {
                     + "news-content|view_con|viewContent|view_content|article_view|article-view|cont_view|content-body|story-body|"
                     + "entry-content|post-content|article_content|article-content|news_view|news-view|view_text|txt_area)\\b)[^>]*>",
             Pattern.CASE_INSENSITIVE);
+    /* 본문임을 직접 밝힌 요소. 클래스 이름으로 찾는 컨테이너는 페이지 전체를 감싸는 경우가 있어 이것을 먼저 쓴다. */
+    private static final Pattern ARTICLE_BODY = Pattern.compile("<[a-z]+[^>]*itemprop=[\"']articleBody[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ARTICLE_TAG = Pattern.compile("<article\\b[^>]*>", Pattern.CASE_INSENSITIVE);
     private static final Pattern PARAGRAPH = Pattern.compile("<p\\b[^>]*>(.*?)</p\\s*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern LINE_BREAKS = Pattern.compile("(?:<br\\s*/?>\\s*){1,}|</div\\s*>", Pattern.CASE_INSENSITIVE);
@@ -81,6 +83,8 @@ public class NewsExcerptService {
             Map.entry("ldquo", "“"), Map.entry("rdquo", "”"), Map.entry("middot", "·"), Map.entry("hellip", "…"),
             Map.entry("ndash", "–"), Map.entry("mdash", "—"), Map.entry("bull", "•"), Map.entry("times", "×"));
 
+    /** 저장값 형식 버전. 추출 규칙이 바뀌면 올려서 예전 규칙으로 뽑은 본문을 쓰지 않고 다시 뽑는다. */
+    static final int EXCERPT_VERSION = 2;
     private static final int PARAGRAPHS = 2;
     private static final int MIN_PARAGRAPH = 30;
     private static final int MAX_PARAGRAPH = 700;
@@ -113,6 +117,7 @@ public class NewsExcerptService {
         return thread;
     });
     private final AtomicBoolean prefetching = new AtomicBoolean();
+    private final AtomicBoolean staleCleared = new AtomicBoolean();
 
     public NewsExcerptService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -163,6 +168,12 @@ public class NewsExcerptService {
     }
 
     private void prefetchBatch() {
+        /* 예전 버전 규칙으로 뽑은 본문은 한 번 비워 미리 풀기가 다시 뽑게 한다. 화면에는 이미 쓰이지 않는다. */
+        if (staleCleared.compareAndSet(false, true)) {
+            int cleared = jdbc.update("UPDATE market_events SET excerpt = NULL, excerpt_checked_at = NULL "
+                    + "WHERE event_type = 'NEWS' AND excerpt IS NOT NULL AND excerpt NOT LIKE ?", "%\"v\":" + EXCERPT_VERSION + "%");
+            if (cleared > 0) log.info("예전 규칙으로 뽑은 뉴스 본문 {}건을 다시 뽑습니다.", cleared);
+        }
         /* 원문 주소를 못 푼 소식은 6시간 뒤 다시 시도하고, 2주 지난 소식은 클릭할 때만 푼다. */
         List<Map.Entry<Long, String>> pending = jdbc.query("""
                 SELECT id, description FROM market_events
@@ -200,7 +211,7 @@ public class NewsExcerptService {
         String value = null;
         if (excerpt.url() != null) {
             try {
-                value = json.writeValueAsString(excerpt);
+                value = json.writeValueAsString(Map.of("v", EXCERPT_VERSION, "paragraphs", excerpt.paragraphs(), "url", excerpt.url()));
             } catch (Exception error) {
                 log.debug("뉴스 본문 저장값 만들기 실패", error);
             }
@@ -209,11 +220,12 @@ public class NewsExcerptService {
                 value, key);
     }
 
-    /** market_events.excerpt에 저장된 값을 읽는다. 없거나 깨졌으면 null. */
+    /** market_events.excerpt에 저장된 값을 읽는다. 없거나 깨졌거나 예전 규칙으로 뽑은 값이면 null. */
     static Excerpt readStored(String value) {
         if (value == null || value.isBlank()) return null;
         try {
             JsonNode node = JSON.readTree(value);
+            if (node.path("v").asInt(1) < EXCERPT_VERSION) return null;
             List<String> paragraphs = new ArrayList<>();
             node.path("paragraphs").forEach(paragraph -> paragraphs.add(paragraph.asText()));
             return new Excerpt(List.copyOf(paragraphs), node.path("url").asText(null));
@@ -339,35 +351,78 @@ public class NewsExcerptService {
         }
     }
 
-    /** 본문 컨테이너를 찾아 첫 두 문단을 꺼낸다. 문단 태그가 없으면 줄바꿈 단위로, 그래도 없으면 요약 메타를 쓴다. */
+    /**
+     * 본문 컨테이너를 찾아 첫 두 문단을 꺼낸다. 문단 태그가 없으면 줄바꿈 단위로, 그래도 없으면 요약 메타를 쓴다.
+     * 컨테이너가 닫히는 곳까지만 본다. 본문을 &lt;br&gt;이나 &lt;div&gt;로만 나누는 언론사에서 컨테이너 밖의
+     * 관련 기사 목록이나 발행인 정보의 &lt;p&gt;를 본문으로 잡지 않기 위해서다.
+     */
     static List<String> extractParagraphs(String html) {
         String cleaned = NOISE.matcher(html).replaceAll(" ");
         int start = -1;
+        int end = cleaned.length();
+        Matcher articleBody = ARTICLE_BODY.matcher(cleaned);
         Matcher container = BODY_CONTAINER.matcher(cleaned);
-        if (container.find()) start = container.end();
-        else {
-            Matcher articleTag = ARTICLE_TAG.matcher(cleaned);
-            if (articleTag.find()) start = articleTag.end();
+        Matcher articleTag = ARTICLE_TAG.matcher(cleaned);
+        Matcher opening = articleBody.find() ? articleBody : container.find() ? container : articleTag.find() ? articleTag : null;
+        if (opening != null) {
+            start = opening.end();
+            end = elementEnd(cleaned, opening.start(), start);
         }
-        String region = start < 0 ? cleaned : cleaned.substring(start, Math.min(cleaned.length(), start + 200_000));
+        String region = start < 0 ? cleaned : cleaned.substring(start, end);
 
         List<String> paragraphs = new ArrayList<>();
-        Matcher paragraph = PARAGRAPH.matcher(region);
-        while (paragraph.find() && paragraphs.size() < PARAGRAPHS) addIfBody(paragraphs, paragraph.group(1));
-
-        if (paragraphs.size() < PARAGRAPHS && start >= 0) {
-            /* 문단 태그 없이 <br>로만 줄을 나누는 CMS. 다음 블록 요소 전까지만 본다. */
-            String flow = region.split("(?i)<(?:/article|section|ul|ol|h[1-6])\\b", 2)[0];
-            for (String block : LINE_BREAKS.split(flow)) {
-                if (paragraphs.size() >= PARAGRAPHS) break;
-                addIfBody(paragraphs, block);
-            }
-        }
+        /* 본문 뒤에 붙는 영상·관련 기사 목록은 보통 목록이나 소제목으로 시작한다. 그 앞부분을 먼저 보고,
+           문단이 모자랄 때만 컨테이너 전체를 본다. */
+        String flow = region.split("(?i)<(?:/article|section|ul|ol|h[1-6])\\b", 2)[0];
+        collectParagraphs(paragraphs, flow, start >= 0);
+        if (paragraphs.size() < PARAGRAPHS) collectParagraphs(paragraphs, region, false);
         if (paragraphs.isEmpty()) {
             Matcher description = OG_DESCRIPTION.matcher(html);
             if (description.find()) addIfBody(paragraphs, description.group(1));
         }
         return paragraphs;
+    }
+
+    /**
+     * 문단 태그를 먼저 보고, 모자라면 문단 태그 없이 &lt;br&gt;나 &lt;div&gt;로 줄을 나누는 CMS처럼 줄 단위로
+     * 다시 본다. 줄 단위는 문단 태그도 경계로 삼아 문서 순서를 지키고, 더 많이 찾은 쪽을 쓴다.
+     */
+    private static void collectParagraphs(List<String> paragraphs, String html, boolean lineBreaks) {
+        List<String> tagged = new ArrayList<>(paragraphs);
+        Matcher paragraph = PARAGRAPH.matcher(html);
+        while (paragraph.find() && tagged.size() < PARAGRAPHS) addIfBody(tagged, paragraph.group(1));
+        List<String> best = tagged;
+        if (tagged.size() < PARAGRAPHS && lineBreaks) {
+            List<String> lines = new ArrayList<>(paragraphs);
+            for (String block : LINE_BREAKS.split(html)) {
+                if (lines.size() >= PARAGRAPHS) break;
+                addIfBody(lines, block);
+            }
+            if (lines.size() > tagged.size()) best = lines;
+        }
+        paragraphs.clear();
+        paragraphs.addAll(best);
+    }
+
+    /**
+     * {@code tagStart}에서 열린 요소가 닫히는 위치. 같은 이름의 중첩 요소를 세어 짝을 맞춘다.
+     * 짝을 찾지 못하면 예전처럼 20만 자까지만 본다.
+     */
+    static int elementEnd(String html, int tagStart, int contentStart) {
+        Matcher name = Pattern.compile("<([a-zA-Z][a-zA-Z0-9]*)").matcher(html);
+        int fallback = Math.min(html.length(), contentStart + 200_000);
+        if (!name.find(tagStart) || name.start() != tagStart) return fallback;
+        Matcher tags = Pattern.compile("<(/?)" + name.group(1) + "\\b[^>]*?(/?)>", Pattern.CASE_INSENSITIVE).matcher(html);
+        tags.region(contentStart, html.length());
+        int depth = 1;
+        while (tags.find()) {
+            if (!tags.group(1).isEmpty()) {
+                if (--depth == 0) return tags.start();
+            } else if (tags.group(2).isEmpty()) {
+                depth++;
+            }
+        }
+        return fallback;
     }
 
     private static void addIfBody(List<String> paragraphs, String fragment) {

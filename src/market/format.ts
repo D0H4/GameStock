@@ -119,6 +119,17 @@ export function since(at: number, now: number): string {
   return day === "오늘" ? minutes(at) : `${day} ${minutes(at)}`;
 }
 
+/** 1시간 안의 소식만 "방금 / 42초 전 / 3분 전"으로 알려 준다. 그보다 오래되면 null. */
+export function recentSince(at: number, now: number): string | null {
+  return now - at < 3_600_000 ? since(at, now) : null;
+}
+
+/** 체결 시각. 오늘 체결은 12:04:31, 그 전 체결은 날짜를 붙여 "어제 23:37" / "10월 13일 17:06". */
+export function fillTime(at: number, now = Date.now()): string {
+  const day = dayLabel(at, now);
+  return day === "오늘" ? clock(at) : `${day} ${minutes(at)}`;
+}
+
 /** 공식 게시 시각을 한국 시간으로 고정해 표시한다. */
 export function kstDateTime(at: number): string {
   return kstDateTimeFormatter.format(new Date(at));
