@@ -80,6 +80,17 @@ function fallbackSnapshot(): MarketSnapshot {
   return fallbackEngine.getSnapshot();
 }
 
+function toFills(settlements: BackendSettlement[]): Portfolio["fills"] {
+  return settlements.map((trade) => ({
+    id: trade.id,
+    code: trade.stockCode,
+    side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
+    qty: trade.quantity,
+    price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0,
+    at: serverTimestamp(trade.createdAt),
+  }));
+}
+
 function toPortfolio(value?: BackendPortfolio): Portfolio {
   if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0, loanBalance: 0 };
   const positions: Record<string, Position> = {};
@@ -261,10 +272,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         const data = message.payload as { portfolio?: BackendPortfolio; settlements?: BackendSettlement[] };
         if (!firebaseAuth.currentUser || !data?.portfolio) return;
         privateRevisionRef.current++;
-        if (data.settlements) snapshotFillsRef.current = data.settlements.map((trade) => ({
-          id: trade.id, code: trade.stockCode, side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
-          qty: trade.quantity, price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0, at: serverTimestamp(trade.createdAt),
-        }));
+        if (data.settlements) snapshotFillsRef.current = toFills(data.settlements);
         setSnapshot((current) => ({ ...current, portfolio: { ...toPortfolio(data.portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
       }
     }, (ready) => { streamReadyRef.current = ready; });
@@ -303,14 +311,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             ]);
             portfolio = nextPortfolio;
             if (settlements) {
-            fills = settlements.map((trade) => ({
-              id: trade.id,
-              code: trade.stockCode,
-              side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
-              qty: trade.quantity,
-              price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0,
-              at: serverTimestamp(trade.createdAt),
-            }));
+              fills = toFills(settlements);
             } else {
               fills = snapshotFillsRef.current;
             }
@@ -456,6 +457,29 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * 주문·취소 응답에는 계좌가 없다. 웹소켓 계좌 이벤트가 늦거나 빠지면 다음 30초 조회까지
+   * 잔고가 낡으므로, 성공 직후 커밋된 계좌를 한 번 받아 온다. 그사이 웹소켓으로 더 새로운
+   * 계좌가 들어왔으면 그 값을 덮어쓰지 않는다.
+   */
+  const refreshPortfolio = async () => {
+    const owner = firebaseAuth.currentUser;
+    if (!owner) return;
+    const revision = privateRevisionRef.current;
+    try {
+      const [portfolio, settlements] = await Promise.all([
+        apiFetch<BackendPortfolio>("/api/portfolio"),
+        apiFetch<BackendSettlement[]>("/api/settlements").catch(() => null),
+      ]);
+      if (firebaseAuth.currentUser?.uid !== owner.uid || privateRevisionRef.current !== revision) return;
+      privateRevisionRef.current++;
+      if (settlements) snapshotFillsRef.current = toFills(settlements);
+      setSnapshot((current) => ({ ...current, portfolio: { ...toPortfolio(portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
+    } catch {
+      /* 다음 주기 조회나 웹소켓 이벤트가 계좌를 맞춘다. */
+    }
+  };
+
   // setSnapshot과 모듈 함수만 사용하므로 렌더마다 새로 만들어도 동작이 같다.
   const claimMissionReward = async (missionId: string) => {
     const claimant = firebaseAuth.currentUser;
@@ -511,6 +535,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             ...(request.price ? { price: request.price } : {}),
           }),
         });
+        void refreshPortfolio();
         return {
           ok: true,
           message: result.message ?? `${request.qty}주 ${request.side === "buy" ? "매수" : "매도"} 체결`,
@@ -527,6 +552,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         const target = orders.find((order) => order.stockCode === code && order.status === "OPEN");
         if (!target) return { ok: true, cancelled: 0, message: "현재 종목에 취소할 미체결 주문이 없습니다." };
         await apiFetch(`/api/orders/${target.id}`, { method: "DELETE" });
+        void refreshPortfolio();
         return { ok: true, cancelled: 1, message: "현재 종목의 미체결 주문 1건을 취소했습니다." };
       } catch (error) {
         return { ok: false, cancelled: 0, message: error instanceof Error ? error.message : "주문 취소에 실패했습니다." };
@@ -544,6 +570,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           cancelled += orders.length;
           if (orders.length < 5) break;
         }
+        if (cancelled > 0) void refreshPortfolio();
         return {
           ok: true,
           cancelled,
@@ -564,9 +591,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       void apiFetch(`/api/watchlist/${code}`, { method: exists ? "DELETE" : "PUT" })
         .then(() => {
           if (exists) return;
-          // 관심종목 미션은 서버가 등록 여부를 확인한 뒤 지급한다. 이미 받았으면 awarded=false다.
-          return claimMissionReward("watch")
-            .then((result) => { if (result.awarded) announceMissionReward(result.rewardCash); })
+          // 관심종목 미션은 서버가 등록 여부를 확인한 뒤 지급한다. 오늘 배정되지 않았거나 이미
+          // 받은 날에 요청하면 서버가 400으로 거절하므로 배정 여부를 먼저 확인한다.
+          return apiFetch<DailyMissionStatus>("/api/missions")
+            .then((missions) => {
+              if (!missions.availableMissionIds.includes("watch") || missions.completedMissionIds.includes("watch")) return;
+              return claimMissionReward("watch")
+                .then((result) => { if (result.awarded) announceMissionReward(result.rewardCash); });
+            })
             .catch(() => undefined);
         })
         .catch(() => {

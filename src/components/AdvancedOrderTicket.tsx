@@ -50,10 +50,12 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
   const quote = snapshot.quotes[code];
   const liveSuggestedLimit = quote ? (side === "buy" ? quote.asks[0]?.price ?? quote.price : quote.bids[0]?.price ?? quote.price) : null;
 
+  // 수량을 입력하기 시작하면 주문을 만드는 중이므로 단가를 더 움직이지 않는다. 보고 누른 단가와
+  // 접수되는 단가가 달라지지 않게 하기 위해서다. 주문이 끝나 수량이 비면 다시 호가를 따라간다.
   useEffect(() => {
-    if (limitPriceEditedRef.current || orderType !== "LIMIT" || liveSuggestedLimit === null) return;
+    if (limitPriceEditedRef.current || qty !== "" || orderType !== "LIMIT" || liveSuggestedLimit === null) return;
     setLimitPrice(String(roundToTick(liveSuggestedLimit)));
-  }, [liveSuggestedLimit, orderType]);
+  }, [liveSuggestedLimit, orderType, qty]);
 
   const setQuantityRatio = (ratio: number) => {
     const price = orderType === "LIMIT" && Number(limitPrice) > 0 ? Number(limitPrice) : quote?.price ?? 0;
@@ -158,6 +160,10 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
   const money = totals(snapshot);
   const loanRoom = Math.max(0, Math.floor(money.net * 0.5) - money.loan);
   const cashShort = side === "buy" && ((valid && !affordable) || result?.message === "매수 주문 가능 금액이 부족합니다.");
+  const sideLabel = side === "buy" ? "매수" : "매도";
+  const readyMessage = valid && affordable && !blocked && !priceError
+    ? (orderType === "MARKET" ? `시장가로 ${parsed.toLocaleString()}주를 ${sideLabel}합니다.` : `${won(parsedLimitPrice)}에 ${parsed.toLocaleString()}주를 ${sideLabel}합니다.`)
+    : null;
 
   const submit = async (orderSide: "buy" | "sell" = side) => {
     if (submissionPendingRef.current || shortcutPending) return;
@@ -310,7 +316,7 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
         </button>
       </div>
       <p className={`terminal-status${result ? (result.ok ? " is-success" : " is-error") : ""}`} role="status" aria-live="polite">
-        {shortcutPending ? "취소 처리 중…" : result?.message || shortcutMessage || (user ? "주문할 수량과 단가를 입력해 주세요." : "로그인 후 주문할 수 있습니다.")}
+        {shortcutPending ? "취소 처리 중…" : result?.message || shortcutMessage || (!user ? "로그인 후 주문할 수 있습니다." : readyMessage ?? "주문할 수량과 단가를 입력해 주세요.")}
       </p>
     </form>
   );
