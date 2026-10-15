@@ -102,6 +102,18 @@ final class MarketSchema {
         addUserColumnIfMissing("account_reset_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("reset_used_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("nickname_changed_at", "TIMESTAMP NULL");
+        // 모의 자금 대출: 잔액에는 쌓인 이자가 포함되고, 이자는 한국시간 하루에 한 번 붙는다.
+        addUserColumnIfMissing("loan_balance", "BIGINT NOT NULL DEFAULT 0");
+        addUserColumnIfMissing("loan_interest_on", "DATE NULL");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS loan_ledger (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL,
+                  kind VARCHAR(16) NOT NULL, amount BIGINT NOT NULL, balance_after BIGINT NOT NULL,
+                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  KEY ix_loan_ledger_user (user_id, id),
+                  CONSTRAINT fk_loan_ledger_user FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """);
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS attendance_rewards (
                   id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, rewarded_on DATE NOT NULL,

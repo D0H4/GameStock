@@ -275,7 +275,7 @@ public class TitleService {
 
     private Stats stats(long userId) {
         List<Stats> rows = jdbc.query("""
-                SELECT u.cash, u.nickname_changed_at IS NOT NULL AS nickname_changed,
+                SELECT u.cash, u.loan_balance, u.nickname_changed_at IS NOT NULL AS nickname_changed,
                        (""" + INVESTOR_FILTER + """
                        ) AS investor,
                        COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0) AS reserved_cash,
@@ -287,6 +287,7 @@ public class TitleService {
                 """, (rs, row) -> {
             Stats stats = new Stats();
             stats.cash = rs.getLong("cash");
+            stats.loanBalance = rs.getLong("loan_balance");
             stats.nicknameChanged = rs.getBoolean("nickname_changed");
             stats.investor = rs.getBoolean("investor");
             stats.reservedCash = rs.getLong("reserved_cash");
@@ -310,7 +311,7 @@ public class TitleService {
             stats.maxPositionValue = Math.max(stats.maxPositionValue, value);
             stats.assetValue += value;
         }, userId);
-        stats.totalAsset = stats.cash + stats.reservedCash + stats.unsettledCash + stats.assetValue;
+        stats.totalAsset = stats.cash + stats.reservedCash + stats.unsettledCash + stats.assetValue - stats.loanBalance;
         return stats;
     }
 
@@ -347,7 +348,7 @@ public class TitleService {
         return current;
     }
 
-    /** Asset excluding attendance and mission payouts, the basis of every return figure. */
+    /** Asset excluding attendance and mission payouts and loans, the basis of every return figure. */
     private List<InvestorAsset> investorAssets() {
         return jdbc.query("""
                 SELECT u.id, u.account_reset_at,
@@ -359,7 +360,8 @@ public class TitleService {
                                    LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
                                    WHERE p.user_id = u.id AND p.quantity > 0), 0)
                        - COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0)
-                       - COALESCE((SELECT SUM(mr.reward_cash) FROM mission_rewards mr WHERE mr.user_id = u.id), 0) AS adjusted_asset
+                       - COALESCE((SELECT SUM(mr.reward_cash) FROM mission_rewards mr WHERE mr.user_id = u.id), 0)
+                       - u.loan_balance AS adjusted_asset
                 FROM users u
                 WHERE """ + " " + INVESTOR_FILTER, (rs, row) -> new InvestorAsset(rs.getLong("id"),
                 rs.getLong("adjusted_asset"), rs.getTimestamp("account_reset_at")));
@@ -441,7 +443,7 @@ public class TitleService {
     private static String iso(Timestamp timestamp) { return timestamp == null ? null : timestamp.toInstant().toString(); }
 
     private static final class Stats {
-        long cash, reservedCash, unsettledCash, assetValue, totalAsset, rewardCash, maxPositionValue;
+        long cash, loanBalance, reservedCash, unsettledCash, assetValue, totalAsset, rewardCash, maxPositionValue;
         int maxQuantity, heldStocks, maxStreak;
         boolean nicknameChanged, investor;
 

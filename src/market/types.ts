@@ -8,6 +8,34 @@ export interface DailyMissionStatus {
   completedMissionIds: string[];
 }
 
+export interface LoanEntry {
+  id: number;
+  kind: "BORROW" | "REPAY" | "INTEREST" | "LIQUIDATION";
+  amount: number;
+  balanceAfter: number;
+  createdAt: string;
+}
+
+/** 서버가 계산한 대출 상태. 한도와 담보비율은 매 조회 시점의 시세 기준이다. */
+export interface LoanStatus {
+  balance: number;
+  limit: number;
+  available: number;
+  grossAsset: number;
+  netAsset: number;
+  cash: number;
+  /** 총 자산 ÷ 대출 잔액. 대출이 없으면 null. */
+  collateralRatio: number | null;
+  warning: boolean;
+  borrowBlocked: boolean;
+  limitRatio: number;
+  dailyInterestRate: number;
+  warningRatio: number;
+  liquidationRatio: number;
+  minAmount: number;
+  history: LoanEntry[];
+}
+
 export interface Listing {
   /** 2~3자 종목 코드. 표에서는 모노그램 배지로, URL에서는 식별자로 쓴다. */
   code: string;
@@ -145,6 +173,8 @@ export interface Portfolio {
   attendanceRewardCash?: number;
   /** 미션 보상으로 지급된 현금. 투자 수익률에서는 제외한다. */
   missionRewardCash?: number;
+  /** 갚지 않은 모의 대출 잔액(쌓인 이자 포함). 순자산과 손익에서 뺀다. */
+  loanBalance?: number;
 }
 
 export interface MarketSnapshot {

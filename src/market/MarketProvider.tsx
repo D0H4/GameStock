@@ -10,7 +10,7 @@ import { INITIAL_CASH, MarketEngine } from "./engine";
 import { stockMarketProfile } from "./marketCap";
 import { serverTimestamp } from "./format";
 import { LISTING_BY_CODE, dailyPriceBand, roundToTick } from "./universe";
-import type { DailyMissionStatus, MarketSnapshot, OrderRequest, OrderResult, Portfolio, Position, Quote, TradingRestriction } from "./types";
+import type { DailyMissionStatus, LoanStatus, MarketSnapshot, OrderRequest, OrderResult, Portfolio, Position, Quote, TradingRestriction } from "./types";
 import { BackendLoadingScreen } from "../components/BackendLoadingScreen";
 
 export interface MarketApi {
@@ -21,6 +21,8 @@ export interface MarketApi {
   toggleWatch: (code: string) => void;
   setActiveDetailCode: (code: string | null) => void;
   claimMissionReward: (missionId: string) => Promise<{ rewardCash: number; awarded: boolean; missions: DailyMissionStatus }>;
+  /** 대출을 받거나 갚고, 바뀐 계좌를 바로 화면에 반영한다. */
+  loanAction: (kind: "borrow" | "repay", amount: number) => Promise<{ message: string; loan: LoanStatus }>;
 }
 
 export type CancelOrdersResult = {
@@ -63,10 +65,11 @@ type BackendEvent = {
   articleUrl?: string | null;
 };
 type BackendPosition = { stockCode: string; quantity: number; averagePrice: number };
-type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number };
+type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number; loanBalance?: number };
 type BackendSettlement = { id: number; stockCode: string; side: string; quantity: number; grossAmount: number; createdAt: string };
 type BackendActiveOrder = { id: number; stockCode: string; status: string };
 type BackendMissionReward = { rewardCash: number; awarded: boolean; portfolio: BackendPortfolio; missions: DailyMissionStatus };
+type BackendLoanAction = { message: string; loan: LoanStatus; portfolio: BackendPortfolio };
 
 const SnapshotContext = createContext<MarketSnapshot | null>(null);
 const ApiContext = createContext<MarketApi | null>(null);
@@ -78,7 +81,7 @@ function fallbackSnapshot(): MarketSnapshot {
 }
 
 function toPortfolio(value?: BackendPortfolio): Portfolio {
-  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0 };
+  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0, loanBalance: 0 };
   const positions: Record<string, Position> = {};
   for (const item of value.positions ?? []) {
     if (!LISTING_BY_CODE[item.stockCode] || item.quantity < 1) continue;
@@ -91,6 +94,7 @@ function toPortfolio(value?: BackendPortfolio): Portfolio {
     realized: value.realizedProfitLoss ?? 0,
     attendanceRewardCash: value.attendanceRewardCash ?? 0,
     missionRewardCash: value.missionRewardCash ?? 0,
+    loanBalance: value.loanBalance ?? 0,
   };
 }
 
@@ -253,7 +257,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             bids: data.orderbook ? levels(data.orderbook.bids) : old.bids, asks: data.orderbook ? levels(data.orderbook.asks) : old.asks,
           } } };
         });
-      } else if (["AUTHENTICATED", "ACCOUNT_UPDATED", "PORTFOLIO_UPDATED", "ORDER_CANCELLED", "ORDER_EXPIRED"].includes(message.type)) {
+      } else if (["AUTHENTICATED", "ACCOUNT_UPDATED", "PORTFOLIO_UPDATED", "ORDER_CANCELLED", "ORDER_EXPIRED", "LOAN_LIQUIDATED"].includes(message.type)) {
         const data = message.payload as { portfolio?: BackendPortfolio; settlements?: BackendSettlement[] };
         if (!firebaseAuth.currentUser || !data?.portfolio) return;
         privateRevisionRef.current++;
@@ -467,6 +471,24 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     return { rewardCash: result.rewardCash, awarded: result.awarded, missions: result.missions };
   };
 
+  const loanAction = async (kind: "borrow" | "repay", amount: number) => {
+    const borrower = firebaseAuth.currentUser;
+    if (!borrower) {
+      requireSignIn("/loan");
+      throw new Error("대출은 로그인 후 이용할 수 있습니다.");
+    }
+    const result = await apiFetch<BackendLoanAction>(`/api/loan/${kind}`, { method: "POST", body: JSON.stringify({ amount }) });
+    if (firebaseAuth.currentUser?.uid === borrower.uid) {
+      privateRevisionRef.current++;
+      setSnapshot((current) => ({
+        ...current,
+        portfolio: { ...toPortfolio(result.portfolio), fills: current.portfolio.fills },
+        updatedAt: Date.now(),
+      }));
+    }
+    return { message: result.message, loan: result.loan };
+  };
+
   const api = useMemo<MarketApi>(() => ({
     orderable: (code, side) => {
       const quote = snapshot.quotes[code];
@@ -560,6 +582,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       streamRef.current?.subscribe(code ? [code] : snapshot.codes, code);
     },
     claimMissionReward,
+    loanAction,
   }), [snapshot]);
 
   return (

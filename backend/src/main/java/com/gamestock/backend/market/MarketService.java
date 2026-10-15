@@ -587,7 +587,7 @@ public class MarketService {
     @Transactional(readOnly = true)
     public List<RankingEntry> ranking() {
         List<RankingEntry> entries = jdbc.query("""
-                SELECT u.nickname, u.profile_image_url, u.cash,
+                SELECT u.nickname, u.profile_image_url, u.cash, u.loan_balance,
                        COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0) AS reserved_cash,
                        COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0) AS unsettled_cash,
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
@@ -601,8 +601,8 @@ public class MarketService {
                 LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
                 WHERE u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
                   AND COALESCE(u.role, 'USER') <> 'ADMIN'
-                GROUP BY u.id, u.nickname, u.profile_image_url, u.cash
-                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value) DESC, u.id ASC
+                GROUP BY u.id, u.nickname, u.profile_image_url, u.cash, u.loan_balance
+                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value - u.loan_balance) DESC, u.id ASC
                 LIMIT 100
                 """, (rs, row) -> {
             long assetValue = rs.getLong("asset_value");
@@ -611,7 +611,8 @@ public class MarketService {
             long unsettledCash = rs.getLong("unsettled_cash");
             long attendanceRewardCash = rs.getLong("attendance_reward_cash");
             long missionRewardCash = rs.getLong("mission_reward_cash");
-            long totalAsset = cash + reservedCash + unsettledCash + assetValue;
+            // 빌린 돈으로 순위가 오르지 않도록 랭킹 자산은 대출 잔액을 뺀 순자산이다.
+            long totalAsset = cash + reservedCash + unsettledCash + assetValue - rs.getLong("loan_balance");
             // 출석·미션 보상은 투자 성과가 아니므로 수익률에서 제외한다.
             double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash) * 100.0 / STARTING_CASH;
             // Rows saved before image validation may hold arbitrary URLs; never expose them to other viewers.
@@ -2455,10 +2456,12 @@ public class MarketService {
         // Like attendance, mission payouts are not trading performance; clients subtract both from P&L.
         long missionRewardCash = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(reward_cash), 0) FROM mission_rewards WHERE user_id = ?", Long.class, userId);
+        // 대출 잔액은 빌린 돈이라 화면에서 순자산과 손익을 계산할 때 뺀다.
+        long loanBalance = jdbc.queryForObject("SELECT loan_balance FROM users WHERE id = ?", Long.class, userId);
         long assetValue = positions.stream().mapToLong(Position::marketValue).sum();
         return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue,
                 positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash,
-                missionRewardCash);
+                missionRewardCash, loanBalance);
     }
 
     private long currentPrice(String code) {

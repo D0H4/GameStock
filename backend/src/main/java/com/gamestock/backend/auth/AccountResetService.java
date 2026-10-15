@@ -39,6 +39,7 @@ public class AccountResetService {
         jdbc.update("DELETE FROM portfolios WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM attendance_rewards WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM mission_rewards WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM loan_ledger WHERE user_id = ?", userId);
         // 상세 화면의 개인 기능도 계정 리셋 범위에 포함한다.
         jdbc.update("DELETE FROM price_alerts WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_comments WHERE user_id = ?", userId);
@@ -47,6 +48,8 @@ public class AccountResetService {
         jdbc.update("""
                 UPDATE users
                 SET cash = ?,
+                    loan_balance = 0,
+                    loan_interest_on = NULL,
                     nickname = LEFT(CONCAT('reset_', id, '_', UNIX_TIMESTAMP()), 50),
                     profile_image_url = '',
                     profile_completed = FALSE,

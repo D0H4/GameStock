@@ -170,3 +170,49 @@
 @media (prefers-reduced-motion: reduce) {
   .title-progress-fill, .title-row, .title-dot, .title-dot::after { transition: none; }
 }
+
+/* 대출 페이지: 현황 숫자, 담보비율 게이지, 빌리기·갚기 폼 두 칸. */
+@layer component {
+  .loan-alert { padding: var(--space-3) var(--space-4); border-left: 3px solid var(--brand); background: var(--brand-wash); font-size: var(--step-1); }
+  .loan-alert.is-danger { border-left-color: var(--up); background: var(--up-wash); color: var(--up-deep); }
+  .loan-summary {
+    display: grid; gap: var(--space-5); padding: var(--space-5);
+    border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper);
+  }
+  .loan-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+  .loan-figures dt { font-size: var(--step-0); color: var(--ink-muted); }
+  .loan-figures dd { margin-top: 4px; font-size: var(--step-4); font-weight: 700; white-space: nowrap; }
+  .loan-gauge { display: grid; gap: var(--space-2); --gauge: var(--down); }
+  .loan-gauge.is-warning { --gauge: var(--brand); }
+  .loan-gauge.is-danger { --gauge: var(--up); }
+  .loan-gauge-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); font-size: var(--step-1); }
+  .loan-gauge-head small { margin-left: 4px; font-size: var(--step--1); color: var(--ink-muted); }
+  .loan-gauge-head strong { font-size: var(--step-3); color: var(--gauge); }
+  .loan-gauge:not(.is-safe):not(.is-warning):not(.is-danger) .loan-gauge-head strong { color: var(--ink-muted); font-size: var(--step-1); }
+  .loan-gauge-track { position: relative; height: 8px; border-radius: 4px; background: var(--sunken); }
+  .loan-gauge-fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--gauge); opacity: .85; }
+  .loan-gauge:not(.is-safe):not(.is-warning):not(.is-danger) .loan-gauge-fill { background: var(--rule); }
+  .loan-gauge-mark { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--ink); }
+  .loan-gauge-scale { position: relative; height: 16px; font-size: var(--step--2); color: var(--ink-muted); }
+  .loan-gauge-scale span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .loan-gauge-scale span:first-child { left: 0; transform: none; }
+  .loan-rules { display: grid; gap: 2px; padding-left: 1.1em; list-style: disc; font-size: var(--step-0); color: var(--ink-muted); }
+  .loan-message.is-ok { color: var(--brand-deep); }
+  .loan-message.is-error, .loan-form .is-error { color: var(--up-deep); }
+  .loan-forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
+  .loan-form { gap: var(--space-2); }
+  .loan-form label small { margin-left: 4px; font-size: var(--step--1); }
+  .loan-form > .account-button { margin-top: var(--space-2); }
+  .loan-ratios { display: flex; gap: var(--space-1); }
+  .loan-ratios .loan-chip { flex: 1; min-height: 32px; padding: 4px 8px; font-size: var(--step-0); font-weight: 600; }
+  .head-me .loan-debt { color: var(--up-deep); }
+  .head-me .loan-debt a { margin-left: 6px; font-size: var(--step--1); color: var(--brand-deep); }
+}
+@layer responsive {
+  @media (max-width: 720px) {
+    .loan-summary { padding: var(--space-4); }
+    .loan-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .loan-figures dd { font-size: var(--step-3); }
+    .loan-forms { grid-template-columns: minmax(0, 1fr); }
+  }
+}

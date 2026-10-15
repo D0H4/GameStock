@@ -40,9 +40,10 @@ public final class MarketModels {
      */
     public record Portfolio(long cash, long assetValue, long totalAsset, List<Position> positions,
                             long unsettledCash, long unsettledAssetValue, long totalFees,
-                            long realizedProfitLoss, long attendanceRewardCash, long missionRewardCash) {
+                            long realizedProfitLoss, long attendanceRewardCash, long missionRewardCash,
+                            long loanBalance) {
         public Portfolio(long cash, long assetValue, long totalAsset, List<Position> positions) {
-            this(cash, assetValue, totalAsset, positions, 0, 0, 0, 0, 0, 0);
+            this(cash, assetValue, totalAsset, positions, 0, 0, 0, 0, 0, 0, 0);
         }
     }
 

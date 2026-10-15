@@ -8,6 +8,8 @@ import { nextTickPrice, previousTickPrice, roundToTick, tickSize } from "../mark
 import { LISTING_BY_CODE } from "../market/universe";
 import { useAuthUser } from "../lib/auth";
 import { GameIcon } from "./GameIcon";
+import { Link } from "./Link";
+import { totals } from "../market/selectors";
 import { navigate, TRADE_PATH } from "../router";
 
 const RATIOS = [
@@ -152,6 +154,10 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
   const quantityError = qty === "" ? "" : !valid ? "수량은 1~1,000주 사이의 정수로 입력해 주세요." : !affordable ? `주문 가능 수량은 최대 ${maxQty.toLocaleString()}주입니다.` : "";
   const priceError = orderType === "LIMIT" && !validLimitPrice ? "단가를 해당 가격대의 호가 단위에 맞춰 입력해 주세요." : "";
   const watched = snapshot.watch.includes(code);
+  // 서버 한도(순자산의 50% − 잔액)를 화면 시세로 어림한다. 실제 한도는 대출 화면에서 서버가 다시 계산한다.
+  const money = totals(snapshot);
+  const loanRoom = Math.max(0, Math.floor(money.net * 0.5) - money.loan);
+  const cashShort = side === "buy" && ((valid && !affordable) || result?.message === "매수 주문 가능 금액이 부족합니다.");
 
   const submit = async (orderSide: "buy" | "sell" = side) => {
     if (submissionPendingRef.current || shortcutPending) return;
@@ -253,6 +259,12 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
         </div>
         {restriction && <p className="ticket-restriction" role="status"><strong>{restriction.label}</strong> {restriction.effect}</p>}
         <div className="terminal-buying-power"><span>{side === "buy" ? "주문 가능 금액" : "매도 가능 수량"}</span><strong className="num">{user ? (side === "buy" ? won(snapshot.portfolio.cash) : `${maxQty.toLocaleString()}주`) : "로그인 필요"}</strong></div>
+        {user && side === "buy" && (loanRoom >= 10_000 || money.loan > 0) && (
+          <p className="terminal-loan-hint">
+            <span>{money.loan > 0 ? <>대출 잔액 <span className="num">{won(money.loan)}</span> · </> : null}대출 가능 <span className="num">{won(loanRoom)}</span></span>
+            {cashShort && loanRoom >= 10_000 && <Link to="/loan">대출받기 →</Link>}
+          </p>
+        )}
 
         <div className="terminal-field">
           <label htmlFor={quantityId}>수량 <small>1주 단위</small></label>

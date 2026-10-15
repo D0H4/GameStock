@@ -31,6 +31,13 @@ const ITEMS = [
     icon: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 8v8M8 12h8",
   },
   {
+    label: "대출",
+    hint: "모의 자금 빌리기 · 갚기",
+    to: "/loan",
+    match: "loan",
+    icon: "M3.5 9.5L12 4.5l8.5 5M5.5 10v7M10 10v7M14 10v7M18.5 10v7M3.5 19.5h17",
+  },
+  {
     label: "설정",
     hint: "닉네임 · 프로필 사진 · 계좌 초기화",
     to: "/settings",

@@ -27,9 +27,9 @@ export function MarketHead() {
         </p>
       </div>
       <div className="head-me">
-        <p className="head-label">내 자산</p>
+        <p className="head-label">{money.loan > 0 ? "내 순자산" : "내 자산"}</p>
         <p className="head-value is-small">
-          <PriceCell value={money.total} format={won} />
+          <PriceCell value={money.net} format={won} />
         </p>
         <p className="head-sub">
           <Delta change={money.pnl} ratio={money.pnlRate} />

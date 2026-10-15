@@ -6,6 +6,10 @@ export interface Totals {
   cash: number;
   stockValue: number;
   total: number;
+  /** 갚지 않은 대출 잔액. */
+  loan: number;
+  /** 총 자산에서 대출 잔액을 뺀 순자산. */
+  net: number;
   /** 세션 시작 자본 대비 손익. */
   pnl: number;
   pnlRate: number;
@@ -18,10 +22,12 @@ export function totals(snapshot: MarketSnapshot): Totals {
     if (quote) stockValue += quote.price * position.qty;
   }
   const total = snapshot.portfolio.cash + stockValue;
-  // 출석·미션 보상은 투자 성과가 아니므로 손익에서 뺀다. 랭킹 수익률과 같은 기준이다.
+  // 출석·미션 보상과 빌린 돈은 투자 성과가 아니므로 손익에서 뺀다. 랭킹 수익률과 같은 기준이다.
   const rewardCash = (snapshot.portfolio.attendanceRewardCash ?? 0) + (snapshot.portfolio.missionRewardCash ?? 0);
-  const pnl = total - INITIAL_CASH - rewardCash;
-  return { cash: snapshot.portfolio.cash, stockValue, total, pnl, pnlRate: pnl / INITIAL_CASH };
+  const loan = snapshot.portfolio.loanBalance ?? 0;
+  const net = total - loan;
+  const pnl = net - INITIAL_CASH - rewardCash;
+  return { cash: snapshot.portfolio.cash, stockValue, total, loan, net, pnl, pnlRate: pnl / INITIAL_CASH };
 }
 
 export interface Holding {

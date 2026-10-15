@@ -72,8 +72,8 @@ export function MyPage() {
 
       <section className="head" aria-label="계좌 요약">
         <div>
-          <p className="head-label">총 자산</p>
-          <p className="head-value">{won(money.total)}</p>
+          <p className="head-label">{money.loan > 0 ? "순자산" : "총 자산"}</p>
+          <p className="head-value">{won(money.net)}</p>
           <p className="head-sub">
             <Delta change={money.pnl} ratio={money.pnlRate} />
           </p>
@@ -87,6 +87,12 @@ export function MyPage() {
             <dt>주식</dt>
             <dd className="num">{won(money.stockValue)}</dd>
           </div>
+          {money.loan > 0 && (
+            <div className="loan-debt">
+              <dt>대출</dt>
+              <dd className="num">−{won(money.loan)}<Link to="/loan">관리</Link></dd>
+            </div>
+          )}
         </dl>
       </section>
 

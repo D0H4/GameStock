@@ -9,6 +9,7 @@ import { RankingPage } from "./pages/RankingPage";
 import { MyPage } from "./pages/MyPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ChargePage } from "./pages/ChargePage";
+import { LoanPage } from "./pages/LoanPage";
 import { TitlesPage } from "./pages/TitlesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { StatusBar } from "./components/StatusBar";
@@ -22,7 +23,7 @@ import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
 import type { Route } from "./router";
 
-const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge"]);
+const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge", "loan"]);
 
 function titleFor(route: Route): string {
   if (route.name === "market") {
@@ -39,6 +40,7 @@ function titleFor(route: Route): string {
   if (route.name === "settings") return "설정 · 슈엔증권";
   if (route.name === "titles") return "칭호 설정 · 슈엔증권";
   if (route.name === "charge") return "충전하기 · 슈엔증권";
+  if (route.name === "loan") return "대출 · 슈엔증권";
   if (route.name === "login") return "로그인 · 슈엔증권";
   return "슈엔증권";
 }
@@ -87,6 +89,7 @@ export default function App() {
         {route.name === "settings" && auth.user && <SettingsPage />}
         {route.name === "titles" && auth.user && <TitlesPage />}
         {route.name === "charge" && auth.user && <ChargePage />}
+        {route.name === "loan" && auth.user && <LoanPage />}
         {route.name === "login" && <LoginPage method={route.method} />}
       </main>
       <StatusBar />
