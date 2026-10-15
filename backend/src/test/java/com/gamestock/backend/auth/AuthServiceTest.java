@@ -198,4 +198,11 @@ class AuthServiceTest {
 
         assertDoesNotThrow(() -> auth.requireTradingAllowed(7L));
     }
+
+    @Test void adminCashIsRefilledOnlyWhenBelowCeiling() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC)).refillAdminCash(7L);
+        verify(jdbc).update("UPDATE users SET cash = ? WHERE id = ? AND cash < ?", AuthService.ADMIN_CASH, 7L, AuthService.ADMIN_CASH);
+        assertTrue(AuthService.ADMIN_CASH < (1L << 53), "must stay exact as a JavaScript number");
+    }
 }

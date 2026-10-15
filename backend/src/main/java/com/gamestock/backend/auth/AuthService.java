@@ -208,8 +208,21 @@ public class AuthService {
             user = new LoginUser(user.id(), user.nickname(), user.email(), user.profileImageUrl(),
                     user.attendanceReward(), user.attendanceStreak(), user.requiresNickname(), "ADMIN");
         }
+        if ("ADMIN".equalsIgnoreCase(user.role())) refillAdminCash(user.id());
         return grantAttendanceReward(user);
     }
+
+    /**
+     * 관리자 현금은 사실상 무제한이다. 인증된 요청마다 바닥난 만큼 다시 채우므로
+     * 주문 직전에는 항상 가득 차 있다. 체결 엔진은 커밋 시점에 현금 변동을 다시
+     * 읽으므로 출석 보상처럼 바깥에서 늘리는 갱신과 충돌하지 않는다.
+     * 화면의 숫자 정밀도(2^53)를 넘지 않도록 1000조로 둔다.
+     */
+    void refillAdminCash(long userId) {
+        jdbc.update("UPDATE users SET cash = ? WHERE id = ? AND cash < ?", ADMIN_CASH, userId, ADMIN_CASH);
+    }
+
+    static final long ADMIN_CASH = 1_000_000_000_000_000L;
 
     private boolean isConfiguredAdmin(FirebaseToken token) {
         String uid = adminGoogleUid == null ? "" : adminGoogleUid.trim();
