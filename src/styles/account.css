@@ -6,8 +6,8 @@
   .account-form label, .account-label { font-size: var(--step-0); color: var(--ink-muted); }
   .account-input-row { display: flex; align-items: stretch; gap: var(--space-2); min-width: 0; }
   .account-form input, .account-form select {
-    width: 100%; min-width: 0; height: 40px; padding: 0 var(--space-3); border: 1px solid transparent;
-    border-radius: var(--radius); background: var(--sunken); font: inherit; color: var(--ink);
+    width: 100%; min-width: 0; height: 40px; padding: 0 var(--space-3); border: 1px solid var(--ink-muted);
+    border-radius: var(--radius); background: var(--paper); font: inherit; color: var(--ink);
   }
   .account-form input::placeholder { color: var(--ink-muted); }
   .account-button {
@@ -34,8 +34,9 @@
   .account-message { padding: var(--space-3) 0; border-bottom: 1px solid var(--rule); font-size: var(--step-1); }
   .account-alert-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--space-7); }
   .account-alert-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--space-3); margin-bottom: var(--space-2); }
-  .account-price-input { display: flex; flex: 1; align-items: center; min-width: 0; background: var(--sunken); border-radius: var(--radius); }
-  .account-price-input input { text-align: right; font-variant-numeric: tabular-nums; }
+  /* 단위("원")까지 한 칸으로 보이게 경계선은 감싸는 상자가 그린다. */
+  .account-price-input { display: flex; flex: 1; align-items: center; min-width: 0; border: 1px solid var(--ink-muted); background: var(--paper); border-radius: var(--radius); }
+  .account-price-input input { border-color: transparent; text-align: right; font-variant-numeric: tabular-nums; }
   .account-price-input > span { padding-right: var(--space-3); font-size: var(--step-0); color: var(--ink-muted); }
   .account-list { display: grid; margin-top: var(--space-3); }
   .account-list li { display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-3) 0; border-bottom: 1px solid var(--rule); }

@@ -68,6 +68,7 @@
     font-size: var(--step--1); font-weight: 700; color: var(--brand-deep);
   }
   .ranking-title.is-weekly { color: var(--amber-deep); }
+  .ranking-row-mine .ranking-title:not([style*="color"]) { color: var(--brand-wine); }
   /* 시장·속보 목록의 종목명/제목과 같은 크기로 맞춘다. */
   /* 닉네임은 글자 중간에서 줄을 바꾸지 않고 한 줄로 두며, 칸보다 길면 말줄임표로 줄인다. */
   .ranking-nickname { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--step-2); }

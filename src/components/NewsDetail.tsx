@@ -94,7 +94,8 @@ export function NewsDetail({ item }: Props) {
   const api = useMarketApi();
   const heading = useRef<HTMLHeadingElement>(null);
   const quote = snapshot.quotes[item.code];
-  const effect = item.priceChangeRatio ?? newsEffect(item.priceAtPublish, quote);
+  /* 화면에 함께 보이는 발행가와 실시간 현재가로 계산해야 세 숫자가 서로 맞는다. 서버 값은 시세가 없을 때만 쓴다. */
+  const effect = quote && item.priceAtPublish > 0 ? newsEffect(item.priceAtPublish, quote) : item.priceChangeRatio ?? 0;
   const name = LISTING_BY_CODE[item.code]?.name ?? item.code;
   const watched = snapshot.watch.includes(item.code);
   const stored = useMemo(() => readDescription(item.description, item.title), [item.description, item.title]);
@@ -142,10 +143,10 @@ export function NewsDetail({ item }: Props) {
         </div>
         <div>
           <dt>현재가</dt>
-          <dd className="num">{quote ? won(quote.price) : "—"}</dd>
+          <dd className="num">{quote ? won(quote.price) : "-"}</dd>
         </div>
         <div>
-          <dt>발행 후 반영</dt>
+          <dt>발행 후 등락</dt>
           <dd><Delta change={effect} ratio={effect} showAmount={false} /></dd>
         </div>
       </dl>

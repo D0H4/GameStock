@@ -616,6 +616,23 @@
     justify-content: flex-end;
   }
 
+  .head-me.is-guest {
+    display: grid;
+    justify-items: end;
+    align-content: start;
+    gap: var(--space-2);
+    max-width: 260px;
+  }
+
+  .head-guest {
+    font-size: var(--step-1);
+    color: var(--ink-muted);
+  }
+
+  .head-me.is-guest .account-button {
+    min-height: 44px;
+  }
+
   .kv {
     display: flex;
     gap: var(--space-6);
@@ -826,10 +843,14 @@
     color: var(--amber);
   }
 
+  /* 긴 종목명 옆에서도 "관심"이 두 줄로 쪼개지지 않게 버튼은 줄지 않고, 종목명 쪽이 줄바꿈된다. */
   .watch-button.is-text {
     display: inline-flex;
+    flex: none;
     align-items: center;
     gap: 4px;
+    min-height: 44px;
+    white-space: nowrap;
     margin-left: auto;
     font-size: var(--step-1);
     color: var(--ink-muted);
@@ -871,12 +892,13 @@
     border-bottom-color: var(--brand);
   }
 
+  /* 입력칸 경계는 종이 바탕 대비 3:1 이상이어야 위치가 보인다. 회색 면만으로는 1.1:1이라 선을 둔다. */
   .control-field input {
     width: 220px;
     height: 36px;
     padding: 0 var(--space-3);
-    background: var(--sunken);
-    border: none;
+    background: var(--paper);
+    border: 1px solid var(--ink-muted);
     border-radius: var(--radius);
     font-size: var(--step-1);
   }
@@ -1269,12 +1291,29 @@
       display: none;
     }
 
+    /* 엄지로 누를 수 있게 메뉴마다 44px 정사각 이상의 영역을 준다. 간격 대신 영역이 글자를 띄운다. */
     .nav {
-      gap: var(--space-4);
+      gap: 0;
     }
 
-    .nav-link {
+    .brand,
+    .nav-link,
+    .profile-login {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      padding-block: 0;
       font-size: var(--step-1);
+    }
+
+    .panel-action {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding-inline: var(--space-2);
+      margin-right: calc(var(--space-2) * -1);
     }
 
     .head-value {
@@ -1289,6 +1328,10 @@
       justify-content: flex-start;
     }
 
+    .head-me.is-guest {
+      justify-items: start;
+    }
+
     .statusbar {
       padding-inline: var(--space-4);
     }
@@ -1296,6 +1339,10 @@
     .control-field,
     .control-field input {
       width: 100%;
+    }
+
+    .control-field input {
+      height: 44px;
     }
 
     .table th,
@@ -1328,6 +1375,10 @@
     .watch-button {
       min-width: 32px;
       min-height: 32px;
+    }
+
+    .watch-button.is-text {
+      min-height: 44px;
     }
 
     .text-button {

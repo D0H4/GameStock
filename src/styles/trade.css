@@ -226,7 +226,7 @@
     font-weight: 600;
     white-space: nowrap;
   }
-  .trade-page .terminal-tab.is-active { color: var(--brand-deep); background: var(--brand-wash); border-color: var(--brand); }
+  .trade-page .terminal-tab.is-active { color: var(--brand-wine); background: var(--brand-wash); border-color: var(--brand); }
   .trade-page .terminal-tab.is-buy.is-active { color: var(--up-deep); background: var(--up-wash); border-color: var(--up); }
   .trade-page .terminal-tab.is-sell.is-active { color: var(--down-deep); background: var(--down-wash); border-color: var(--down); }
   .trade-page .terminal-help { position: relative; margin-left: auto; }

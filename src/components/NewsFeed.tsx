@@ -26,7 +26,8 @@ export function NewsFeed({ limit, emptyMessage, compact = false, selectedId = nu
     <ol className={`news-list${compact ? " is-compact" : ""}`}>
       {items.map((item) => {
         const quote = snapshot.quotes[item.code];
-        const effect = item.priceChangeRatio ?? newsEffect(item.priceAtPublish, quote);
+        /* 본문 화면과 같은 값이 되게 발행가와 실시간 현재가로 계산한다. 서버 값은 시세가 없을 때만 쓴다. */
+        const effect = quote && item.priceAtPublish > 0 ? newsEffect(item.priceAtPublish, quote) : item.priceChangeRatio ?? 0;
         const selected = item.id === selectedId;
         return (
           <li key={item.id} className={`news-item${selected ? " is-selected" : ""}`} data-news-id={item.id}>
