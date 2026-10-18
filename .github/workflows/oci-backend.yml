@@ -54,6 +54,11 @@ jobs:
           DEPLOY_HOST: ${{ vars.OCI_SSH_HOST }}
         run: |
           set -euo pipefail
+          latest_commit=$(git ls-remote origin refs/heads/main | cut -f 1)
+          if [ "$latest_commit" != "$GITHUB_SHA" ]; then
+            echo 'A newer main commit exists; skip this superseded deployment.' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           artifact=backend/target/gamestock-backend-0.1.0.jar
           digest=$(sha256sum "$artifact" | cut -d ' ' -f 1)
           ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \

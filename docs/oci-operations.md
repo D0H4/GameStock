@@ -45,7 +45,7 @@ OCI가 운영 주문을 받은 뒤에는 오래된 Railway DB로 URL만 되돌�
 
 웹은 기존 `.github/workflows/firebase-hosting.yml`로 배포한다. 백엔드는 `.github/workflows/oci-backend.yml`이 `main`의 `backend/**` 또는 해당 워크플로 변경을 감지해 자동 배포한다. GitHub Actions에서 수동 실행도 가능하다. 다른 브랜치에 커밋하거나 로컬에서만 커밋하면 운영에는 배포되지 않는다.
 
-백엔드 배포는 배포 스크립트 검증 → Java 17 테스트·빌드 → 체크섬 검증된 JAR 전송 → 기존 프로세스 완전 종료 → 새 버전 기동 → API·스케줄러·호가 준비 확인 → 외부 HTTPS·두 WSS 경로 확인 순서다. GitHub 대기열과 서버 `flock`이 배포를 직렬화하며 진행 중인 배포를 새 push로 취소하지 않는다. 기동 교체 중 잠깐 연결이 끊길 수 있다.
+백엔드 배포는 배포 스크립트 검증 → Java 17 테스트·빌드 → 체크섬 검증된 JAR 전송 → 기존 프로세스 완전 종료 → 새 버전 기동 → API·스케줄러·호가 준비 확인 → 외부 HTTPS·두 WSS 경로 확인 순서다. GitHub 대기열과 서버 `flock`이 배포를 직렬화하며 진행 중인 배포를 새 push로 취소하지 않는다. 전송 전에 최신 `main` 커밋을 확인해 오래된 대기 작업의 뒤늦은 배포를 건너뛴다. 기동 교체 중 잠깐 연결이 끊길 수 있다.
 
 서버의 `/usr/local/sbin/gamestock-deploy`는 JAR를 커밋 SHA와 파일 SHA256으로 구분해 보관하고 활성 경로를 교체한다. 기동·로컬 준비 확인에 실패하면 이전 JAR를 다시 실행하고 Actions는 실패로 표시한다. 외부 네트워크 검사만 실패한 경우에는 이미 정상 기동한 서버를 되돌리지 않으므로 배포 로그와 현재 상태를 함께 확인한다. 최근 JAR 5개와 현재·직전 버전을 보존한다. `/var/lib/gamestock-deploy/deployed-revision`은 마지막으로 준비 확인을 통과한 커밋이다.
 
