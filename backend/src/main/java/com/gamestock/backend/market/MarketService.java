@@ -1302,8 +1302,12 @@ public class MarketService {
         MarketMakerEngine.RiskBook risk = liquidityRiskBook(code, lp);
         double fundamental=jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,stockId(code));
         fundamental=StockMarketProfile.valuationAnchor(code,reference,fundamental,news);
+        double nearbyRange=Math.max(metrics.lastPrice()*.01,tickSize(Math.round(metrics.lastPrice()))*4.0);
+        long externalBids=externalBook.bids().stream().filter(q->q.price()>=metrics.lastPrice()-nearbyRange).mapToLong(OrderBookLevel::quantity).sum();
+        long externalAsks=externalBook.asks().stream().filter(q->q.price()<=metrics.lastPrice()+nearbyRange).mapToLong(OrderBookLevel::quantity).sum();
+        double pressure=(externalBids-externalAsks)/(double)Math.max(1,externalBids+externalAsks);
         for (MarketMakerEngine.Quote quote : marketMaker.quotes(metrics, environment(code), risk,
-                tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints,fundamental)) {
+                tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints,fundamental,pressure)) {
             insertLiquidityQuote(code, lp, quote);
         }
         MatchSummary matched = matchOrders(code);

@@ -313,11 +313,42 @@ final class BatchOrderBook {
         return depth(stock,-1);
     }
     double[] depth(long stock,long excludedUser) {
+        return depth(stock,excludedUser,false);
+    }
+    /** Remote walls cannot replace executable liquidity near the last paid price. */
+    double[] nearbyDepth(long stock) {
+        return depth(stock,-1,true);
+    }
+    double[] nearbyDepth(long stock,long excludedUser) {
+        return depth(stock,excludedUser,true);
+    }
+    List<Order> resting(long stock,String direction) {
+        return List.copyOf(side(stock,direction));
+    }
+    /** Count participant bots only; humans and the LP retain their own independent orders. */
+    long participantQuantityAt(long stock,String direction,long price) {
+        return side(stock,direction).stream().filter(o->!o.market() && o.price==price
+                && accounts.get(o.user).bot && !accounts.get(o.user).liquidityProvider)
+                .mapToLong(o->o.remaining).sum();
+    }
+    double liquidityPressure(long stock,long lp) {
+        double[] external=nearbyDepth(stock,lp);
+        double resting=(external[2]-external[3])/Math.max(1,external[2]+external[3]);
+        long buys=0,sells=0;
+        for(Fill fill:fills)if(fill.buy().stock==stock && fill.taker().user!=lp) {
+            if(fill.taker().side.equals("BUY"))buys+=fill.quantity();else sells+=fill.quantity();
+        }
+        return buys+sells==0?resting:.7*(buys-sells)/(double)(buys+sells)+.3*resting;
+    }
+    private double[] depth(long stock,long excludedUser,boolean nearbyOnly) {
         double[] out={stocks.get(stock).last,stocks.get(stock).last,0,0};
+        long last=stocks.get(stock).last;
+        double distance=Math.max(last*.01,tickSize(last)*4.0);
         for(int i=0;i<2;i++) {
             var book=side(stock,i==0?"BUY":"SELL");int levels=0;long previous=-1;
             for(Order o:book) {
                 if(o.market() || o.user==excludedUser)continue;
+                if(nearbyOnly && (i==0?o.price<last-distance:o.price>last+distance))break;
                 if(previous!=o.price){if(++levels>5)break;previous=o.price;}
                 if(levels==1)out[i]=o.price;
                 out[i+2]+=o.remaining;

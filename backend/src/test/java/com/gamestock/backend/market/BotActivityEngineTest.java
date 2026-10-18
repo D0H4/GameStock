@@ -6,6 +6,70 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BotActivityEngineTest {
+    @Test void stalledEngineTrimsParticipantConcentrationAndKeepsHumanOrdersAndTwoSidedLpQuotes() {
+        var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(3,BotProfile.defaults(1).get(2),1)),1,300);
+        var accounts=new HashMap<Long,Account>();
+        accounts.put(1L,new Account(1,5000000,true,true));
+        accounts.put(2L,new Account(2,5000000,false,false));
+        accounts.put(3L,new Account(3,0,false,true));
+        var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,"ES",10000,10000,10000,10000,true));
+        var holdings=new HashMap<PositionKey,Holding>();
+        holdings.put(new PositionKey(1,1),new Holding(1000,1000,10000,0));
+        var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,0);
+        book.lpCashBudgets.put(1L,5000000L);
+        var human=book.submit(2,1,"BUY","LIMIT",50,10000,0,120000);
+        for(long id=4;id<34;id++) {
+            accounts.put(id,new Account(id,200000,false,true));
+            book.submit(id,1,"BUY","LIMIT",10,10000,id,120000);
+        }
+        var risks=Map.of(1L,new MarketMakerEngine.RiskBook(5000000,1000,1000,2000,20000000));
+        engine.act(book,Map.of(1L,observation()),Map.of(1L,10000),0,0,risks,1);
+        assertEquals(300,book.participantQuantityAt(1,"BUY",10000));
+        book.beginBatch(60000);
+        engine.act(book,Map.of(1L,observation()),Map.of(1L,10000),60000,0,risks,1);
+        assertEquals(100,book.participantQuantityAt(1,"BUY",10000));
+        assertEquals("OPEN",human.status);assertEquals(50,human.remaining);
+        assertTrue(book.fills.isEmpty());assertEquals(10000,stocks.get(1L).last);
+        assertTrue(book.working(1,1).stream().anyMatch(o->o.side.equals("BUY")));
+        assertTrue(book.working(1,1).stream().anyMatch(o->o.side.equals("SELL")));
+        assertTrue(book.accepted.size()<=200);
+    }
+
+    @Test void nearbyThinQuotesRefillBeforeDeadlineEvenWithLargeRemoteWalls() {
+        for(String code:List.of("UMA","BA","GOV","ZZZ","GI","SR","AK","WH","CRK","VR","ES","KRP","OW","PW","TR")) {
+            var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,BotProfile.defaults(1).get(2),1)),1,300);
+            var accounts=new HashMap<Long,Account>();
+            accounts.put(1L,new Account(1,0,false,true));
+            accounts.put(2L,new Account(2,5000000,true,true));
+            accounts.put(3L,new Account(3,10000000,false,false));
+            var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,code,10000,10000,10000,10000,true));
+            var holdings=new HashMap<PositionKey,Holding>();
+            holdings.put(new PositionKey(2,1),new Holding(1000,1000,10000,0));
+            holdings.put(new PositionKey(3,1),new Holding(1000,1000,10000,0));
+            var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,10000);
+            book.lpCashBudgets.put(1L,5000000L);
+            book.submit(3,1,"BUY","LIMIT",200,9000,10000,100000);
+            book.submit(3,1,"SELL","LIMIT",200,11000,10000,100000);
+            var risks=Map.of(1L,new MarketMakerEngine.RiskBook(0,1000,1000,2000,20000000));
+            engine.act(book,Map.of(1L,observation()),Map.of(1L,10000),10000,0,risks,2);
+            for(var order:book.working(2,1)) {
+                int quantity=order.remaining-2;
+                book.submit(3,1,order.side.equals("BUY")?"SELL":"BUY","LIMIT",quantity,order.price,10001,1000);
+            }
+            int fills=book.fills.size();long last=stocks.get(1L).last;
+            assertEquals(16,book.working(2,1).stream().mapToInt(o->o.remaining).sum());
+            engine.act(book,Map.of(1L,observation()),Map.of(1L,10000),10002,0,risks,2);
+            for(String side:List.of("BUY","SELL"))assertTrue(book.working(2,1).stream()
+                    .filter(o->o.side.equals(side)).mapToInt(o->o.remaining).sum()>=40,"Thin "+side+": "+code);
+            assertEquals(fills,book.fills.size(),"Replenishment must remain passive: "+code);
+            assertEquals(last,stocks.get(1L).last);
+            long reserved=accounts.keySet().stream().flatMap(id->book.working(id,1).stream()).mapToLong(o->o.reservedCash).sum();
+            long fees=book.fills.stream().mapToLong(f->f.buyerFee()+f.sellerFee()).sum();
+            assertEquals(15000000,accounts.values().stream().mapToLong(a->a.cash).sum()+reserved+fees);
+            assertEquals(2000,holdings.values().stream().mapToLong(Holding::quantity).sum());
+        }
+    }
+
     @Test void unusedLiquidityRepairSlotsRemainAvailableToFundedParticipants() {
         var accounts=new HashMap<Long,Account>();
         var participants=new ArrayList<BotActivityEngine.Participant>();
