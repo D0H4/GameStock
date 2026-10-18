@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "../components/Link";
 import { Panel } from "../components/Panel";
 import { apiFetch } from "../lib/api";
 import { useProfile } from "../lib/profile";
+import { won } from "../market/format";
+import { useRoute, type AdminSection } from "../router";
+import { AdminAudit } from "./admin/AdminAudit";
+import { AdminNotices } from "./admin/AdminNotices";
+import { AdminMemberDetail, CashAdjustment, MissionRecovery } from "./admin/AdminMember";
+import { AdminRuntime } from "./admin/AdminRuntime";
+import { AdminOrders } from "./admin/AdminOrders";
 
 type AdminUser = {
   id: number;
@@ -16,6 +24,13 @@ type AdminUser = {
   tradeBanReason: string | null;
 };
 
+const SECTIONS: { section: AdminSection; label: string; to: string }[] = [
+  { section: "users", label: "회원", to: "/admin" },
+  { section: "orders", label: "주문", to: "/admin/orders" },
+  { section: "notices", label: "공지", to: "/admin/notices" },
+  { section: "audit", label: "감사 기록", to: "/admin/audit" },
+];
+
 const BAN_PRESETS = [1, 3, 7, 30] as const;
 
 const formatTime = (value: string | null) =>
@@ -24,6 +39,8 @@ const formatTime = (value: string | null) =>
 /** 관리자 전용 화면. 서버가 모든 요청에서 ADMIN 권한을 다시 확인한다. */
 export function AdminPage() {
   const profile = useProfile();
+  const route = useRoute();
+  const section = route.name === "admin" ? route.section : "users";
 
   if (!profile) return <p className="empty" role="status">권한을 확인하고 있어요.</p>;
   if (!profile.admin) return <p className="empty" role="alert">관리자만 볼 수 있는 페이지입니다.</p>;
@@ -31,7 +48,19 @@ export function AdminPage() {
   return (
     <div className="page-stack">
       <h1 className="page-title">관리자</h1>
-      <AdminUsers />
+      <AdminRuntime />
+      <nav className="admin-nav" aria-label="관리 메뉴">
+        {SECTIONS.map((item) => (
+          <Link key={item.section} to={item.to} className={`admin-nav-link${item.section === section ? " is-active" : ""}`}
+            aria-current={item.section === section ? "page" : undefined}>
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+      {section === "users" && <AdminUsers />}
+      {section === "orders" && <AdminOrders />}
+      {section === "notices" && <AdminNotices />}
+      {section === "audit" && <AdminAudit />}
     </div>
   );
 }
@@ -79,7 +108,8 @@ function AdminUsers() {
                 <th scope="col">로그인 계정</th>
                 <th scope="col">닉네임</th>
                 <th scope="col">가입</th>
-                <th scope="col">거래</th>
+                <th scope="col" className="num">현금</th>
+                <th scope="col">이용</th>
                 <th scope="col"><span className="vh">관리</span></th>
               </tr>
             </thead>
@@ -96,10 +126,11 @@ function AdminUsers() {
                     {user.role === "ADMIN" && <span className="admin-badge">관리자</span>}
                   </td>
                   <td className="num">{formatTime(user.createdAt)}</td>
+                  <td className="num admin-cash">{won(user.cash)}</td>
                   <td>
                     {user.tradeBannedUntil
                       ? <span className="admin-banned" title={user.tradeBanReason ?? ""}>~{formatTime(user.tradeBannedUntil)}</span>
-                      : <span className="admin-ok">가능</span>}
+                      : <span className="admin-ok">정상</span>}
                   </td>
                   <td>
                     <button type="button" className="text-button" aria-expanded={user.id === selectedId}
@@ -110,7 +141,7 @@ function AdminUsers() {
                 </tr>
               ))}
               {!loading && users.length === 0 && (
-                <tr><td colSpan={6} className="empty">검색 결과가 없습니다.</td></tr>
+                <tr><td colSpan={7} className="empty">검색 결과가 없습니다.</td></tr>
               )}
             </tbody>
           </table>
@@ -127,6 +158,10 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
   const [nickname, setNickname] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  // 현금 조정·보상 복구가 끝나면 자산을 다시 읽는다.
+  const [assetsVersion, setAssetsVersion] = useState(0);
+  const refreshAssets = () => setAssetsVersion((version) => version + 1);
+  const syncCash = (cash: number) => { if (cash !== user.cash) onChange({ ...user, cash }); };
 
   const run = async (action: () => Promise<AdminUser>, done: string) => {
     setBusy(true);
@@ -144,19 +179,19 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
   const ban = () => {
     const value = Number(days);
     if (!Number.isInteger(value) || value < 1 || value > 365) {
-      setMessage("제한 기간은 1~365일로 입력해 주세요.");
+      setMessage("정지 기간은 1~365일로 입력해 주세요.");
       return;
     }
-    if (!window.confirm(`${user.nickname} 계정의 거래를 ${value}일 동안 제한할까요?\n제한 중에는 모든 서비스를 이용할 수 없고, 미체결 주문은 모두 취소됩니다.`)) return;
+    if (!window.confirm(`${user.nickname} 계정을 ${value}일 동안 이용 정지할까요?\n정지 중에는 로그인과 정지 안내만 볼 수 있고, 미체결 주문은 모두 취소됩니다.`)) return;
     void run(() => apiFetch<AdminUser>(`/api/admin/users/${user.id}/trade-ban`, {
       method: "PUT",
       body: JSON.stringify({ days: value, reason }),
-    }), `${value}일 거래 제한을 걸었습니다.`);
+    }), `${value}일 이용 정지했습니다.`);
   };
 
   const lift = () => {
-    if (!window.confirm(`${user.nickname} 계정의 거래 제한을 풀까요?`)) return;
-    void run(() => apiFetch<AdminUser>(`/api/admin/users/${user.id}/trade-ban`, { method: "DELETE" }), "거래 제한을 해제했습니다.");
+    if (!window.confirm(`${user.nickname} 계정의 이용 정지를 해제할까요?`)) return;
+    void run(() => apiFetch<AdminUser>(`/api/admin/users/${user.id}/trade-ban`, { method: "DELETE" }), "이용 정지를 해제했습니다.");
   };
 
   const rename = () => {
@@ -178,11 +213,13 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
   };
 
   return (
-    <Panel id="admin-user-actions" title={`${user.nickname} 관리`} meta={`#${user.id} · ${user.email || "이메일 없음"}`} level={3}>
+    <Panel id="admin-user-actions" title={user.nickname} meta={`#${user.id} ${user.email || "이메일 없음"}`} level={3}>
+      <AdminMemberDetail userId={user.id} refreshKey={assetsVersion} onCash={syncCash} />
+      <h4 className="admin-actions-heading">조치</h4>
       {message && <p className="account-message" role="status">{message}</p>}
       <div className="admin-actions">
         <section className="account-form" aria-labelledby="admin-ban-title">
-          <h4 id="admin-ban-title" className="admin-action-title">거래 제한</h4>
+          <h4 id="admin-ban-title" className="admin-action-title">이용 정지</h4>
           {user.tradeBannedUntil ? (
             <>
               <p className="account-hint">
@@ -190,13 +227,13 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
                 {user.tradeBanReason && <> 사유: {user.tradeBanReason}</>}
               </p>
               <div className="account-input-row">
-                <button type="button" className="account-button" disabled={busy} onClick={lift}>제한 해제</button>
+                <button type="button" className="account-button" disabled={busy} onClick={lift}>정지 해제</button>
               </div>
             </>
           ) : (
-            <p className="account-hint">새 주문만 막습니다. 이미 넣은 주문 취소는 가능합니다.</p>
+            <p className="account-hint">정지 중에는 로그인과 정지 안내만 볼 수 있습니다. 미체결 주문은 바로 취소됩니다.</p>
           )}
-          <div className="admin-presets" role="group" aria-label="제한 기간 빠른 선택">
+          <div className="admin-presets" role="group" aria-label="정지 기간 빠른 선택">
             {BAN_PRESETS.map((preset) => (
               <button key={preset} type="button" className={`text-button${days === String(preset) ? " is-active" : ""}`}
                 aria-pressed={days === String(preset)} onClick={() => setDays(String(preset))}>{preset}일</button>
@@ -208,7 +245,7 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
           <div className="account-input-row">
             <input id="admin-ban-reason" value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} />
             <button type="button" className="account-button is-danger" disabled={busy || user.role === "ADMIN"} onClick={ban}>
-              {user.tradeBannedUntil ? "다시 설정" : "거래 제한"}
+              {user.tradeBannedUntil ? "기간 다시 설정" : "이용 정지"}
             </button>
           </div>
         </section>
@@ -222,6 +259,15 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
             <button type="button" className="account-button is-primary" disabled={busy} onClick={rename}>변경</button>
           </div>
         </section>
+
+        {user.role === "ADMIN" ? (
+          <p className="account-hint admin-actions-wide">관리자 계정에는 현금 조정과 보상 복구를 할 수 없습니다.</p>
+        ) : (
+          <>
+            <CashAdjustment userId={user.id} nickname={user.nickname} cash={user.cash} onDone={refreshAssets} />
+            <MissionRecovery userId={user.id} nickname={user.nickname} onDone={refreshAssets} />
+          </>
+        )}
       </div>
     </Panel>
   );

@@ -1,7 +1,7 @@
 /* Admin tools reuse the account form controls and the shared table. */
 @layer component {
   .admin-table-scroll { margin-top: var(--space-4); }
-  .admin-table { min-width: 720px; }
+  .admin-table { min-width: 800px; }
   .admin-table tr.is-selected td { background: var(--sunken); }
   .admin-email { display: block; }
   .admin-uid { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--step--1); color: var(--ink-muted); }
@@ -12,6 +12,162 @@
   .admin-action-title { font-size: var(--step-1); font-weight: 700; }
   .admin-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
   .admin-presets .is-active { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* 관리 메뉴. 랭킹 탭과 같은 밑줄 탭이지만 화면 주소가 바뀌는 링크다. */
+  .admin-nav { display: flex; gap: var(--space-5); overflow-x: auto; border-bottom: 1px solid var(--rule); }
+  .admin-nav-link {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 0 2px;
+    font-size: var(--step-1); color: var(--ink-muted); text-decoration: none; white-space: nowrap;
+  }
+  .admin-nav-link:hover { color: var(--ink); }
+  .admin-nav-link.is-active { color: var(--brand-wine); font-weight: 700; box-shadow: inset 0 -3px 0 var(--brand); }
+
+  .admin-cash { white-space: nowrap; }
+
+  /*
+   * 운영 상태 줄. 평소에는 종이 위의 조용한 한 줄이다. 시장·봇이 멈추거나 DB 저장이
+   * 막히면 전광판 면으로 바뀌고 멈춘 것만 LED 붉은색으로 말한다. 이 화면에서
+   * 색 면이 나타나는 곳은 여기 하나다.
+   */
+  .runtime-bar { display: grid; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--rule); font-size: var(--step-0); color: var(--ink-muted); }
+  .runtime-bar.is-loading { color: var(--up-deep); }
+  .runtime-states { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+  .runtime-states li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
+  .runtime-toggle {
+    min-height: 32px; padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; color: var(--brand-deep); text-decoration: underline; text-underline-offset: 3px;
+  }
+  .runtime-bar.is-alarm {
+    padding: var(--space-3) var(--space-4); border-bottom: 0; border-radius: var(--radius);
+    background: var(--board); color: var(--board-label);
+  }
+  .runtime-bar.is-alarm .is-paused .runtime-state { color: var(--led-up); font-weight: 600; }
+  .runtime-bar.is-alarm .runtime-toggle { color: var(--led); }
+  .runtime-form { display: grid; gap: 6px; max-width: 640px; }
+  .runtime-note { color: inherit; }
+  .runtime-form label { font-size: var(--step--1); }
+  .runtime-form-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .runtime-form input {
+    flex: 1 1 260px; min-width: 0; height: 40px; padding: 0 var(--space-3);
+    border: 1px solid var(--ink-muted); border-radius: var(--radius); background: var(--paper); font: inherit; color: var(--ink);
+  }
+  .runtime-bar.is-alarm .text-button { color: var(--board-label); }
+  .runtime-message { color: inherit; }
+  .runtime-bar:not(.is-alarm) .runtime-message { color: var(--ink); }
+
+  /* 회원 상세. 자산은 카드가 아니라 장부 한 줄이고, 총자산만 굵게 선다. */
+  .member { display: grid; gap: var(--space-4); margin-bottom: var(--space-5); }
+  .member-ledger { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); margin: 0; padding-bottom: var(--space-3); border-bottom: 1px solid var(--rule); }
+  .member-ledger dt { font-size: var(--step--1); color: var(--ink-muted); }
+  .member-ledger dd { margin: 0; font-size: var(--step-2); font-weight: 600; }
+  .member-ledger .is-total { margin-left: auto; text-align: right; }
+  .member-ledger .is-total dd { font-size: var(--step-3); font-weight: 700; }
+  .member-ledger .is-debt { color: var(--up-deep); }
+  .member-note { margin-top: calc(var(--space-2) * -1); font-size: var(--step--1); color: var(--ink-muted); }
+  .member-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); }
+  .member-title { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-2); font-size: var(--step-1); font-weight: 700; }
+  .member-more { margin-left: auto; font-size: var(--step-0); font-weight: 400; color: var(--brand-deep); }
+  .member-table td { white-space: nowrap; }
+  .member-empty { padding: var(--space-3) 0; font-size: var(--step-0); color: var(--ink-muted); }
+  .member-orders { font-size: var(--step-0); }
+  .member-orders li {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: baseline; gap: var(--space-3);
+    padding: 6px 0; border-bottom: 1px solid var(--rule);
+  }
+  .member-orders li > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .member-order-time { font-size: var(--step--1); color: var(--ink-muted); }
+  .member-order-status { color: var(--ink-muted); }
+
+  /*
+   * 공지 편집. 왼쪽은 목록과 입력, 오른쪽은 사용자가 처음 들어올 때 뜨는 창을
+   * 같은 마크업으로 띄운 미리보기다. 미리보기 무대는 실제 창의 흐린 배경색을 쓴다.
+   */
+  .notice-admin { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); gap: var(--space-6); align-items: start; }
+  .notice-editor { display: grid; gap: var(--space-5); min-width: 0; }
+  .notice-list-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .notice-list-head .member-title { margin-bottom: 0; }
+  .notice-list { border-top: 1px solid var(--rule); }
+  .notice-list-item {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3);
+    width: 100%; min-height: 44px; padding: var(--space-2); border: 0; border-bottom: 1px solid var(--rule);
+    background: none; font: inherit; font-size: var(--step-0); color: var(--ink); text-align: left; cursor: pointer;
+  }
+  .notice-list-item:hover { background: var(--sunken); }
+  .notice-list-item.is-selected { background: var(--brand-wash); box-shadow: inset 3px 0 0 var(--brand); }
+  .notice-list-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .notice-list-time { font-size: var(--step--1); color: var(--ink-muted); }
+  .notice-state { min-width: 4em; font-size: var(--step--1); color: var(--ink-muted); }
+  .notice-state.is-live { color: var(--brand-deep); font-weight: 700; }
+  .notice-form textarea {
+    width: 100%; min-height: 120px; padding: var(--space-2) var(--space-3); border: 1px solid var(--ink-muted);
+    border-radius: var(--radius); background: var(--paper); font: inherit; line-height: 1.6; color: var(--ink); resize: vertical;
+  }
+  .notice-check { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); font-size: var(--step-1); color: var(--ink); }
+  .account-form .notice-check input { width: 18px; height: 18px; padding: 0; accent-color: var(--brand-deep); }
+  .notice-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+
+  .notice-preview { position: sticky; top: calc(var(--bar) + var(--space-4)); display: grid; gap: var(--space-2); }
+  .notice-preview-label { font-size: var(--step-0); color: var(--ink-muted); }
+  .notice-preview-stage {
+    display: grid; place-items: center; min-height: 320px; padding: var(--space-5) var(--space-4);
+    border-radius: var(--radius); background: rgb(25 22 30 / 38%);
+  }
+  .notice-preview-card {
+    width: 100%; max-height: 70vh; overflow-y: auto;
+    /* 실제 공지 창의 계산된 모습과 같게: 테두리·그림자 없이 둥근 종이 한 장. */
+    border-radius: 20px; background: var(--paper); color: var(--ink);
+  }
+  .notice-preview-card .circuit-notice-confirm { pointer-events: none; }
+  .notice-preview-empty { max-width: 28ch; font-size: var(--step-0); color: var(--paper); text-align: center; }
+
+  .admin-actions-heading { margin-bottom: var(--space-3); padding-top: var(--space-4); border-top: var(--rule-heavy); font-size: var(--step-2); font-weight: 700; }
+  .admin-actions-wide { grid-column: 1 / -1; }
+  .admin-form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .admin-form-message { font-size: var(--step-0); color: var(--ink); }
+
+  /* 목록 조회 조건. 입력 칸은 내용 길이만큼만 차지하고 버튼은 같은 줄 끝에 선다. */
+  .admin-filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
+  .admin-filters .account-field { flex: 0 1 180px; }
+  .admin-filter-actions { display: flex; align-items: center; gap: var(--space-3); }
+  .admin-more { margin-top: var(--space-4); }
+  .admin-orders-table td { white-space: nowrap; }
+  .admin-orders-table .text-button { min-height: 0; padding: 0; text-align: left; }
+  .admin-status { color: var(--ink-muted); }
+  .admin-status.is-open, .admin-status.is-partial { color: var(--ink); font-weight: 600; }
+
+  .admin-source { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-4); }
+  .admin-source .is-active { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .admin-source-note { font-size: var(--step-0); color: var(--ink-muted); }
+
+  /* 감사 기록. 한 건이 한 단락이고, 무엇을 왜 했는지가 먼저 읽힌다. */
+  .audit-list { margin-top: var(--space-4); border-top: 1px solid var(--rule); }
+  .audit-entry { display: grid; gap: var(--space-1); padding: var(--space-3) 0; border-bottom: 1px solid var(--rule); }
+  .audit-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
+  .audit-action { font-size: var(--step-1); }
+  .audit-target { font-size: var(--step-0); }
+  .audit-meta { margin-left: auto; font-size: var(--step--1); color: var(--ink-muted); }
+  .audit-reason { max-width: 70ch; font-size: var(--step-0); color: var(--ink-muted); }
+  .audit-diff summary { width: max-content; font-size: var(--step-0); color: var(--brand-deep); cursor: pointer; }
+  .audit-diff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-top: var(--space-2); }
+  .audit-diff h4 { margin-bottom: var(--space-1); font-size: var(--step--1); font-weight: 400; color: var(--ink-muted); }
+  .audit-diff pre {
+    max-height: 320px; margin: 0; padding: var(--space-2) var(--space-3); overflow: auto;
+    background: var(--sunken); border-radius: var(--radius); font-size: var(--step--1); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 720px) {
+    .admin-filters .account-field { flex: 1 1 140px; }
+    .audit-meta { margin-left: 0; }
+    .audit-diff-grid { grid-template-columns: minmax(0, 1fr); }
+    .member-columns { grid-template-columns: minmax(0, 1fr); }
+    .notice-admin { grid-template-columns: minmax(0, 1fr); }
+    .notice-preview { position: static; }
+    .notice-list-item { grid-template-columns: auto minmax(0, 1fr); }
+    .notice-list-time { grid-column: 2; }
+    .member-ledger .is-total { margin-left: 0; text-align: left; }
+    .member-orders li { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+    .member-order-time { grid-column: 1 / -1; }
+  }
 
   /* 이용 정지 계정이 보는 안내. */
   .suspension { display: grid; justify-items: start; gap: var(--space-3); max-width: 560px; padding-block: var(--space-7); }

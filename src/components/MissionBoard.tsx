@@ -47,6 +47,10 @@ function stockMission(name: string, code: string) {
   return { title: `${name} 종목 분석`, description: `${name}의 차트와 시세 흐름을 확인해보세요.`, action: "종목 보기", href: `/market/${code}` };
 }
 
+/** 미션 ID의 화면 이름. 관리자 화면의 보상 복구에서도 같은 이름을 쓴다. */
+export const missionTitle = (id: string) => (labels as Record<string, { title: string }>)[id]?.title ?? id;
+export const missionIds: readonly string[] = MISSION_IDS;
+
 const missionIdSet = new Set<string>(MISSION_IDS);
 const previewMissionIds = MISSION_IDS.slice(0, DAILY_MISSION_COUNT);
 

@@ -11,8 +11,11 @@ export type Route =
   | { name: "charge" }
   | { name: "loan" }
   | { name: "titles" }
-  | { name: "admin" }
+  | { name: "admin"; section: AdminSection }
   | { name: "login"; method: LoginMethod };
+
+export type AdminSection = "users" | "orders" | "notices" | "audit";
+const ADMIN_SECTIONS: readonly AdminSection[] = ["users", "orders", "notices", "audit"];
 
 export type LoginMethod = "choose" | "google" | "email" | "register" | "reset";
 
@@ -36,7 +39,10 @@ function parse(pathname: string): Route {
   if (parts[0] === "charge") return { name: "charge" };
   if (parts[0] === "loan") return { name: "loan" };
   if (parts[0] === "titles") return { name: "titles" };
-  if (parts[0] === "admin") return { name: "admin" };
+  if (parts[0] === "admin") {
+    const section = ADMIN_SECTIONS.find((name) => name === parts[1]) ?? "users";
+    return { name: "admin", section };
+  }
   return { name: "home" };
 }
 
