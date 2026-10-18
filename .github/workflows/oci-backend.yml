@@ -1,0 +1,73 @@
+name: Deploy backend to OCI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/oci-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oci-backend-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Test deployment validation and rollback
+        run: python3 backend/ops/test-deploy-oci.py
+
+      - name: Test and build backend
+        working-directory: backend
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Configure restricted deployment SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.OCI_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.OCI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS" && test -n "$DEPLOY_HOST"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/oci_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/oci_deploy ~/.ssh/known_hosts
+
+      - name: Deploy commit and verify running service
+        env:
+          DEPLOY_HOST: ${{ vars.OCI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          artifact=backend/target/gamestock-backend-0.1.0.jar
+          digest=$(sha256sum "$artifact" | cut -d ' ' -f 1)
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            -i ~/.ssh/oci_deploy "gamestock-deploy@$DEPLOY_HOST" \
+            "deploy $GITHUB_SHA $digest" < "$artifact"
+          python3 backend/ops/verify-oci.py https://gamestock-api.161-33-33-45.sslip.io
+          {
+            echo '### OCI production deployment'
+            echo "Commit: \`$GITHUB_SHA\`"
+            echo "Artifact SHA256: \`$digest\`"
+            echo 'HTTPS API and both WSS endpoints passed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove runner SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/oci_deploy

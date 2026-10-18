@@ -41,4 +41,25 @@ sudo /opt/certbot/bin/certbot renew --dry-run
 
 OCI가 운영 주문을 받은 뒤에는 오래된 Railway DB로 URL만 되돌리면 안 된다. 먼저 신규 주문을 막고 OCI를 중단·백업한 뒤 최신 상태를 복원해 검증하고, 그다음 웹 주소를 전환한다. 매칭 엔진을 재시작할 때도 이전 프로세스 종료를 확인한다.
 
-웹은 `.github/workflows/firebase-hosting.yml`로 배포한다. 백엔드는 테스트한 JAR를 서버에 전송하고 설치한 뒤 `gamestock.service`를 재시작한다. GitHub의 프런트엔드 배포가 백엔드 JAR까지 갱신하지는 않는다.
+## GitHub 자동 배포
+
+웹은 기존 `.github/workflows/firebase-hosting.yml`로 배포한다. 백엔드는 `.github/workflows/oci-backend.yml`이 `main`의 `backend/**` 또는 해당 워크플로 변경을 감지해 자동 배포한다. GitHub Actions에서 수동 실행도 가능하다. 다른 브랜치에 커밋하거나 로컬에서만 커밋하면 운영에는 배포되지 않는다.
+
+백엔드 배포는 배포 스크립트 검증 → Java 17 테스트·빌드 → 체크섬 검증된 JAR 전송 → 기존 프로세스 완전 종료 → 새 버전 기동 → API·스케줄러·호가 준비 확인 → 외부 HTTPS·두 WSS 경로 확인 순서다. GitHub 대기열과 서버 `flock`이 배포를 직렬화하며 진행 중인 배포를 새 push로 취소하지 않는다. 기동 교체 중 잠깐 연결이 끊길 수 있다.
+
+서버의 `/usr/local/sbin/gamestock-deploy`는 JAR를 커밋 SHA와 파일 SHA256으로 구분해 보관하고 활성 경로를 교체한다. 기동·로컬 준비 확인에 실패하면 이전 JAR를 다시 실행하고 Actions는 실패로 표시한다. 외부 네트워크 검사만 실패한 경우에는 이미 정상 기동한 서버를 되돌리지 않으므로 배포 로그와 현재 상태를 함께 확인한다. 최근 JAR 5개와 현재·직전 버전을 보존한다. `/var/lib/gamestock-deploy/deployed-revision`은 마지막으로 준비 확인을 통과한 커밋이다.
+
+```sh
+sudo cat /var/lib/gamestock-deploy/deployed-revision
+sudo readlink -f /opt/gamestock/releases/gamestock-backend-production.jar
+```
+
+GitHub 저장소에는 변수 `OCI_SSH_HOST`, 시크릿 `OCI_DEPLOY_SSH_KEY`와 `OCI_SSH_KNOWN_HOSTS`가 필요하다. 전용 `gamestock-deploy` 계정의 키는 정해진 배포 명령만 실행하며 일반 셸·포트 포워딩·관리자 SSH 접속은 허용하지 않는다. 서버 호스트 키를 고정해 확인한다. DB 비밀번호와 Firebase 관리자 키는 서버에 남기며 GitHub에 추가하지 않는다.
+
+서버 배포 도우미는 관리자가 검토 후 한 번 설치한다. 이후 `backend/ops/`의 보안 도우미를 수정했다면 관리자가 같은 설치 절차로 서버 파일을 갱신해야 한다. Actions의 배포 키는 관리자 도우미를 수정할 수 없다.
+
+```sh
+sudo bash backend/ops/install-oci-deploy.sh /path/to/github-actions-key.pub
+```
+
+자동 복구는 애플리케이션 JAR만 되돌린다. DB 스키마를 바꾸는 코드는 기존 버전과 호환되게 단계적으로 적용하고 백업·별도 복원 DB에서 검증한 뒤 `main`에 병합한다. DB를 과거 백업으로 자동 덮어쓰지 않는다.
