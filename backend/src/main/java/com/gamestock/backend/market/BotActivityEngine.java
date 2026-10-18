@@ -88,6 +88,13 @@ final class BotActivityEngine {
                 double liquidationFloor=maker.fairValue(marketMetrics,observation.fundamental())*.995;
                 if(excess>10 && external[2]>0 && external[0]>=liquidationFloor) {
                     book.submit(lp,stock,"SELL","LIMIT",Math.min(recent<30?15:5,Math.min(excess,book.available(lp,stock))),Math.round(external[0]),now,500);
+                } else if(excess < -10 && external[3]>0 && external[1]<=maker.fairValue(marketMetrics,observation.fundamental())*1.005
+                        && book.lpCashBudgets.containsKey(stock)) {
+                    long price=Math.round(external[1]);
+                    long spendable=Math.max(0,Math.min(book.accounts.get(lp).cash,book.lpCashBudgets.get(stock))
+                            -MarketMakerEngine.emergencyCashRequirement(botBand(symbol.code,symbol.reference).upperPrice()));
+                    int quantity=(int)Math.min(recent<30?15:5,Math.min(-excess,spendable/Math.max(1,price+BatchOrderBook.fee(price))));
+                    book.submit(lp,stock,"BUY","LIMIT",quantity,price,now,500);
                 }
                 lastRebalance.put(stock,now);
             }
@@ -116,18 +123,18 @@ final class BotActivityEngine {
                 var position=new BotStrategyEngine.Position(held.quantity(),account.cash+refundable,held.average(),now-acquired.getOrDefault(participant.id(),now),targetQuantity);
                 double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
                 double researchNoise=.012*(StockMarketProfile.isLargeCap(symbol.code)?StockMarketProfile.of(symbol.code).movementWeight():1);
-                double estimate=p.strategy().family()==BotProfile.Family.VALUE
-                        ?strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise)):m.markPrice();
+                double estimate=strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise));
                 double news=observation.news()*(1+p.valueError()*8+random.nextGaussian()*.25);
                 var decision=strategies.decide(p,m,observation.environment(),position,estimate,news,tickSize(symbol.last),observation.scale(),symbol.code,symbol.reference);
-                boolean replace=working.stream().anyMatch(o->policy.shouldReplace(p,new BotOrderPolicy.RestingOrder(o.id,o.side,o.price,o.reservedCash,o.createdAt),decision,now,tickSize(o.price),o.side.equals("BUY")?m.bestBid():m.bestAsk(),o.side.equals("BUY")?m.bestAsk():m.bestBid()));
+                boolean replace=working.size()>1 || working.stream().anyMatch(o->o.remaining>2 || now-o.createdAt>=30_000
+                        || policy.shouldReplace(p,new BotOrderPolicy.RestingOrder(o.id,o.side,o.price,o.reservedCash,o.createdAt),decision,now,tickSize(o.price),o.side.equals("BUY")?m.bestBid():m.bestAsk(),o.side.equals("BUY")?m.bestAsk():m.bestBid()));
                 if(!working.isEmpty()&&!replace)continue;
                 if(replace)working.forEach(book::cancel);
                 int quantity=Math.min(BotStrategyEngine.hasInventoryDemand(p)?1:2,decision.quantity()); // Micro lots keep a human order economically meaningful.
                 if(quantity<=0)continue;
                 long price=decision.side().equals("BUY")?floorToTick(Math.round(decision.limitPrice())):ceilToTick(Math.round(decision.limitPrice()));
                 price=quoteBand(symbol.code,symbol.reference,observation.news()).clamp(price);
-                book.submit(participant.id(),stock,decision.side(),decision.market()?"MARKET":"LIMIT",quantity,price,now,Math.max(50,decision.ttlMillis()));
+                book.submit(participant.id(),stock,decision.side(),decision.market()?"MARKET":"LIMIT",quantity,price,now,Math.min(30_000,Math.max(50,decision.ttlMillis())));
             }
             cursors.put(stock,cursor%group.size());
             credits.put(stock,Math.max(0,credit-(book.fills.size()-startFills)));

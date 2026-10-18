@@ -56,6 +56,16 @@ class AuthServiceTest {
         verify(jdbc).update(contains("nickname_changed_at = ?"), eq("새닉네임"), eq(""), eq(Timestamp.from(NOW)), eq(7L));
     }
 
+    @Test void newNicknameMustBeTwoToTenCharacters() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        AuthService auth = service(jdbc, null);
+        assertThrows(IllegalArgumentException.class, () -> auth.updateProfile(7L, new AuthService.ProfileUpdate("가", "")));
+        assertThrows(IllegalArgumentException.class, () -> auth.updateProfile(7L, new AuthService.ProfileUpdate("열한글자닉네임입니다요", "")));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+        auth.updateProfile(7L, new AuthService.ProfileUpdate("열글자닉네임입니다", ""));
+        verify(jdbc).update(contains("nickname_changed_at = ?"), eq("열글자닉네임입니다"), eq(""), eq(Timestamp.from(NOW)), eq(7L));
+    }
+
     @Test void unchangedNicknameDoesNotRestartCooldown() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         AuthService auth = service(jdbc, NOW.minusSeconds(30));
@@ -178,5 +188,124 @@ class AuthServiceTest {
         auth.updateProfile(7L, new AuthService.ProfileUpdate("원래닉네임", null));
 
         verify(jdbc).update("UPDATE users SET profile_image_url = ?, profile_completed = TRUE WHERE id = ?", "", 7L);
+    }
+
+    @Test void activeBanSuspendsTheAccountAndShowsOnProfile() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("nickname")).thenReturn("원래닉네임");
+        when(rs.getTimestamp("trade_banned_until")).thenReturn(Timestamp.from(NOW.plus(Duration.ofDays(2))));
+        when(rs.getTimestamp(1)).thenReturn(Timestamp.from(NOW.plus(Duration.ofDays(2))));
+        when(rs.getString(2)).thenReturn("부계정 의심");
+        when(jdbc.queryForObject(anyString(), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                ((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0));
+        when(jdbc.query(startsWith("SELECT trade_banned_until"), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                java.util.List.of(((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0)));
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertEquals(NOW.plus(Duration.ofDays(2)).toString(), auth.profile(7L).tradeBannedUntil());
+        var error = assertThrows(ResponseStatusException.class, () -> auth.requireNotSuspended(7L));
+        assertEquals(403, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("부계정 의심"));
+        assertTrue(error.getReason().contains("이용이 정지된"));
+    }
+
+    @Test void expiredBanAllowsTheAccount() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getTimestamp(1)).thenReturn(Timestamp.from(NOW.minusSeconds(1)));
+        when(jdbc.query(startsWith("SELECT trade_banned_until"), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                java.util.List.of(((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0)));
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertDoesNotThrow(() -> auth.requireNotSuspended(7L));
+    }
+
+    /** Signed-in account fixture: Firebase uid "uid-7" maps to user 7 with the given role and ban. */
+    private interface SignedIn { void run(AuthService auth) throws Exception; }
+
+    private void signedIn(JdbcTemplate jdbc, String role, Instant bannedUntil, String email, SignedIn body) throws Exception {
+        ResultSet user = mock(ResultSet.class);
+        when(user.getLong("id")).thenReturn(7L);
+        when(user.getString("nickname")).thenReturn("닉네임");
+        when(user.getBoolean("profile_completed")).thenReturn(true);
+        when(user.getString("role")).thenReturn(role);
+        when(jdbc.query(contains("WHERE google_uid = ?"), any(RowMapper.class), eq("uid-7"))).thenAnswer(call ->
+                java.util.List.of(((RowMapper<?>) call.getArgument(1)).mapRow(user, 0)));
+        ResultSet ban = mock(ResultSet.class);
+        when(ban.getTimestamp(1)).thenReturn(bannedUntil == null ? null : Timestamp.from(bannedUntil));
+        when(jdbc.query(startsWith("SELECT trade_banned_until"), any(RowMapper.class), eq(7L))).thenAnswer(call ->
+                java.util.List.of(((RowMapper<?>) call.getArgument(1)).mapRow(ban, 0)));
+        when(jdbc.update(startsWith("INSERT IGNORE INTO attendance_rewards"), any(Object[].class))).thenReturn(1);
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+        com.google.firebase.auth.FirebaseAuth firebase = mock(com.google.firebase.auth.FirebaseAuth.class);
+        com.google.firebase.auth.FirebaseToken token = mock(com.google.firebase.auth.FirebaseToken.class);
+        when(token.getUid()).thenReturn("uid-7");
+        when(token.getEmail()).thenReturn(email);
+        when(token.isEmailVerified()).thenReturn(true);
+        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
+            statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
+            body.run(auth);
+        }
+    }
+
+    @Test void suspendedAccountIsRefusedEverywhereButLoginAndPaysNoAttendance() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        signedIn(jdbc, "USER", NOW.plus(Duration.ofDays(1)), "user@example.com", auth -> {
+            var error = assertThrows(ResponseStatusException.class, () -> auth.requireUser("Bearer valid"));
+            assertEquals(403, error.getStatusCode().value());
+            // 로그인과 프로필 조회는 정지 안내를 띄우기 위해 열어 둔다.
+            assertEquals(7L, auth.requireUserAllowingSuspended("Bearer valid").id());
+            assertEquals(7L, auth.login("Bearer valid").id());
+        });
+        verify(jdbc, never()).update(startsWith("INSERT IGNORE INTO attendance_rewards"), any(Object[].class));
+    }
+
+    @Test void adminRemovedFromSettingsLosesTheRole() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        signedIn(jdbc, "ADMIN", null, "old-admin@example.com", auth -> {
+            org.springframework.test.util.ReflectionTestUtils.setField(auth, "adminGoogleEmail", "admin@example.com");
+            var user = auth.requireUser("Bearer valid");
+            assertEquals("USER", user.role());
+            assertThrows(ResponseStatusException.class, () -> auth.requireAdmin("Bearer valid"));
+        });
+        verify(jdbc, atLeastOnce()).update("UPDATE users SET role = 'USER' WHERE id = ? AND role = 'ADMIN'", 7L);
+    }
+
+    @Test void configuredAdminKeepsTheRole() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        signedIn(jdbc, "ADMIN", null, "admin@example.com", auth -> {
+            org.springframework.test.util.ReflectionTestUtils.setField(auth, "adminGoogleEmail", "admin@example.com");
+            assertEquals("ADMIN", auth.requireAdmin("Bearer valid").role());
+        });
+        verify(jdbc, never()).update(contains("role = 'USER'"), any(Object[].class));
+    }
+
+    @Test void emptyAdminSettingsDoNotRevokeExistingAdmins() throws Exception {
+        // 배포 환경변수가 빠졌을 때 관리자를 한꺼번에 잃지 않도록 한다.
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        signedIn(jdbc, "ADMIN", null, "admin@example.com", auth ->
+                assertEquals("ADMIN", auth.requireAdmin("Bearer valid").role()));
+        verify(jdbc, never()).update(contains("role = 'USER'"), any(Object[].class));
+    }
+
+    @Test void signupThatCannotCreateTheAccountAsksToRetryInsteadOf500() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        // 계정 조회는 늘 비어 있고, INSERT는 자동 닉네임이 겹쳐 계속 실패한다.
+        when(jdbc.query(contains("WHERE google_uid = ?"), any(RowMapper.class), eq("uid-7"))).thenReturn(java.util.List.of());
+        when(jdbc.update(startsWith("INSERT INTO users"), any(Object[].class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("nickname"));
+        when(jdbc.queryForObject(startsWith("SELECT COUNT(*) FROM users WHERE nickname"), eq(Integer.class), any(Object[].class))).thenReturn(1);
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+        com.google.firebase.auth.FirebaseAuth firebase = mock(com.google.firebase.auth.FirebaseAuth.class);
+        com.google.firebase.auth.FirebaseToken token = mock(com.google.firebase.auth.FirebaseToken.class);
+        when(token.getUid()).thenReturn("uid-7");
+        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
+            statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
+            var error = assertThrows(ResponseStatusException.class, () -> auth.login("Bearer valid"));
+            assertEquals(503, error.getStatusCode().value());
+        }
     }
 }

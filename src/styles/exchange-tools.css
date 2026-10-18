@@ -1116,7 +1116,8 @@
     .integration-tools .stock-detail-change { font-size: var(--step-1); }
     .integration-tools .stock-chart-card { padding: 14px 12px; }
     .integration-tools .stock-series-chart .chart-toolbar { flex-direction: column; align-items: stretch; gap: 4px; }
-    .integration-tools .stock-series-chart .chart-range-control { width: 100%; max-width: 100%; }
+    /* 기간 8개를 가로 스크롤 대신 두 줄로 놓아 "1년"까지 밀지 않고도 보이게 한다. */
+    .integration-tools .stock-series-chart .chart-range-control { width: 100%; max-width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow-x: visible; }
     .integration-tools .stock-series-chart .chart-mode-control { align-self: flex-end; }
     .integration-tools .stock-series-chart .chart-readout { min-height: 76px; }
     .integration-tools .stock-series-chart .chart-plot { height: 280px; padding-right: 60px; }
@@ -1206,7 +1207,7 @@
     width: 46px;
     height: 46px;
     border: 1px solid color-mix(in oklab, var(--rule-ink) 70%, transparent);
-    border-radius: 14px;
+    border-radius: 16%;
     object-fit: cover;
     box-shadow: 0 2px 8px color-mix(in oklab, var(--ink) 10%, transparent);
   }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Panel } from "../components/Panel";
-import { checkTitles, equipTitle, type TitleStatus, type UserTitle } from "../lib/titles";
+import { checkTitles, equipTitle, titleColor, type TitleStatus, type UserTitle } from "../lib/titles";
 
 const CATEGORY_ORDER = ["자산", "수익률", "보유", "거래", "활동", "수집", "주간", "특별"];
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
@@ -34,7 +34,7 @@ function TitleRow({ title, pending, onToggle }: RowProps) {
       <span className="title-dot" aria-hidden="true" />
       <span className="title-copy">
         <span className="title-name">
-          {title.name}
+          <span className="title-name-text" style={{ color: titleColor(title.name) }}>{title.name}</span>
           {title.weekly && title.owned && <span className="title-crown num">{title.count}관왕</span>}
           {title.equipped && <span className="title-equipped">장착됨</span>}
         </span>
@@ -125,7 +125,7 @@ export function TitlesPage() {
             <div className="title-progress-count">
               <span className="title-progress-label">
                 수집한 칭호
-                {equipped && <> · 장착 중 <strong className="title-progress-equipped">{equipped.name}</strong></>}
+                {equipped && <> · 장착 중 <strong className="title-progress-equipped" style={{ color: titleColor(equipped.name) }}>{equipped.name}</strong></>}
               </span>
               <span className="title-progress-value num">
                 <strong>{status.ownedCount}</strong>

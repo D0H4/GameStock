@@ -40,32 +40,56 @@
   /* 닉네임 머리글은 프로필 사진이 아니라 닉네임 글자의 시작점(사진 폭 + 간격)에 맞춘다. */
   .integration-ranking th.ranking-col-name { text-indent: calc(var(--ranking-avatar) + var(--space-3)); }
   .integration-ranking .ranking-rank-content { display: inline-grid; place-items: center; min-width: 28px; }
+  .integration-ranking { --ranking-avatar: 42px; }
+  .integration-ranking .ranking-asset-change { display: none; }
   @media (max-width: 640px) {
-    .integration-ranking { --ranking-avatar: 32px; }
-    .integration-ranking col.ranking-col-rank { width: 48px; }
-    .integration-ranking col.ranking-col-change { width: 64px; }
-    .integration-ranking col.ranking-col-asset { width: 96px; }
-    .integration-ranking .ranking-nickname { font-size: var(--step-1); }
+    .integration-ranking { --ranking-avatar: 28px; }
+    .integration-ranking col.ranking-col-rank { width: 40px; }
+    /* 수익률은 총 자산 아래로 옮겨 10글자 닉네임이 한 줄에 다 들어갈 폭을 확보한다. */
+    .integration-ranking col.ranking-col-change, .integration-ranking .ranking-col-change, .integration-ranking .ranking-page-change { display: none; }
+    .integration-ranking col.ranking-col-asset { width: 108px; }
+    .integration-ranking .ranking-asset-change { display: block; font-size: var(--step--1); }
+    .integration-ranking .ranking-nickname { font-size: var(--step-0); }
     .integration-ranking .ranking-name-cell { gap: var(--space-2); }
     .integration-ranking th.ranking-col-name { text-indent: calc(var(--ranking-avatar) + var(--space-2)); }
+  }
+  /* 320px대 아주 좁은 화면에서는 프로필 사진을 빼서 닉네임 10글자가 잘리지 않게 한다. */
+  @media (max-width: 340px) {
+    .integration-ranking .ranking-avatar { display: none; }
+    .integration-ranking th.ranking-col-name { text-indent: 0; }
   }
   /* 좁은 화면(앱)에서도 "+0.00%", "1,100,000원"이 두 줄로 끊기지 않게 한다. 남는 폭은 닉네임 칸이 줄인다. */
   .integration-ranking .ranking-page-change, .integration-ranking .ranking-page-asset { white-space: nowrap; }
   .ranking-name-cell { display: flex; align-items: center; gap: var(--space-3); min-width: 0; text-align: left; }
-  .ranking-name-cell > span { overflow-wrap: anywhere; }
-  /* 장착한 칭호는 닉네임 뒤 작은 배지로 붙이고, 칸이 좁으면 닉네임 아래로 줄을 바꾼다. */
-  .ranking-name-text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+  /* 장착한 칭호는 닉네임 위에 작은 색 글씨로 얹는다. 박스 없이 글자색으로만 구분한다. */
+  .ranking-name-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 100%; line-height: 1.25; }
   .ranking-title {
-    flex: none; padding: 1px 8px; border-radius: var(--radius-pill);
-    font-size: var(--step--1); font-weight: 700; line-height: 1.6; white-space: nowrap;
-    color: var(--brand-deep); background: var(--brand-wash); border: 1px solid color-mix(in oklab, var(--brand) 40%, transparent);
+    max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    font-size: var(--step--1); font-weight: 700; color: var(--brand-deep);
   }
-  .ranking-title.is-weekly { color: var(--amber-deep); background: var(--amber-wash); border-color: color-mix(in oklab, var(--amber) 45%, transparent); }
+  .ranking-title.is-weekly { color: var(--amber-deep); }
+  .ranking-row-mine .ranking-title:not([style*="color"]) { color: var(--brand-wine); }
   /* 시장·속보 목록의 종목명/제목과 같은 크기로 맞춘다. */
-  .ranking-nickname { overflow-wrap: anywhere; font-size: var(--step-2); }
+  /* 닉네임은 글자 중간에서 줄을 바꾸지 않고 한 줄로 두며, 칸보다 길면 말줄임표로 줄인다. */
+  .ranking-nickname { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--step-2); }
   .integration-ranking .ranking-page-rank { font-size: var(--step-2); }
   .integration-ranking .ranking-medal { font-size: var(--step-4); line-height: 1; }
-  .integration-ranking { --ranking-avatar: 42px; }
+  /* 전체/주간 탭은 상단 메뉴와 같은 밑줄 표시를 쓴다. */
+  .ranking-tabs { display: flex; gap: var(--space-5); border-bottom: 1px solid var(--rule); }
+  .ranking-tab {
+    min-height: 40px; padding: 0 2px; border: 0; background: none; cursor: pointer;
+    font: inherit; font-size: var(--step-1); color: var(--ink-muted); white-space: nowrap;
+  }
+  .ranking-tab:hover { color: var(--ink); }
+  .ranking-tab.is-active { color: var(--brand-wine); font-weight: 700; box-shadow: inset 0 -3px 0 var(--brand); }
+  .ranking-week-info {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-4);
+    margin: 0 0 var(--space-3); color: var(--ink-muted); font-size: var(--step-0);
+  }
+  .ranking-week-countdown { color: var(--ink); font-weight: 700; }
+  .ranking-week-note { margin: var(--space-3) 0 0; color: var(--ink-faint); font-size: var(--step--1); }
+  .integration-ranking .ranking-gap td { padding: 0; border: 0; color: var(--ink-faint); }
+  .integration-ranking .ranking-row-mine > * { background: var(--brand-wash); }
   .ranking-avatar { width: var(--ranking-avatar); height: var(--ranking-avatar); flex: 0 0 var(--ranking-avatar); object-fit: cover; border: 1px solid var(--rule); border-radius: 50%; background: var(--sunken); }
   .integration-trading .chart-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
   .integration-trading .chart-range, .integration-trading .chart-modes { display: flex; flex-wrap: wrap; gap: 8px; }

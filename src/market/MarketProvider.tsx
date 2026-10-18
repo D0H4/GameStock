@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
@@ -10,9 +10,8 @@ import { INITIAL_CASH, MarketEngine } from "./engine";
 import { stockMarketProfile } from "./marketCap";
 import { serverTimestamp } from "./format";
 import { LISTING_BY_CODE, dailyPriceBand, roundToTick } from "./universe";
-import type { DailyMissionStatus, MarketSnapshot, OrderRequest, OrderResult, Portfolio, Position, Quote, TradingRestriction } from "./types";
+import type { DailyMissionStatus, LoanStatus, MarketSnapshot, OrderRequest, OrderResult, Portfolio, Position, Quote, TradingRestriction } from "./types";
 import { BackendLoadingScreen } from "../components/BackendLoadingScreen";
-import { affordableQuantity } from "./orderSizing";
 
 export interface MarketApi {
   placeOrder: (request: OrderRequest) => Promise<OrderResult>;
@@ -22,6 +21,8 @@ export interface MarketApi {
   toggleWatch: (code: string) => void;
   setActiveDetailCode: (code: string | null) => void;
   claimMissionReward: (missionId: string) => Promise<{ rewardCash: number; awarded: boolean; missions: DailyMissionStatus }>;
+  /** 대출을 받거나 갚고, 바뀐 계좌를 바로 화면에 반영한다. */
+  loanAction: (kind: "borrow" | "repay", amount: number) => Promise<{ message: string; loan: LoanStatus }>;
 }
 
 export type CancelOrdersResult = {
@@ -60,12 +61,15 @@ type BackendEvent = {
   priceAtPublish?: number;
   priceChangePercent?: number;
   priceDirection?: string;
+  excerpt?: string[];
+  articleUrl?: string | null;
 };
-type BackendPosition = { stockCode: string; quantity: number; averagePrice: number; availableQuantity?: number; marketValue?: number };
-type BackendPortfolio = { cash: number; assetValue?: number; totalAsset?: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number };
+type BackendPosition = { stockCode: string; quantity: number; averagePrice: number };
+type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number; loanBalance?: number };
 type BackendSettlement = { id: number; stockCode: string; side: string; quantity: number; grossAmount: number; createdAt: string };
 type BackendActiveOrder = { id: number; stockCode: string; status: string };
 type BackendMissionReward = { rewardCash: number; awarded: boolean; portfolio: BackendPortfolio; missions: DailyMissionStatus };
+type BackendLoanAction = { message: string; loan: LoanStatus; portfolio: BackendPortfolio };
 
 const SnapshotContext = createContext<MarketSnapshot | null>(null);
 const ApiContext = createContext<MarketApi | null>(null);
@@ -76,22 +80,32 @@ function fallbackSnapshot(): MarketSnapshot {
   return fallbackEngine.getSnapshot();
 }
 
+function toFills(settlements: BackendSettlement[]): Portfolio["fills"] {
+  return settlements.map((trade) => ({
+    id: trade.id,
+    code: trade.stockCode,
+    side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
+    qty: trade.quantity,
+    price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0,
+    at: serverTimestamp(trade.createdAt),
+  }));
+}
+
 function toPortfolio(value?: BackendPortfolio): Portfolio {
-  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0 };
+  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0, loanBalance: 0 };
   const positions: Record<string, Position> = {};
   for (const item of value.positions ?? []) {
     if (!LISTING_BY_CODE[item.stockCode] || item.quantity < 1) continue;
-    positions[item.stockCode] = { code: item.stockCode, qty: item.quantity, avgCost: item.averagePrice, availableQty: item.availableQuantity, marketValue: item.marketValue };
+    positions[item.stockCode] = { code: item.stockCode, qty: item.quantity, avgCost: item.averagePrice };
   }
   return {
     cash: value.cash,
-    assetValue: value.assetValue,
-    totalAsset: value.totalAsset,
     positions,
     fills: [],
     realized: value.realizedProfitLoss ?? 0,
     attendanceRewardCash: value.attendanceRewardCash ?? 0,
     missionRewardCash: value.missionRewardCash ?? 0,
+    loanBalance: value.loanBalance ?? 0,
   };
 }
 
@@ -164,6 +178,8 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
       source: event.source === "업데이트 노트" ? "업데이트 노트" as const : "미디어 보도" as const,
       title: event.title,
       description: event.description,
+      excerpt: event.excerpt?.length ? event.excerpt : undefined,
+      articleUrl: event.articleUrl ?? undefined,
       priceAtPublish: Number(event.priceAtPublish ?? quotes[event.stockCode]?.price ?? 0),
       priceChangeRatio: Number.isFinite(Number(event.priceChangePercent))
         ? Number(event.priceChangePercent) / 100
@@ -225,12 +241,6 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const refreshAgainRef = useRef(false);
   const detailRefreshInFlightRef = useRef(false);
   const snapshotFillsRef = useRef<Portfolio["fills"]>([]);
-  const codesRef = useRef(snapshot.codes);
-  codesRef.current = snapshot.codes;
-  const setActiveDetailCode = useCallback((code: string | null) => {
-    activeDetailCodeRef.current = code;
-    streamRef.current?.subscribe(code ? [code] : codesRef.current, code);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,15 +268,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             bids: data.orderbook ? levels(data.orderbook.bids) : old.bids, asks: data.orderbook ? levels(data.orderbook.asks) : old.asks,
           } } };
         });
-      } else if (["AUTHENTICATED", "ACCOUNT_UPDATED", "PORTFOLIO_UPDATED", "ORDER_CANCELLED", "ORDER_EXPIRED"].includes(message.type)) {
+      } else if (["AUTHENTICATED", "ACCOUNT_UPDATED", "PORTFOLIO_UPDATED", "ORDER_CANCELLED", "ORDER_EXPIRED", "LOAN_LIQUIDATED"].includes(message.type)) {
         const data = message.payload as { portfolio?: BackendPortfolio; settlements?: BackendSettlement[] };
         if (!firebaseAuth.currentUser || !data?.portfolio) return;
         privateRevisionRef.current++;
-        if (data.settlements) snapshotFillsRef.current = data.settlements.map((trade) => ({
-          id: trade.id, code: trade.stockCode, side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
-          qty: trade.quantity, price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0, at: serverTimestamp(trade.createdAt),
-        }));
-        setSnapshot((current) => ({ ...current, portfolioError: undefined, portfolio: { ...toPortfolio(data.portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
+        if (data.settlements) snapshotFillsRef.current = toFills(data.settlements);
+        setSnapshot((current) => ({ ...current, portfolio: { ...toPortfolio(data.portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
       }
     }, (ready) => { streamReadyRef.current = ready; });
     streamRef.current = stream;
@@ -286,13 +293,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       const privateRevision = privateRevisionRef.current;
       try {
         const [stocks, events, market] = await Promise.all([
-          apiFetch<BackendStock[]>("/api/stocks", { auth: false }),
-          apiFetch<BackendEvent[]>("/api/market-events", { auth: false }),
-          apiFetch<BackendMarketStatus>("/api/market-status", { auth: false }),
+          apiFetch<BackendStock[]>("/api/stocks"),
+          apiFetch<BackendEvent[]>("/api/market-events"),
+          apiFetch<BackendMarketStatus>("/api/market-status"),
         ]);
         writePublicCache(stocks, events, market);
         let portfolio: BackendPortfolio | undefined;
-        let portfolioError: string | undefined;
         let fills: Portfolio["fills"] = [];
         if (firebaseAuth.currentUser) {
           try {
@@ -305,14 +311,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             ]);
             portfolio = nextPortfolio;
             if (settlements) {
-            fills = settlements.map((trade) => ({
-              id: trade.id,
-              code: trade.stockCode,
-              side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
-              qty: trade.quantity,
-              price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0,
-              at: serverTimestamp(trade.createdAt),
-            }));
+              fills = toFills(settlements);
             } else {
               fills = snapshotFillsRef.current;
             }
@@ -325,13 +324,16 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               watchRef.current = watch.map((item) => item.stockCode);
             }
           } catch {
-            portfolioError = "계좌 정보를 갱신하지 못했습니다. 마지막 확인한 잔고입니다.";
+            /* 공개 시세는 로그인 API가 실패해도 계속 표시한다. */
           }
         }
         if (!cancelled && firebaseAuth.currentUser?.uid === refreshingUid) {
           const nextSnapshot = toSnapshot(stocks, events, portfolio, watchRef.current, market);
           nextSnapshot.portfolio.fills = fills;
-          if (!portfolioError && privateRevision === privateRevisionRef.current) snapshotFillsRef.current = fills;
+          // 로그인 상태에서 계좌 조회만 실패하면 portfolio가 비어 초기 자산으로 바뀐다.
+          // 그 응답으로 마지막 정상 계좌를 덮어쓰지 않는다.
+          const portfolioLoaded = portfolio !== undefined || !firebaseAuth.currentUser;
+          if (portfolioLoaded && privateRevision === privateRevisionRef.current) snapshotFillsRef.current = fills;
           // The two-second quote refresh must not clear the one-second detail
           // data while the order book/trade requests are in flight. Keeping
           // the previous rows prevents a visible empty-frame flicker.
@@ -354,10 +356,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               } : { ...quote, series: nextSeries.slice(-60) }];
             }));
             hasServerSnapshotRef.current = true;
-            const privateUnchanged = privateRevision === privateRevisionRef.current;
-            return { ...nextSnapshot, quotes,
-              portfolioError: privateUnchanged ? portfolioError : current.portfolioError,
-              portfolio: !portfolioError && privateUnchanged ? nextSnapshot.portfolio : current.portfolio };
+            return { ...nextSnapshot, quotes, portfolio: portfolioLoaded && privateRevision === privateRevisionRef.current ? nextSnapshot.portfolio : current.portfolio };
           });
           setServerAvailable(true);
           stream.subscribe(activeDetailCodeRef.current ? [activeDetailCodeRef.current] : nextSnapshot.codes, activeDetailCodeRef.current);
@@ -392,8 +391,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         const entries = await Promise.all([code].map(async (code) => {
           try {
             const [book, trades] = await Promise.all([
-              apiFetch<BackendOrderBook>(`/api/stocks/${code}/orderbook`, { auth: false }),
-              apiFetch<BackendTrade[]>(`/api/stocks/${code}/trades`, { auth: false }),
+              apiFetch<BackendOrderBook>(`/api/stocks/${code}/orderbook`),
+              apiFetch<BackendTrade[]>(`/api/stocks/${code}/trades`),
             ]);
             return [code, { book, trades }] as const;
           } catch {
@@ -458,6 +457,29 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * 주문·취소 응답에는 계좌가 없다. 웹소켓 계좌 이벤트가 늦거나 빠지면 다음 30초 조회까지
+   * 잔고가 낡으므로, 성공 직후 커밋된 계좌를 한 번 받아 온다. 그사이 웹소켓으로 더 새로운
+   * 계좌가 들어왔으면 그 값을 덮어쓰지 않는다.
+   */
+  const refreshPortfolio = async () => {
+    const owner = firebaseAuth.currentUser;
+    if (!owner) return;
+    const revision = privateRevisionRef.current;
+    try {
+      const [portfolio, settlements] = await Promise.all([
+        apiFetch<BackendPortfolio>("/api/portfolio"),
+        apiFetch<BackendSettlement[]>("/api/settlements").catch(() => null),
+      ]);
+      if (firebaseAuth.currentUser?.uid !== owner.uid || privateRevisionRef.current !== revision) return;
+      privateRevisionRef.current++;
+      if (settlements) snapshotFillsRef.current = toFills(settlements);
+      setSnapshot((current) => ({ ...current, portfolio: { ...toPortfolio(portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
+    } catch {
+      /* 다음 주기 조회나 웹소켓 이벤트가 계좌를 맞춘다. */
+    }
+  };
+
   // setSnapshot과 모듈 함수만 사용하므로 렌더마다 새로 만들어도 동작이 같다.
   const claimMissionReward = async (missionId: string) => {
     const claimant = firebaseAuth.currentUser;
@@ -476,13 +498,29 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     return { rewardCash: result.rewardCash, awarded: result.awarded, missions: result.missions };
   };
 
+  const loanAction = async (kind: "borrow" | "repay", amount: number) => {
+    const borrower = firebaseAuth.currentUser;
+    if (!borrower) {
+      requireSignIn("/loan");
+      throw new Error("대출은 로그인 후 이용할 수 있습니다.");
+    }
+    const result = await apiFetch<BackendLoanAction>(`/api/loan/${kind}`, { method: "POST", body: JSON.stringify({ amount }) });
+    if (firebaseAuth.currentUser?.uid === borrower.uid) {
+      privateRevisionRef.current++;
+      setSnapshot((current) => ({
+        ...current,
+        portfolio: { ...toPortfolio(result.portfolio), fills: current.portfolio.fills },
+        updatedAt: Date.now(),
+      }));
+    }
+    return { message: result.message, loan: result.loan };
+  };
+
   const api = useMemo<MarketApi>(() => ({
     orderable: (code, side) => {
       const quote = snapshot.quotes[code];
       if (!quote) return 0;
-      if (snapshot.portfolioError) return 0;
-      const position = snapshot.portfolio.positions[code];
-      return side === "buy" ? affordableQuantity(snapshot.portfolio.cash, quote.price) : position?.availableQty ?? 0;
+      return side === "buy" ? Math.floor(snapshot.portfolio.cash / quote.price) : snapshot.portfolio.positions[code]?.qty ?? 0;
     },
     placeOrder: async (request) => {
       if (!requireSignIn(`/market/${request.code}`)) return { ok: false, message: "로그인 후 주문할 수 있습니다." };
@@ -497,6 +535,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             ...(request.price ? { price: request.price } : {}),
           }),
         });
+        void refreshPortfolio();
         return {
           ok: true,
           message: result.message ?? `${request.qty}주 ${request.side === "buy" ? "매수" : "매도"} 체결`,
@@ -509,10 +548,11 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     cancelOpenOrder: async (code) => {
       if (!requireSignIn(`/market/${code}`)) return { ok: false, cancelled: 0, message: "로그인 후 주문을 취소할 수 있습니다." };
       try {
-        const orders = await apiFetch<BackendActiveOrder[]>(`/api/orders?stockCode=${encodeURIComponent(code)}`);
+        const orders = await apiFetch<BackendActiveOrder[]>("/api/orders");
         const target = orders.find((order) => order.stockCode === code && order.status === "OPEN");
         if (!target) return { ok: true, cancelled: 0, message: "현재 종목에 취소할 미체결 주문이 없습니다." };
         await apiFetch(`/api/orders/${target.id}`, { method: "DELETE" });
+        void refreshPortfolio();
         return { ok: true, cancelled: 1, message: "현재 종목의 미체결 주문 1건을 취소했습니다." };
       } catch (error) {
         return { ok: false, cancelled: 0, message: error instanceof Error ? error.message : "주문 취소에 실패했습니다." };
@@ -522,8 +562,15 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       if (!requireSignIn()) return { ok: false, cancelled: 0, message: "로그인 후 주문을 취소할 수 있습니다." };
       let cancelled = 0;
       try {
-        const result = await apiFetch<{ cancelled: number }>("/api/orders", { method: "DELETE" });
-        cancelled = result.cancelled;
+        // /api/orders는 화면용으로 최대 5건만 반환하므로, 남은 주문이 없어질 때까지 반복한다.
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const orders = await apiFetch<BackendActiveOrder[]>("/api/orders");
+          if (orders.length === 0) break;
+          await Promise.all(orders.map((order) => apiFetch(`/api/orders/${order.id}`, { method: "DELETE" })));
+          cancelled += orders.length;
+          if (orders.length < 5) break;
+        }
+        if (cancelled > 0) void refreshPortfolio();
         return {
           ok: true,
           cancelled,
@@ -544,9 +591,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       void apiFetch(`/api/watchlist/${code}`, { method: exists ? "DELETE" : "PUT" })
         .then(() => {
           if (exists) return;
-          // 관심종목 미션은 서버가 등록 여부를 확인한 뒤 지급한다. 이미 받았으면 awarded=false다.
-          return claimMissionReward("watch")
-            .then((result) => { if (result.awarded) announceMissionReward(result.rewardCash); })
+          // 관심종목 미션은 서버가 등록 여부를 확인한 뒤 지급한다. 오늘 배정되지 않았거나 이미
+          // 받은 날에 요청하면 서버가 400으로 거절하므로 배정 여부를 먼저 확인한다.
+          return apiFetch<DailyMissionStatus>("/api/missions")
+            .then((missions) => {
+              if (!missions.availableMissionIds.includes("watch") || missions.completedMissionIds.includes("watch")) return;
+              return claimMissionReward("watch")
+                .then((result) => { if (result.awarded) announceMissionReward(result.rewardCash); });
+            })
             .catch(() => undefined);
         })
         .catch(() => {
@@ -560,9 +612,13 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           if (watchSettledSeq.current < seq) watchSettledSeq.current = seq;
         });
     },
-    setActiveDetailCode,
+    setActiveDetailCode: (code) => {
+      activeDetailCodeRef.current = code;
+      streamRef.current?.subscribe(code ? [code] : snapshot.codes, code);
+    },
     claimMissionReward,
-  }), [snapshot, setActiveDetailCode]);
+    loanAction,
+  }), [snapshot]);
 
   return (
     <ApiContext.Provider value={api}>

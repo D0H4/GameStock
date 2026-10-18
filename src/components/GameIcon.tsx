@@ -9,6 +9,7 @@ const REPLACEMENT_ICONS: Record<string, string> = {
   TR: "sd-trickcal.png",
   VR: "lt-valorant.png",
   KRP: "mh-kartrush.png",
+  PW: "pw-square.jpg",
 };
 
 export function GameIcon({

@@ -62,8 +62,8 @@ export function AccountSettings() {
 
   const saveNickname = async () => {
     const value = nickname.trim();
-    if (value.length < 2 || value.length > 50) {
-      setMessage("닉네임은 2~50자로 입력해 주세요.");
+    if (value.length < 2 || value.length > 10) {
+      setMessage("닉네임은 2~10자로 입력해 주세요.");
       return;
     }
     setSaving(true);
@@ -130,23 +130,17 @@ export function AccountSettings() {
       {message && <p className="account-message" role="status">{message}</p>}
       <Panel id="settings-nickname" title="닉네임" level={3}>
         {loading ? <p className="empty">계정 정보를 불러오는 중…</p> : (
-          <div className="account-profile-grid">
-            <form className="account-form" onSubmit={(event) => { event.preventDefault(); void saveNickname(); }}>
-              <label htmlFor="settings-nickname-input">닉네임</label>
-              <div className="account-input-row">
-                <input id="settings-nickname-input" value={nickname} disabled={nicknameLocked} minLength={2} maxLength={50} required onChange={(event) => setNickname(event.target.value)} />
-                <button type="submit" className="account-button is-primary" disabled={saving || !profile || nicknameLocked || nickname.trim() === profile.nickname}>{saving ? "저장 중…" : "저장"}</button>
-              </div>
-              {!nicknameLocked && <p className="account-hint">닉네임은 3일에 한 번 변경할 수 있습니다. · 2~50자</p>}
-              {nicknameLocked && nextNicknameChange !== null && <p className="account-hint">
-                다음 변경 가능: {new Date(nextNicknameChange).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (한국시간)
-              </p>}
-            </form>
-            <div className="account-identity">
-              <span className="account-label">로그인 계정</span>
-              <p>{profile?.email || user.email || "연결된 계정"}</p>
+          <form className="account-form" onSubmit={(event) => { event.preventDefault(); void saveNickname(); }}>
+            <label htmlFor="settings-nickname-input">닉네임</label>
+            <div className="account-input-row">
+              <input id="settings-nickname-input" value={nickname} disabled={nicknameLocked} minLength={2} maxLength={10} required onChange={(event) => setNickname(event.target.value)} />
+              <button type="submit" className="account-button is-primary" disabled={saving || !profile || nicknameLocked || nickname.trim() === profile.nickname}>{saving ? "저장 중…" : "저장"}</button>
             </div>
-          </div>
+            {!nicknameLocked && <p className="account-hint">닉네임은 3일에 한 번 변경할 수 있습니다. · 2~10자</p>}
+            {nicknameLocked && nextNicknameChange !== null && <p className="account-hint">
+              다음 변경 가능: {new Date(nextNicknameChange).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (한국시간)
+            </p>}
+          </form>
         )}
       </Panel>
 

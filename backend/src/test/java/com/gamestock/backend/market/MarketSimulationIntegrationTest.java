@@ -27,8 +27,10 @@ class MarketSimulationIntegrationTest {
     private long buyer,seller,stock;
 
     @BeforeAll void createDisposableDatabase() throws Exception {
-        dataSource=new SingleConnectionDataSource(System.getProperty("market.test.jdbc")+"&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true","root","",true);
+        dataSource=new SingleConnectionDataSource(System.getProperty("market.test.jdbc"),"root","",true);
         jdbc=new JdbcTemplate(dataSource);
+        // Match the production Hikari session, regardless of the host's local timezone.
+        jdbc.execute("SET time_zone = '+00:00'");
         database="simulation_test_"+UUID.randomUUID().toString().replace("-","");
         jdbc.execute("CREATE DATABASE "+database+" CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         jdbc.execute("USE "+database);
@@ -36,7 +38,6 @@ class MarketSimulationIntegrationTest {
         schema=schema.replaceAll("(?m)^--.*$","").replaceAll("(?is)CREATE DATABASE[^;]+;","").replaceAll("(?is)USE gamestock;","");
         for(String statement:schema.split(";")) if(!statement.isBlank()) jdbc.execute(statement);
         market=new MarketService(event->{},jdbc,new UserFeatureService(jdbc),new TradingProtectionService(jdbc));
-        ReflectionTestUtils.setField(market,"titles",new TitleService(jdbc,new DataSourceTransactionManager(dataSource)));
         ReflectionTestUtils.setField(market,"configuredSeed","12345");
         market.initializeData();
         market.maintainMarket();
@@ -45,12 +46,28 @@ class MarketSimulationIntegrationTest {
         stock=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);
         jdbc.update("INSERT INTO portfolios(user_id,stock_id,quantity,settled_quantity,average_price) VALUES (?,?,1000,1000,10000)",seller,stock);
         manager=new DataSourceTransactionManager(dataSource);
+        new TitleService(jdbc,manager).ensureTables();
     }
     @BeforeEach void begin(){ transaction=manager.getTransaction(new DefaultTransactionDefinition()); }
     @AfterEach void rollback(){ if(transaction!=null) manager.rollback(transaction); }
     @AfterAll void dispose(){ if(jdbc!=null && database!=null) jdbc.execute("DROP DATABASE "+database); if(dataSource!=null) dataSource.destroy(); }
     private long id(String username){return jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,username);}
     private void limit(long user,String side,int quantity,long price){market.order(new OrderRequest("UMA",side,quantity,"LIMIT",price),user);}
+
+    @Test @Order(1) void refillCountsPassiveHumanHoldingsOutsideTheLoadedAccounts() {
+        long lp=id("liquidity_provider");
+        jdbc.update("UPDATE portfolios SET quantity=0,settled_quantity=0 WHERE user_id=? AND stock_id=?",lp,stock);
+        jdbc.update("UPDATE portfolios SET quantity=10000,settled_quantity=10000 WHERE user_id=? AND stock_id=?",seller,stock);
+        var repository=new BatchMarketRepository(jdbc,new BotLedgerJournal(jdbc));
+        var book=repository.load(System.currentTimeMillis(),Set.of(stock),Set.of(lp));
+        assertFalse(book.accounts.containsKey(seller),"No open order means the human account is not loaded");
+        assertEquals(jdbc.queryForObject("SELECT SUM(quantity) FROM portfolios WHERE stock_id=?",Long.class,stock),
+                book.stocks.get(stock).circulatingShares);
+        book.restoreLiquidityInventory(lp,stock,StockMarketProfile.initialLiquidityInventory("UMA",100),10000);
+        assertEquals(0,book.holding(lp,stock).quantity(),"Reload must not forget issued shares held by passive humans");
+        repository.persist(book,System.currentTimeMillis());
+        assertEquals(0,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
+    }
 
     @Test @Order(1) void compactBotLedgerKeepsActualFillsMetricsChartsAndHumanRecords() {
         jdbc.update("UPDATE users SET password_hash='TRADER' WHERE id IN (?,?)",buyer,seller);
@@ -97,8 +114,9 @@ class MarketSimulationIntegrationTest {
         var repository=new BatchMarketRepository(jdbc,new BotLedgerJournal(jdbc));var book=repository.load(now,Set.of(stock),Set.of(buyer,lp));
         book.submit(lp,stock,"SELL","LIMIT",2,10000,now,60000);book.submit(buyer,stock,"BUY","MARKET",2,0,now,0);repository.persist(book,now);
         MarketMakerEngine.RiskBook after=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","UMA",lp);
-        assertEquals(before.cashBudget()+19980,after.cashBudget());
+        assertEquals(before.cashBudget()+20000,after.cashBudget());
         long fees=jdbc.queryForObject("SELECT SUM(fees) FROM bot_ledger_totals",Long.class);
+        assertEquals(0,fees,"Internal fills do not drain simulation cash");
         assertEquals(beforeCash,jdbc.queryForObject("SELECT SUM(cash) FROM users",Long.class)+fees);
         transaction.rollbackToSavepoint(point);
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM bot_ledger_batches",Integer.class));
@@ -281,14 +299,13 @@ class MarketSimulationIntegrationTest {
     }
     @Test @Order(1) void lpBudgetsRemainIsolatedAfterARealFill() {
         long lp=id("liquidity_provider");
-        int initialInventory=jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock);
         MarketMakerEngine.RiskBook before=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","BA",lp);
         market.liquidityBotAction("UMA","BOTH");
         market.order(new OrderRequest("UMA","SELL",5,"MARKET",null),seller);
         MarketMakerEngine.RiskBook after=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","BA",lp);
         assertEquals(before,after);
         MarketMakerEngine.RiskBook changed=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","UMA",lp);
-        assertEquals(initialInventory+5,changed.inventory());
+        assertEquals(StockMarketProfile.initialLiquidityInventory("UMA",100)+5,changed.inventory());
     }
     @Test @Order(1) void fullyDepletedLpInventoryRestoresSellSideLiquidity() {
         long lp=id("liquidity_provider");
@@ -296,7 +313,7 @@ class MarketSimulationIntegrationTest {
 
         market.liquidityBotAction("UMA","BOTH");
 
-        assertEquals(StockMarketProfile.initialLiquidityInventory("UMA",100),jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
+        assertEquals(32,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
         assertTrue(jdbc.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND stock_id=? AND side='SELL' AND status='OPEN'",Integer.class,lp,stock)>0);
     }
     @Test @Order(1) void lpReplacesBothSidesAtBandBoundaryWithoutChangingLastPrice() {
@@ -382,7 +399,7 @@ class MarketSimulationIntegrationTest {
         for(var o:selected) if(o.decision().quantity()>0 && (o.resting().isEmpty()||o.replace())) {
             OrderRequest actual=placed.getAllValues().get(index++);
             assertEquals(o.code(),actual.stockCode()); assertEquals(o.decision().side(),actual.side());
-            assertEquals(o.decision().quantity(),actual.quantity());
+            assertEquals(Math.min(2,o.decision().quantity()),actual.quantity());
         }
     }
     @Test @Order(1) void newsInterruptsRotationButStillHonorsReactionLatency() {
@@ -430,17 +447,21 @@ class MarketSimulationIntegrationTest {
     }
 
     @Test @Order(2) void restartRetainsDepletedInventoryBudgetsAndNewsState() {
-        long lp=id("liquidity_provider");
-        int initialInventory=jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock);
         market.liquidityBotAction("UMA","BOTH");
         market.order(new OrderRequest("UMA","BUY",5,"MARKET",null),buyer);
+        long lp=id("liquidity_provider");
         long cashBefore=jdbc.queryForObject("SELECT cash+COALESCE((SELECT SUM(reserved_cash) FROM orders WHERE user_id=? AND status='OPEN'),0) FROM users WHERE id=?",Long.class,lp,lp);
-        var allocations=jdbc.queryForList("SELECT * FROM lp_risk_books ORDER BY stock_id");
+        String allocationQuery="SELECT stock_id,opening_cash,baseline_trade_id,target_inventory,max_inventory FROM lp_risk_books ORDER BY stock_id";
+        var allocations=jdbc.queryForList(allocationQuery);
+        long riskBefore=jdbc.queryForObject("SELECT risk_limit FROM lp_risk_books WHERE stock_id=?",Long.class,stock);
+        long repricedRisk=jdbc.queryForObject("SELECT current_price FROM stocks WHERE id=?",Long.class,stock)
+                *StockMarketProfile.initialLiquidityInventory("UMA",100)*4L;
         manager.commit(transaction); transaction=null;
         // Run the actual startup path a second time, including idempotent schema upgrades.
         market.initializeData();
         assertEquals(cashBefore,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,lp));
-        assertEquals(initialInventory-5,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
-        assertEquals(allocations,jdbc.queryForList("SELECT * FROM lp_risk_books ORDER BY stock_id"));
+        assertEquals(StockMarketProfile.initialLiquidityInventory("UMA",100)-5,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
+        assertEquals(allocations,jdbc.queryForList(allocationQuery));
+        assertEquals(Math.max(riskBefore,repricedRisk),jdbc.queryForObject("SELECT risk_limit FROM lp_risk_books WHERE stock_id=?",Long.class,stock));
     }
 }

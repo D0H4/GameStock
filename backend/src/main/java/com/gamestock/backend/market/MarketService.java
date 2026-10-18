@@ -40,17 +40,14 @@ public class MarketService {
     private static final long STARTING_CASH = 1_000_000L;
     private static final ZoneId MISSION_ZONE = ZoneId.of("Asia/Seoul");
     private static final long MISSION_REWARD_CASH = 50_000L;
-    private static final List<String> CORE_MISSION_IDS = List.of("market", "news", "watch");
-    private static final List<String> ROTATING_MISSION_IDS = List.of("ranking", "portfolio", "home", "settings");
-    private static final int DAILY_ROTATING_MISSION_COUNT = 2;
-    private static final Map<String, Long> MISSION_REWARDS = Map.ofEntries(
-            Map.entry("market", MISSION_REWARD_CASH),
-            Map.entry("news", MISSION_REWARD_CASH),
-            Map.entry("watch", MISSION_REWARD_CASH),
-            Map.entry("ranking", MISSION_REWARD_CASH),
-            Map.entry("portfolio", MISSION_REWARD_CASH),
-            Map.entry("home", MISSION_REWARD_CASH),
-            Map.entry("settings", MISSION_REWARD_CASH));
+    static final List<String> MISSION_IDS = List.of(
+            "market", "news", "watch", "ranking", "portfolio", "home", "settings",
+            "trade", "loan", "titles",
+            "stock-gov", "stock-uma", "stock-ba", "stock-gi", "stock-sr",
+            "stock-zzz", "stock-crk", "stock-vr", "stock-ow", "stock-pw");
+    static final int DAILY_MISSION_COUNT = 3;
+    private static final Map<String, Long> MISSION_REWARDS = MISSION_IDS.stream()
+            .collect(java.util.stream.Collectors.toUnmodifiableMap(id -> id, id -> MISSION_REWARD_CASH));
     /** GameStock charges a small, transparent 0.10% commission per side. */
     private static final double TRADING_FEE_RATE = 0.001;
     /** Per-headline news influence limits used to update fair value only. */
@@ -96,6 +93,9 @@ public class MarketService {
         this.matching=matching;this.pipelineMetrics=metrics;this.ownership=ownership;
     }
     private TitleService titles;
+    private AdminRuntimeControl adminRuntime;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void configureAdminRuntime(AdminRuntimeControl controls){this.adminRuntime=controls;}
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     void configureTitles(TitleService titles){this.titles=titles;}
     public boolean matchingEnabled(){return ownership==null||ownership.enabled();}
@@ -152,12 +152,18 @@ public class MarketService {
     }
     public void marketViewerDisconnected(String id){activityPolicy.disconnected(id,clock.millis());}
     boolean activeSimulation(){return !adaptiveActivity||activityPolicy.active(clock.millis(),idleAfterMillis);}
-    public long participantCadenceMillis(){return activeSimulation()?Math.max(50,Math.min(250,activeCadenceMillis)):activityPolicy.pulseOpen(clock.millis())?200:500;}
-    int currentTargetPerSymbol(){return activeSimulation()?targetPerSymbol:Math.min(targetPerSymbol,Math.max(30,idleTargetPerSymbol));}
+    public long participantCadenceMillis(){
+        if(adminRuntime!=null){Integer configured=adminRuntime.settings().cadenceMs();if(configured!=null)return configured;}
+        return activeSimulation()?Math.max(50,Math.min(250,activeCadenceMillis)):activityPolicy.pulseOpen(clock.millis())?200:500;
+    }
+    int currentTargetPerSymbol(){
+        if(adminRuntime!=null){Integer configured=adminRuntime.settings().targetPerSymbol();if(configured!=null)return configured;}
+        return activeSimulation()?targetPerSymbol:Math.min(targetPerSymbol,Math.max(30,idleTargetPerSymbol));
+    }
     boolean botWorkDue(String worker){return !adaptiveActivity||activityPolicy.workDue(worker,clock.millis(),activeSimulation());}
     boolean claimLegacyBotWork(String worker){return !adaptiveActivity||activityPolicy.claim(worker,clock.millis(),activeSimulation())>=0;}
     private void prepareVisitor() {
-        if(simulationInitialized&&adaptiveActivity&&activityPolicy.maintenanceDue(clock.millis(),true))maintainScheduledMarket();
+        if(simulationInitialized&&adaptiveActivity&&activityPolicy.visitorMustWait(clock.millis(),true))maintainScheduledMarket();
     }
     /** Idle heartbeats do not acquire a JDBC connection. Only due work opens a transaction. */
     public void maintainScheduledMarket() {
@@ -235,6 +241,7 @@ public class MarketService {
         removeExistingStock("VOID", "보이드 러너");
 
         StockCatalog.ensureListings(jdbc);
+        AdminSchema.restoreStockMetadata(jdbc);
         MarketBookCache.seedRevisions(jdbc);
         botJournal=new BotLedgerJournal(jdbc);
         ensureTraderBots();
@@ -305,6 +312,7 @@ public class MarketService {
         long started=System.nanoTime();
         BatchMarketRepository repository=new BatchMarketRepository(jdbc,compactLedger?botJournal:null);
         BatchOrderBook book=bookCacheEnabled?lane.cache.borrow(repository,now,lane.stocks,lane.users):repository.load(now,lane.stocks,lane.users);
+        if(adminRuntime!=null){var controls=adminRuntime.settings();if(controls.botsPaused()||controls.marketPaused())return List.of();adminRuntime.apply(book);}
         if(inlineMarketMaker)for(var stock:book.stocks.values()) {
             book.restoreLiquidityInventory(activityLpId,stock.id,
                     StockMarketProfile.initialLiquidityInventory(stock.code,LP_INITIAL_INVENTORY),stock.last);
@@ -447,7 +455,7 @@ public class MarketService {
 
     public List<MarketEvent> marketEvents() {
         List<MarketEvent> relevant = jdbc.query("""
-                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at,
+                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at, e.excerpt,
                        s.current_price, s.previous_price,
                        COALESCE(e.price_at_publish, (
                            SELECT h.price FROM stock_price_history h
@@ -515,7 +523,7 @@ public class MarketService {
 
     public List<MarketEvent> stockNews(String code) {
         List<MarketEvent> candidates = jdbc.query("""
-                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at,
+                SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at, e.excerpt,
                        s.current_price, s.previous_price,
                        COALESCE(e.price_at_publish, (
                            SELECT h.price FROM stock_price_history h
@@ -560,9 +568,10 @@ public class MarketService {
         String reason = priceReason(priceChangePercent, impact);
         var publishedAt = rs.getTimestamp("published_at");
         String published = publishedAt == null ? null : databaseInstant(publishedAt).toString();
+        NewsExcerptService.Excerpt excerpt = NewsExcerptService.readStored(rs.getString("excerpt"));
         return new MarketEvent(rs.getString("stock_code"), rs.getString("title"), impact,
                 sentiment, rs.getString("source"), rs.getString("description"), published, priceAtPublish, priceChangePercent,
-                priceDirection, reason);
+                priceDirection, reason, excerpt == null ? List.of() : excerpt.paragraphs(), excerpt == null ? null : excerpt.url());
     }
 
     private String priceReason(double priceChangePercent, int impact) {
@@ -585,8 +594,9 @@ public class MarketService {
 
     @Transactional(readOnly = true)
     public List<RankingEntry> ranking() {
+        Map<Long,Long> externalCash=adminRuntime==null?Map.of():adminRuntime.externalCash();
         List<RankingEntry> entries = jdbc.query("""
-                SELECT u.nickname, u.profile_image_url, u.cash,
+                SELECT u.id, u.nickname, u.profile_image_url, u.cash, u.loan_balance,
                        COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0) AS reserved_cash,
                        COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0) AS unsettled_cash,
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
@@ -600,8 +610,8 @@ public class MarketService {
                 LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
                 WHERE u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
                   AND COALESCE(u.role, 'USER') <> 'ADMIN'
-                GROUP BY u.id, u.nickname, u.profile_image_url, u.cash
-                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value) DESC, u.id ASC
+                GROUP BY u.id, u.nickname, u.profile_image_url, u.cash, u.loan_balance
+                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value - u.loan_balance) DESC, u.id ASC
                 LIMIT 100
                 """, (rs, row) -> {
             long assetValue = rs.getLong("asset_value");
@@ -610,9 +620,10 @@ public class MarketService {
             long unsettledCash = rs.getLong("unsettled_cash");
             long attendanceRewardCash = rs.getLong("attendance_reward_cash");
             long missionRewardCash = rs.getLong("mission_reward_cash");
-            long totalAsset = cash + reservedCash + unsettledCash + assetValue;
+            // 빌린 돈으로 순위가 오르지 않도록 랭킹 자산은 대출 잔액을 뺀 순자산이다.
+            long totalAsset = cash + reservedCash + unsettledCash + assetValue - rs.getLong("loan_balance");
             // 출석·미션 보상은 투자 성과가 아니므로 수익률에서 제외한다.
-            double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash) * 100.0 / STARTING_CASH;
+            double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash - externalCash.getOrDefault(rs.getLong("id"),0L)) * 100.0 / STARTING_CASH;
             // Rows saved before image validation may hold arbitrary URLs; never expose them to other viewers.
             String image = com.gamestock.backend.auth.ProfileImages.sanitize(rs.getString("profile_image_url"));
             TitleService.TitleDefinition title = TitleService.definition(rs.getString("equipped_title"));
@@ -639,17 +650,17 @@ public class MarketService {
     }
 
     static List<String> dailyMissionIds(LocalDate day) {
-        List<String> selected = new ArrayList<>(CORE_MISSION_IDS);
-        int offset = Math.floorMod(day.toEpochDay(), ROTATING_MISSION_IDS.size());
-        for (int index = 0; index < DAILY_ROTATING_MISSION_COUNT; index++) {
-            selected.add(ROTATING_MISSION_IDS.get((offset + index) % ROTATING_MISSION_IDS.size()));
-        }
-        return List.copyOf(selected);
+        // Seeding by the Korean date gives every server and every user the same random draw
+        // for the whole day, and a fresh draw at Korean midnight.
+        List<String> shuffled = new ArrayList<>(MISSION_IDS);
+        Collections.shuffle(shuffled, new Random(day.toEpochDay() * 0x9E3779B97F4A7C15L));
+        return List.copyOf(shuffled.subList(0, DAILY_MISSION_COUNT));
     }
 
     private DailyMissionStatus dailyMissionsAt(long userId, Instant now) {
         LocalDate day = now.atZone(MISSION_ZONE).toLocalDate();
-        List<String> available = dailyMissionIds(day);
+        List<String> available = dailyMissionIds(day).stream()
+                .filter(id -> adminRuntime==null || adminRuntime.missionReward(id,MISSION_REWARD_CASH)>=0).toList();
         Set<String> completedToday = new HashSet<>(jdbc.queryForList(
                 "SELECT mission_id FROM mission_rewards WHERE user_id = ? AND rewarded_on = ? ORDER BY mission_id",
                 String.class, userId, java.sql.Date.valueOf(day)));
@@ -660,18 +671,21 @@ public class MarketService {
 
     @Transactional
     public synchronized MissionRewardResult rewardMission(String missionId, long userId) {
+        if(adminRuntime!=null)AdminSupport.lock(jdbc);
         Long reward = MISSION_REWARDS.get(missionId);
         if (reward == null) throw new IllegalArgumentException("존재하지 않는 미션입니다.");
+        if(adminRuntime!=null){reward=adminRuntime.missionReward(missionId,reward);if(reward<0)throw new IllegalArgumentException("중지된 미션입니다.");}
         LocalDate day = LocalDate.now(clock.withZone(MISSION_ZONE));
         if (!dailyMissionIds(day).contains(missionId)) {
             throw new IllegalArgumentException("오늘의 미션에 포함되지 않은 미션입니다.");
         }
         // 페이지 확인형 미션은 서버가 실제 열람을 확인할 수 없어 랭킹 수익률에서 보상을 제외한다.
         // 관심종목 등록은 서버 상태로 확인할 수 있으므로 등록 여부를 검증한다.
-        if ("watch".equals(missionId)) {
+        int minimumWatchlist=adminRuntime==null?("watch".equals(missionId)?1:0):adminRuntime.minimumWatchlist(missionId);
+        if (minimumWatchlist>0) {
             Long watched = jdbc.queryForObject("SELECT COUNT(*) FROM user_watchlists WHERE user_id = ?", Long.class, userId);
-            if (watched == null || watched == 0)
-                throw new IllegalArgumentException("관심종목을 1개 이상 등록하면 보상을 받을 수 있습니다.");
+            if (watched == null || watched < minimumWatchlist)
+                throw new IllegalArgumentException("관심종목을 "+minimumWatchlist+"개 이상 등록하면 보상을 받을 수 있습니다.");
         }
         int inserted = jdbc.update("INSERT IGNORE INTO mission_rewards (user_id, mission_id, rewarded_on, reward_cash) VALUES (?, ?, ?, ?)",
                 userId, missionId, java.sql.Date.valueOf(day), reward);
@@ -1167,6 +1181,7 @@ public class MarketService {
         }
         for(long account:accounts)jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",Long.class,account);
         var book=repository.loadLocked(now,Set.copyOf(symbols.values()),users);
+        if(adminRuntime!=null)adminRuntime.apply(book);
         List<Integer> valid=new ArrayList<>();
         for(int i=0;i<commands.size();i++)if(outcomes.get(i)==null)try{
             var command=commands.get(i);var request=command.request();
@@ -1288,6 +1303,7 @@ public class MarketService {
     @Transactional
     public synchronized void liquidityBotAction(String code, String ignoredSide) {
         prepareBotAction(code);
+        if(adminRuntime!=null&&adminRuntime.botsPaused())return;
         if (!protection.marketStatus().open()) return;
         TradingRestriction restriction = protection.restriction(code);
         if (restriction != null && !restriction.limitOrdersAllowed()) return;
@@ -1318,6 +1334,7 @@ public class MarketService {
     @Transactional
     public synchronized void participantBotAction(String username) {
         prepareBotAction(null);
+        if(adminRuntime!=null&&adminRuntime.botsPaused())return;
         if (!protection.marketStatus().open()) return;
         BotProfile profile = traderProfiles.stream().filter(p -> p.username().equals(username)).findFirst().orElseThrow();
         List<String> codes = botStockCodes();
@@ -1325,6 +1342,7 @@ public class MarketService {
         long userId = traderBotId(username);
         BotObservation observation = selectBotObservation(profile,userId,codes);
         String code = observation.code();
+        if(adminRuntime!=null&&adminRuntime.restriction(code)!=null)return;
         PriceMetricService.Metrics metrics = observation.metrics();
         long id = stockId(code);
         // Execute the same funded intent that won selection; do not redraw its signal after choosing a symbol.
@@ -1341,13 +1359,13 @@ public class MarketService {
                 : ceilToTick(Math.round(decision.limitPrice()));
         PriceBand band = quoteBand(code,dailyReferencePrice(code),observation.news());
         price = "BUY".equals(decision.side()) ? floorToTick(band.clamp(price)) : ceilToTick(band.clamp(price));
-        int quantity = "SELL".equals(decision.side()) ? Math.min(decision.quantity(), availableQuantity(userId,id)) : decision.quantity();
+        int quantity = Math.min(2,"SELL".equals(decision.side()) ? Math.min(decision.quantity(), availableQuantity(userId,id)) : decision.quantity());
         if (quantity <= 0) return;
         try {
             order(new OrderRequest(code, decision.side(), quantity, decision.market() ? "MARKET" : "LIMIT",
                     decision.market() ? null : price), userId);
             if (!decision.market()) jdbc.update("UPDATE orders SET expires_at=? WHERE user_id=? AND stock_id=? AND status='OPEN'",
-                    Timestamp.from(clock.instant().plusMillis(decision.ttlMillis())), userId, id);
+                    Timestamp.from(clock.instant().plusMillis(Math.min(30_000,decision.ttlMillis()))), userId, id);
         } catch (IllegalArgumentException unavailable) {
             // Insufficient resources, protection, or user-style rate limits mean HOLD.
         }
@@ -1398,13 +1416,13 @@ public class MarketService {
         }
         List<BotObservation> observations=new ArrayList<>();
         List<BotOpportunitySelector.Opportunity> opportunities=new ArrayList<>();
-        long equity=BotStrategyEngine.hasInventoryDemand(profile)?jdbc.queryForObject("""
+        long equity=jdbc.queryForObject("""
                 SELECT cash
                   + COALESCE((SELECT SUM(reserved_cash) FROM orders WHERE user_id=u.id AND status='OPEN'),0)
                   + COALESCE((SELECT SUM(p.quantity*pm.mark_price) FROM portfolios p
                       JOIN market_price_metrics pm ON pm.stock_id=p.stock_id WHERE p.user_id=u.id),0)
                 FROM users u WHERE id=?
-                """,Long.class,userId):0;
+                """,Long.class,userId);
         for(String code:watched) {
             BotObservation candidate=observeBot(profile,userId,code,equity,codes.size());
             observations.add(candidate);
@@ -1431,25 +1449,22 @@ public class MarketService {
                 strategies.targetQuantity(profile,code,clock.millis(),equity,symbolCount,metrics.markPrice()));
         double news = recentNewsBias(code, profile.reactionLatency()).rate();
         long reference = dailyReferencePrice(code);
-        double estimate = metrics.markPrice();
-        if (profile.strategy().family() == BotProfile.Family.VALUE) {
-            double fundamental = jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?", Double.class, id);
-            // Only value investors receive a noisy, slowly updated observation, never the hidden truth.
-            fundamental=StockMarketProfile.valuationAnchor(code,reference,fundamental,news);
-            double noise=.012*(StockMarketProfile.isLargeCap(code)?StockMarketProfile.of(code).movementWeight():1);
-            estimate = strategies.estimate(profile, code, fundamental * (1 + tickRandom.nextGaussian() * noise));
-        }
+        double fundamental = jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?", Double.class, id);
+        fundamental=StockMarketProfile.valuationAnchor(code,reference,fundamental,news);
+        double noise=.012*(StockMarketProfile.isLargeCap(code)?StockMarketProfile.of(code).movementWeight():1);
+        double estimate = strategies.estimate(profile, code, fundamental * (1 + tickRandom.nextGaussian() * noise));
         double perceived = news == 0 ? 0 : news * (1 + profile.valueError()*8)
                 + tickRandom.nextGaussian() * Math.abs(news) * .25;
         BotStrategyEngine.Decision decision=strategies.decide(profile,metrics,environment(code),position,
                 estimate,perceived,tickSize(Math.round(metrics.lastPrice())),marketScale(code),code,reference);
-        boolean replace=resting.stream().anyMatch(o -> botOrderPolicy.shouldReplace(profile,o,decision,
+        boolean replace=resting.size()>1 || resting.stream().anyMatch(o -> clock.millis()-o.createdAt()>=30_000 || botOrderPolicy.shouldReplace(profile,o,decision,
                 clock.millis(),tickSize(o.price()),o.side().equals("BUY")?metrics.bestBid():metrics.bestAsk(),
                 o.side().equals("BUY")?metrics.bestAsk():metrics.bestBid()));
         return new BotObservation(code,metrics,position,estimate,perceived,decision.score(),resting,decision,replace);
     }
 
     public synchronized long nextBotDelay(String username) {
+        if(adminRuntime!=null){Integer configured=adminRuntime.settings().cadenceMs();if(configured!=null)return configured;}
         Random random = scheduleRandoms.computeIfAbsent(username, key -> new Random(simulationSeed ^ key.hashCode()));
         if (username.startsWith("liquidity:")) return 1000 + random.nextInt(2001);
         BotProfile p = traderProfiles.stream().filter(b -> b.username().equals(username)).findFirst().orElseThrow();
@@ -1514,13 +1529,16 @@ public class MarketService {
                     VALUES (?, ?, ?, ?, ?, 0)
                     """, userId, id, initialInventory, initialInventory, findStock(code).price());
         } else if (holdings.get(0).quantity() <= 0) {
-            // Replenish only after the previous lot is fully consumed. This
-            // preserves ordinary fills and avoids a full production reset.
+            // The startup/legacy path obeys the same finite supply bound as inline quotes.
+            long circulating=jdbc.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM portfolios WHERE stock_id=?",Long.class,id);
+            long nearbyAsks=jdbc.queryForObject("SELECT COALESCE(SUM(remaining_quantity),0) FROM orders WHERE stock_id=? AND user_id<>? AND side='SELL' AND status='OPEN' AND (expires_at IS NULL OR expires_at>CURRENT_TIMESTAMP) AND price<=?",Long.class,id,userId,findStock(code).price()*1.02);
+            int refill=(int)Math.min(32,Math.max(0,Math.max(512L,initialInventory*4L)-circulating));
+            if(refill==0 || nearbyAsks>=4)return;
             jdbc.update("""
                     UPDATE portfolios
                     SET quantity = ?, settled_quantity = ?, average_price = ?
                     WHERE user_id = ? AND stock_id = ?
-                    """, initialInventory, initialInventory, findStock(code).price(), userId, id);
+                    """, refill, refill, findStock(code).price(), userId, id);
         }
     }
 
@@ -1700,6 +1718,7 @@ public class MarketService {
 
     /** Maximise executable volume, then minimise imbalance and distance from the quote. */
     private void closeSinglePriceAuction(String code) {
+        if(adminRuntime!=null&&adminRuntime.restriction(code)!=null)return;
         long stockId = stockId(code);
         long reference = findStock(code).price();
         PriceBand daily = dailyPriceBand(code);
@@ -1826,8 +1845,9 @@ public class MarketService {
 
     private void settleTrade(long stockId, MatchRow buy, MatchRow sell, MatchRow maker, MatchRow taker, int quantity, long tradePrice) {
         long amount = tradePrice * quantity;
-        long buyerFee = feeFor(amount);
-        long sellerFee = feeFor(amount);
+        boolean internal=jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id IN (?,?) AND password_hash IN ('BOT','TRADER')",Integer.class,buy.userId(),sell.userId())==2;
+        long buyerFee = internal?0:feeFor(amount);
+        long sellerFee = buyerFee;
         HoldingState buyerBefore = holdingState(stockId, buy.userId());
         HoldingState sellerBefore = holdingState(stockId, sell.userId());
         if (buy.reservedCash() > 0) {
@@ -2480,10 +2500,12 @@ public class MarketService {
         // Like attendance, mission payouts are not trading performance; clients subtract both from P&L.
         long missionRewardCash = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(reward_cash), 0) FROM mission_rewards WHERE user_id = ?", Long.class, userId);
+        // 대출 잔액은 빌린 돈이라 화면에서 순자산과 손익을 계산할 때 뺀다.
+        long loanBalance = jdbc.queryForObject("SELECT loan_balance FROM users WHERE id = ?", Long.class, userId);
         long assetValue = positions.stream().mapToLong(Position::marketValue).sum();
         return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue,
                 positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash,
-                missionRewardCash);
+                missionRewardCash, loanBalance,adminRuntime==null?0:adminRuntime.externalCash(userId));
     }
 
     private long currentPrice(String code) {

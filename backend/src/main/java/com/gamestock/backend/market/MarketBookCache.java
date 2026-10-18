@@ -10,7 +10,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Database revisions also invalidate copies held by other application instances.
  * The local lock lasts through transaction completion, not just through the service method.
  */
-final class MarketBookCache {
+public final class MarketBookCache {
     private final ReentrantLock lock=new ReentrantLock();
     private BatchOrderBook book;
     private Map<Long,Long> versions=Map.of();
@@ -25,7 +25,8 @@ final class MarketBookCache {
     static void seedRevisions(JdbcTemplate db) {
         db.update("INSERT IGNORE INTO market_book_revisions(stock_id) SELECT id FROM stocks");
     }
-    static void invalidate(JdbcTemplate db,Long stock) {
+    /** Account resets and other paths outside the order pipeline call this inside their own transaction. */
+    public static void invalidate(JdbcTemplate db,Long stock) {
         if(stock==null)db.update("UPDATE market_book_revisions SET revision=revision+1");
         else db.update("UPDATE market_book_revisions SET revision=revision+1 WHERE stock_id=?",stock);
     }

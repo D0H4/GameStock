@@ -1,14 +1,12 @@
 package com.gamestock.backend.market;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.net.InetAddress;
@@ -19,7 +17,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,20 +24,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Flow;
-import java.util.concurrent.CompletionStage;
-import java.nio.ByteBuffer;
-import java.io.IOException;
 
 /**
  * 속보 본문 미리보기. 뉴스는 Google News RSS 링크로만 저장되므로
  * 링크를 언론사 원문 주소로 풀고, 원문 페이지에서 본문 첫 두 문단을 뽑는다.
+ * 원문을 세 번 거쳐 읽느라 한 건에 수 초가 걸리므로, 수집된 소식은 백그라운드에서 미리 풀어
+ * market_events.excerpt에 저장하고 소식 목록과 함께 내려 준다. 클릭 시 조회도 저장값을 먼저 쓴다.
  */
 @Service
 public class NewsExcerptService {
@@ -49,14 +43,13 @@ public class NewsExcerptService {
     public record Excerpt(List<String> paragraphs, String url) { }
 
     private record Cached(Excerpt excerpt, Instant expiresAt) { }
-    /** news_excerpts.payload 및 Redis 값으로 쓰는 JSON 본문. */
-    private record StoredExcerpt(String url, List<String> paragraphs) { }
-    private record StoredRow(String payload, Timestamp expiresAt) { }
 
     private static final String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
     private static final Pattern GOOGLE_ARTICLE =
             Pattern.compile("^https://news\\.google\\.com/rss/articles/([A-Za-z0-9_-]{20,600})(?:\\?.*)?$");
+    private static final Pattern STORED_ARTICLE =
+            Pattern.compile("https://news\\.google\\.com/rss/articles/([A-Za-z0-9_-]{20,600})");
     private static final Pattern SIGNATURE = Pattern.compile("data-n-a-sg=\"([^\"]+)\"");
     private static final Pattern TIMESTAMP = Pattern.compile("data-n-a-ts=\"(\\d+)\"");
     private static final Pattern META_CHARSET = Pattern.compile("<meta[^>]+charset=[\"']?([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE);
@@ -70,6 +63,8 @@ public class NewsExcerptService {
                     + "news-content|view_con|viewContent|view_content|article_view|article-view|cont_view|content-body|story-body|"
                     + "entry-content|post-content|article_content|article-content|news_view|news-view|view_text|txt_area)\\b)[^>]*>",
             Pattern.CASE_INSENSITIVE);
+    /* 본문임을 직접 밝힌 요소. 클래스 이름으로 찾는 컨테이너는 페이지 전체를 감싸는 경우가 있어 이것을 먼저 쓴다. */
+    private static final Pattern ARTICLE_BODY = Pattern.compile("<[a-z]+[^>]*itemprop=[\"']articleBody[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ARTICLE_TAG = Pattern.compile("<article\\b[^>]*>", Pattern.CASE_INSENSITIVE);
     private static final Pattern PARAGRAPH = Pattern.compile("<p\\b[^>]*>(.*?)</p\\s*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern LINE_BREAKS = Pattern.compile("(?:<br\\s*/?>\\s*){1,}|</div\\s*>", Pattern.CASE_INSENSITIVE);
@@ -88,76 +83,170 @@ public class NewsExcerptService {
             Map.entry("ldquo", "“"), Map.entry("rdquo", "”"), Map.entry("middot", "·"), Map.entry("hellip", "…"),
             Map.entry("ndash", "–"), Map.entry("mdash", "—"), Map.entry("bull", "•"), Map.entry("times", "×"));
 
+    /** 저장값 형식 버전. 추출 규칙이 바뀌면 올려서 예전 규칙으로 뽑은 본문을 쓰지 않고 다시 뽑는다. */
+    static final int EXCERPT_VERSION = 2;
     private static final int PARAGRAPHS = 2;
     private static final int MIN_PARAGRAPH = 30;
     private static final int MAX_PARAGRAPH = 700;
     private static final Duration HIT_TTL = Duration.ofHours(12);
     private static final Duration MISS_TTL = Duration.ofMinutes(10);
-    private static final String REDIS_PREFIX = "gamestock:news-excerpt:";
-    static final int MAX_RESPONSE_BYTES = 3_000_000;
-    private final Map<String, CompletableFuture<Excerpt>> inFlight = new ConcurrentHashMap<>();
-    private final Semaphore downloads = new Semaphore(4);
+    /* 한 번에 미리 풀 소식 수와 간격. Google에 몰아서 요청하지 않도록 한 건씩 천천히 처리한다. */
+    private static final int PREFETCH_BATCH = 20;
+    private static final long PREFETCH_PAUSE_MS = 1_000;
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JdbcTemplate jdbc;
-    private final ObjectProvider<StringRedisTemplate> redis;
-    @Value("${gamestock.news.excerpt-cache.redis-enabled:false}")
-    private boolean redisEnabled;
-    private final ObjectMapper json = new ObjectMapper();
+    private final ObjectMapper json = JSON;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+    /* Google News 기사 페이지는 같은 도메인 안에서 한 번 리다이렉트한다. 주소가 고정이라 자동으로 따라간다. */
+    private final HttpClient google = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
     private final Map<String, Cached> cache = new LinkedHashMap<>(64, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Cached> eldest) { return size() > 400; }
     };
 
-    public NewsExcerptService(JdbcTemplate jdbc, ObjectProvider<StringRedisTemplate> redis) {
+    /* 미리 풀기는 봇 매칭과 같은 스케줄러 풀을 쓰지 않도록 전용 스레드에서 돈다. */
+    private final ExecutorService prefetcher = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "news-excerpt-prefetch");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final AtomicBoolean prefetching = new AtomicBoolean();
+    private final AtomicBoolean staleCleared = new AtomicBoolean();
+
+    public NewsExcerptService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.redis = redis;
     }
 
     public Excerpt excerpt(String link) {
-        String articleId = extractArticleId(link);
+        Matcher article = GOOGLE_ARTICLE.matcher(link == null ? "" : link.trim());
+        if (!article.matches()) throw new IllegalArgumentException("지원하지 않는 뉴스 링크입니다.");
+        String articleId = article.group(1);
 
-        Excerpt cached = readCached(articleId);
-        if (cached != null) return cached;
-
-        // LOCATE is literal (article IDs contain LIKE metacharacters). Check the
-        // complete extracted token as well, so a substring cannot impersonate it.
-        List<String> descriptions = jdbc.queryForList(
-                "SELECT description FROM market_events WHERE event_type = 'NEWS' AND LOCATE(?, description) > 0",
-                String.class, articleId);
-        if (descriptions.stream().noneMatch(description -> containsArticle(description, articleId)))
-            throw new NoSuchElementException("저장된 소식이 아닙니다.");
-        var pending = new CompletableFuture<Excerpt>();
-        var existing = inFlight.putIfAbsent(articleId, pending);
-        if (existing != null) {
-            // Never tie up another servlet thread waiting for the same download.
-            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "뉴스 본문을 준비하고 있습니다. 잠시 후 다시 조회해 주세요.");
+        synchronized (cache) {
+            Cached cached = cache.get(articleId);
+            if (cached != null && cached.expiresAt().isAfter(Instant.now())) return cached.excerpt();
         }
+        /* 저장된 소식의 링크만 받는다. 아무 주소나 대신 읽어 주는 중계기가 되지 않게 한다. */
+        List<String> stored = jdbc.query(
+                "SELECT excerpt FROM market_events WHERE event_type = 'NEWS' AND description LIKE ? ORDER BY excerpt IS NULL LIMIT 1",
+                (rs, row) -> rs.getString("excerpt"), "%" + articleId + "%");
+        if (stored.isEmpty()) throw new NoSuchElementException("저장된 소식이 아닙니다.");
+        Excerpt saved = readStored(stored.get(0));
+        if (saved != null) {
+            remember(articleId, saved);
+            return saved;
+        }
+        Excerpt excerpt = load(articleId);
+        store("description LIKE ?", "%" + articleId + "%", excerpt);
+        return excerpt;
+    }
+
+    /** 수집된 소식 중 아직 본문을 풀지 않은 최신 소식을 미리 풀어 둔다. 앞선 차례가 아직 돌고 있으면 건너뛴다. */
+    @Scheduled(fixedDelayString = "${gamestock.news.excerpt-prefetch-ms:60000}",
+            initialDelayString = "${gamestock.news.excerpt-initial-delay-ms:45000}")
+    public void prefetchPending() {
+        if (!prefetching.compareAndSet(false, true)) return;
         try {
-            if (!downloads.tryAcquire())
-                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "잠시 후 다시 조회해 주세요.");
+            prefetcher.execute(() -> {
+                try {
+                    prefetchBatch();
+                } catch (RuntimeException error) {
+                    log.warn("뉴스 본문 미리 풀기 실패", error);
+                } finally {
+                    prefetching.set(false);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            prefetching.set(false);
+        }
+    }
+
+    private void prefetchBatch() {
+        /* 예전 버전 규칙으로 뽑은 본문은 한 번 비워 미리 풀기가 다시 뽑게 한다. 화면에는 이미 쓰이지 않는다. */
+        if (staleCleared.compareAndSet(false, true)) {
+            int cleared = jdbc.update("UPDATE market_events SET excerpt = NULL, excerpt_checked_at = NULL "
+                    + "WHERE event_type = 'NEWS' AND excerpt IS NOT NULL AND excerpt NOT LIKE ?", "%\"v\":" + EXCERPT_VERSION + "%");
+            if (cleared > 0) log.info("예전 규칙으로 뽑은 뉴스 본문 {}건을 다시 뽑습니다.", cleared);
+        }
+        /* 원문 주소를 못 푼 소식은 6시간 뒤 다시 시도하고, 2주 지난 소식은 클릭할 때만 푼다. */
+        List<Map.Entry<Long, String>> pending = jdbc.query("""
+                SELECT id, description FROM market_events
+                WHERE event_type = 'NEWS' AND source <> '업데이트 노트' AND excerpt IS NULL
+                  AND (excerpt_checked_at IS NULL OR excerpt_checked_at < UTC_TIMESTAMP() - INTERVAL 6 HOUR)
+                  AND COALESCE(published_at, created_at) > UTC_TIMESTAMP() - INTERVAL 14 DAY
+                ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+                LIMIT ?
+                """, (rs, row) -> Map.entry(rs.getLong("id"), String.valueOf(rs.getString("description"))), PREFETCH_BATCH);
+        for (Map.Entry<Long, String> row : pending) {
+            Matcher article = STORED_ARTICLE.matcher(row.getValue());
+            if (!article.find()) {
+                store("id = ?", row.getKey(), new Excerpt(List.of(), null));
+                continue;
+            }
+            store("id = ?", row.getKey(), load(article.group(1)));
             try {
-                cached = readCached(articleId);
-                Excerpt result = cached != null ? cached : download(articleId);
-                pending.complete(result);
-                return result;
-            } finally { downloads.release(); }
-        } catch (RuntimeException error) {
-            pending.completeExceptionally(error);
-            throw error;
-        } finally { inFlight.remove(articleId, pending); }
+                Thread.sleep(PREFETCH_PAUSE_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        if (!pending.isEmpty()) log.info("뉴스 본문 {}건 미리 풀기 완료", pending.size());
     }
 
-    static boolean containsArticle(String description, String articleId) {
-        if (description == null) return false;
-        var links = Pattern.compile("https://news\\.google\\.com/rss/articles/([A-Za-z0-9_-]{20,600})(?![A-Za-z0-9_-])").matcher(description);
-        while (links.find()) if (links.group(1).equals(articleId)) return true;
-        return false;
+    @PreDestroy
+    void stop() { prefetcher.shutdownNow(); }
+
+    /**
+     * 원문 주소를 풀었으면 결과를 저장해 다시 풀지 않는다. 주소를 못 풀었으면 확인 시각만 남겨
+     * 미리 풀기가 같은 소식을 곧바로 반복하지 않게 한다.
+     */
+    private void store(String where, Object key, Excerpt excerpt) {
+        String value = null;
+        if (excerpt.url() != null) {
+            try {
+                value = json.writeValueAsString(Map.of("v", EXCERPT_VERSION, "paragraphs", excerpt.paragraphs(), "url", excerpt.url()));
+            } catch (Exception error) {
+                log.debug("뉴스 본문 저장값 만들기 실패", error);
+            }
+        }
+        jdbc.update("UPDATE market_events SET excerpt = ?, excerpt_checked_at = UTC_TIMESTAMP() WHERE event_type = 'NEWS' AND " + where,
+                value, key);
     }
 
-    private Excerpt download(String articleId) {
+    /** market_events.excerpt에 저장된 값을 읽는다. 없거나 깨졌거나 예전 규칙으로 뽑은 값이면 null. */
+    static Excerpt readStored(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            JsonNode node = JSON.readTree(value);
+            if (node.path("v").asInt(1) < EXCERPT_VERSION) return null;
+            List<String> paragraphs = new ArrayList<>();
+            node.path("paragraphs").forEach(paragraph -> paragraphs.add(paragraph.asText()));
+            return new Excerpt(List.copyOf(paragraphs), node.path("url").asText(null));
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    private void remember(String articleId, Excerpt excerpt) {
+        Duration ttl = excerpt.paragraphs().isEmpty() ? MISS_TTL : HIT_TTL;
+        synchronized (cache) {
+            cache.put(articleId, new Cached(excerpt, Instant.now().plus(ttl)));
+        }
+    }
+
+    /** 원문을 실제로 읽어 첫 두 문단을 뽑는다. 같은 기사가 여러 종목에 걸려 있으면 메모리 캐시를 쓴다. */
+    private Excerpt load(String articleId) {
+        synchronized (cache) {
+            Cached cached = cache.get(articleId);
+            if (cached != null && cached.expiresAt().isAfter(Instant.now())) return cached.excerpt();
+        }
         String url = null;
         List<String> paragraphs = List.of();
         try {
@@ -168,114 +257,8 @@ public class NewsExcerptService {
             log.debug("뉴스 본문 미리보기 실패: {}", articleId, error);
         }
         Excerpt excerpt = new Excerpt(paragraphs, url);
-        store(articleId, excerpt, paragraphs.isEmpty() ? MISS_TTL : HIT_TTL);
+        remember(articleId, excerpt);
         return excerpt;
-    }
-
-    /**
-     * 뉴스 수집 직후 본문을 미리 받아 메모리·DB 캐시를 채운다. 실패는 무시하고
-     * 실제 요청이 들어오면 그때 다시 시도하므로 수집 작업을 막지 않는다.
-     */
-    public void prefetch(String link) {
-        try {
-            excerpt(link);
-        } catch (RuntimeException ignored) {
-            /* 미리 받기 실패는 무시한다. */
-        }
-    }
-
-    private static String extractArticleId(String link) {
-        Matcher article = GOOGLE_ARTICLE.matcher(link == null ? "" : link.trim());
-        if (!article.matches()) throw new IllegalArgumentException("지원하지 않는 뉴스 링크입니다.");
-        return article.group(1);
-    }
-
-    /** 메모리 → Redis → DB 순으로 저장된 본문을 찾는다. Redis는 설정으로 켰을 때만 쓴다. */
-    private Excerpt readCached(String articleId) {
-        synchronized (cache) {
-            Cached cached = cache.get(articleId);
-            if (cached != null && cached.expiresAt().isAfter(Instant.now())) return cached.excerpt();
-        }
-        Excerpt fromRedis = readRedis(articleId);
-        if (fromRedis != null) return fromRedis;
-        return readStored(articleId);
-    }
-
-    private Excerpt readRedis(String articleId) {
-        if (!redisEnabled) return null;
-        StringRedisTemplate template = redis.getIfAvailable();
-        if (template == null) return null;
-        try {
-            String payload = template.opsForValue().get(REDIS_PREFIX + articleId);
-            return payload == null ? null : decode(payload);
-        } catch (RuntimeException error) {
-            log.debug("본문 Redis 캐시 조회 실패: {}", articleId, error);
-            return null;
-        }
-    }
-
-    private Excerpt readStored(String articleId) {
-        List<StoredRow> rows = jdbc.query(
-                "SELECT payload, expires_at FROM news_excerpts WHERE article_id = ?",
-                (rs, row) -> new StoredRow(rs.getString("payload"), rs.getTimestamp("expires_at")), articleId);
-        if (rows.isEmpty()) return null;
-        StoredRow row = rows.get(0);
-        Instant expiresAt = row.expiresAt() == null ? null : row.expiresAt().toInstant();
-        if (expiresAt == null || !expiresAt.isAfter(Instant.now())) return null;
-        Excerpt excerpt = decode(row.payload());
-        if (excerpt == null) return null;
-        synchronized (cache) {
-            cache.put(articleId, new Cached(excerpt, expiresAt));
-        }
-        return excerpt;
-    }
-
-    private void store(String articleId, Excerpt excerpt, Duration ttl) {
-        Instant expiresAt = Instant.now().plus(ttl);
-        synchronized (cache) {
-            cache.put(articleId, new Cached(excerpt, expiresAt));
-        }
-        String payload = encode(excerpt);
-        if (payload == null) return;
-        try {
-            jdbc.update("""
-                    INSERT INTO news_excerpts (article_id, payload, expires_at, fetched_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                    ON DUPLICATE KEY UPDATE payload = VALUES(payload), expires_at = VALUES(expires_at),
-                        fetched_at = CURRENT_TIMESTAMP
-                    """, articleId, payload, Timestamp.from(expiresAt));
-        } catch (RuntimeException error) {
-            log.warn("본문을 저장하지 못했습니다: {}", articleId, error);
-        }
-        if (!redisEnabled) return;
-        StringRedisTemplate template = redis.getIfAvailable();
-        if (template == null) return;
-        try {
-            template.opsForValue().set(REDIS_PREFIX + articleId, payload, ttl);
-        } catch (RuntimeException error) {
-            log.debug("본문 Redis 캐시 저장 실패: {}", articleId, error);
-        }
-    }
-
-    private String encode(Excerpt excerpt) {
-        try {
-            return json.writeValueAsString(new StoredExcerpt(excerpt.url(), excerpt.paragraphs()));
-        } catch (JsonProcessingException error) {
-            log.debug("본문 직렬화 실패: {}", excerpt.url(), error);
-            return null;
-        }
-    }
-
-    private Excerpt decode(String payload) {
-        try {
-            JsonNode stored = json.readTree(payload);
-            List<String> paragraphs = new ArrayList<>();
-            for (JsonNode paragraph : stored.path("paragraphs")) paragraphs.add(paragraph.asText());
-            String url = stored.path("url").isTextual() ? stored.path("url").asText() : null;
-            return new Excerpt(paragraphs, url);
-        } catch (Exception error) {
-            return null;
-        }
     }
 
     /** Google News 기사 토큰을 언론사 주소로 푼다. 기사 페이지의 서명으로 batchexecute를 한 번 호출한다. */
@@ -311,46 +294,9 @@ public class NewsExcerptService {
     }
 
     private String send(HttpRequest request) throws Exception {
-        for (int hop = 0; hop < 3; hop++) {
-            if (!"https".equals(request.uri().getScheme()) || !"news.google.com".equals(request.uri().getHost()))
-                throw new IllegalStateException("Google News 외부 리다이렉트입니다.");
-            requirePublicHost(request.uri());
-            var response = sendBounded(request);
-            if (response.statusCode() / 100 == 3 && request.method().equals("GET")) {
-                URI next = request.uri().resolve(response.headers().firstValue("Location").orElseThrow());
-                request = HttpRequest.newBuilder(next).timeout(Duration.ofSeconds(8)).header("User-Agent", USER_AGENT).GET().build();
-                continue;
-            }
-            if (response.statusCode() / 100 != 2) throw new IllegalStateException("HTTP " + response.statusCode());
-            return new String(response.body(), StandardCharsets.UTF_8);
-        }
-        throw new IllegalStateException("리다이렉트가 너무 많습니다.");
-    }
-
-    private HttpResponse<byte[]> sendBounded(HttpRequest request) throws Exception {
-        var response = http.sendAsync(request, ignored -> new BoundedBodySubscriber(MAX_RESPONSE_BYTES));
-        try { return response.get(8, TimeUnit.SECONDS); }
-        catch (Exception error) { response.cancel(true); throw error; }
-    }
-
-    static final class BoundedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
-        private final HttpResponse.BodySubscriber<byte[]> delegate = HttpResponse.BodySubscribers.ofByteArray();
-        private final int limit;
-        private long received;
-        private Flow.Subscription subscription;
-        private boolean done;
-        BoundedBodySubscriber(int limit) { this.limit = limit; }
-        public CompletionStage<byte[]> getBody() { return delegate.getBody(); }
-        public void onSubscribe(Flow.Subscription subscription) { this.subscription = subscription; delegate.onSubscribe(subscription); }
-        public void onNext(List<ByteBuffer> buffers) {
-            if (done) return;
-            for (ByteBuffer buffer : buffers) received += buffer.remaining();
-            if (received > limit) {
-                done = true; subscription.cancel(); delegate.onError(new IOException("페이지가 너무 큽니다."));
-            } else delegate.onNext(buffers);
-        }
-        public void onError(Throwable error) { if (!done) { done = true; delegate.onError(error); } }
-        public void onComplete() { if (!done) { done = true; delegate.onComplete(); } }
+        HttpResponse<String> response = google.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (response.statusCode() / 100 != 2) throw new IllegalStateException("HTTP " + response.statusCode());
+        return response.body();
     }
 
     /** 언론사 페이지를 읽는다. 리다이렉트는 직접 따라가며 매번 내부망 주소가 아닌지 확인한다. */
@@ -358,12 +304,12 @@ public class NewsExcerptService {
         URI target = URI.create(url);
         for (int hop = 0; hop < 4; hop++) {
             requirePublicHost(target);
-            HttpResponse<byte[]> response = sendBounded(HttpRequest.newBuilder(target)
+            HttpResponse<byte[]> response = http.send(HttpRequest.newBuilder(target)
                     .timeout(Duration.ofSeconds(8))
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "text/html,application/xhtml+xml")
                     .header("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.6")
-                    .GET().build());
+                    .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
             int status = response.statusCode();
             if (status / 100 == 3) {
                 String location = response.headers().firstValue("Location").orElseThrow();
@@ -372,24 +318,19 @@ public class NewsExcerptService {
             }
             if (status / 100 != 2) throw new IllegalStateException("HTTP " + status);
             byte[] bytes = response.body();
+            if (bytes.length > 3_000_000) throw new IllegalStateException("페이지가 너무 큽니다.");
             return new String(bytes, charsetOf(response.headers().firstValue("Content-Type").orElse(""), bytes));
         }
         throw new IllegalStateException("리다이렉트가 너무 많습니다.");
     }
 
-    static void requirePublicHost(URI uri) throws Exception {
+    private static void requirePublicHost(URI uri) throws Exception {
         String scheme = uri.getScheme();
-        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme) || uri.getHost() == null
-                || uri.getUserInfo() != null || uri.getPort() != -1 && uri.getPort() != 80 && uri.getPort() != 443) {
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme) || uri.getHost() == null) {
             throw new IllegalStateException("지원하지 않는 주소입니다.");
         }
         for (InetAddress address : InetAddress.getAllByName(uri.getHost())) {
-            byte[] bytes = address.getAddress();
-            boolean privateV6 = bytes.length == 16 && ((bytes[0] & 0xfe) == 0xfc || (bytes[0] & 0xe0) != 0x20);
-            boolean reservedV4 = bytes.length == 4 && ((bytes[0] & 0xff) == 0 || (bytes[0] & 0xff) >= 224
-                    || (bytes[0] & 0xff) == 100 && (bytes[1] & 0xc0) == 0x40
-                    || (bytes[0] & 0xff) == 198 && ((bytes[1] & 0xfe) == 18));
-            if (privateV6 || reservedV4 || address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()
+            if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()
                     || address.isAnyLocalAddress() || address.isMulticastAddress()) {
                 throw new IllegalStateException("내부망 주소는 읽지 않습니다.");
             }
@@ -410,35 +351,78 @@ public class NewsExcerptService {
         }
     }
 
-    /** 본문 컨테이너를 찾아 첫 두 문단을 꺼낸다. 문단 태그가 없으면 줄바꿈 단위로, 그래도 없으면 요약 메타를 쓴다. */
+    /**
+     * 본문 컨테이너를 찾아 첫 두 문단을 꺼낸다. 문단 태그가 없으면 줄바꿈 단위로, 그래도 없으면 요약 메타를 쓴다.
+     * 컨테이너가 닫히는 곳까지만 본다. 본문을 &lt;br&gt;이나 &lt;div&gt;로만 나누는 언론사에서 컨테이너 밖의
+     * 관련 기사 목록이나 발행인 정보의 &lt;p&gt;를 본문으로 잡지 않기 위해서다.
+     */
     static List<String> extractParagraphs(String html) {
         String cleaned = NOISE.matcher(html).replaceAll(" ");
         int start = -1;
+        int end = cleaned.length();
+        Matcher articleBody = ARTICLE_BODY.matcher(cleaned);
         Matcher container = BODY_CONTAINER.matcher(cleaned);
-        if (container.find()) start = container.end();
-        else {
-            Matcher articleTag = ARTICLE_TAG.matcher(cleaned);
-            if (articleTag.find()) start = articleTag.end();
+        Matcher articleTag = ARTICLE_TAG.matcher(cleaned);
+        Matcher opening = articleBody.find() ? articleBody : container.find() ? container : articleTag.find() ? articleTag : null;
+        if (opening != null) {
+            start = opening.end();
+            end = elementEnd(cleaned, opening.start(), start);
         }
-        String region = start < 0 ? cleaned : cleaned.substring(start, Math.min(cleaned.length(), start + 200_000));
+        String region = start < 0 ? cleaned : cleaned.substring(start, end);
 
         List<String> paragraphs = new ArrayList<>();
-        Matcher paragraph = PARAGRAPH.matcher(region);
-        while (paragraph.find() && paragraphs.size() < PARAGRAPHS) addIfBody(paragraphs, paragraph.group(1));
-
-        if (paragraphs.size() < PARAGRAPHS && start >= 0) {
-            /* 문단 태그 없이 <br>로만 줄을 나누는 CMS. 다음 블록 요소 전까지만 본다. */
-            String flow = region.split("(?i)<(?:/article|section|ul|ol|h[1-6])\\b", 2)[0];
-            for (String block : LINE_BREAKS.split(flow)) {
-                if (paragraphs.size() >= PARAGRAPHS) break;
-                addIfBody(paragraphs, block);
-            }
-        }
+        /* 본문 뒤에 붙는 영상·관련 기사 목록은 보통 목록이나 소제목으로 시작한다. 그 앞부분을 먼저 보고,
+           문단이 모자랄 때만 컨테이너 전체를 본다. */
+        String flow = region.split("(?i)<(?:/article|section|ul|ol|h[1-6])\\b", 2)[0];
+        collectParagraphs(paragraphs, flow, start >= 0);
+        if (paragraphs.size() < PARAGRAPHS) collectParagraphs(paragraphs, region, false);
         if (paragraphs.isEmpty()) {
             Matcher description = OG_DESCRIPTION.matcher(html);
             if (description.find()) addIfBody(paragraphs, description.group(1));
         }
         return paragraphs;
+    }
+
+    /**
+     * 문단 태그를 먼저 보고, 모자라면 문단 태그 없이 &lt;br&gt;나 &lt;div&gt;로 줄을 나누는 CMS처럼 줄 단위로
+     * 다시 본다. 줄 단위는 문단 태그도 경계로 삼아 문서 순서를 지키고, 더 많이 찾은 쪽을 쓴다.
+     */
+    private static void collectParagraphs(List<String> paragraphs, String html, boolean lineBreaks) {
+        List<String> tagged = new ArrayList<>(paragraphs);
+        Matcher paragraph = PARAGRAPH.matcher(html);
+        while (paragraph.find() && tagged.size() < PARAGRAPHS) addIfBody(tagged, paragraph.group(1));
+        List<String> best = tagged;
+        if (tagged.size() < PARAGRAPHS && lineBreaks) {
+            List<String> lines = new ArrayList<>(paragraphs);
+            for (String block : LINE_BREAKS.split(html)) {
+                if (lines.size() >= PARAGRAPHS) break;
+                addIfBody(lines, block);
+            }
+            if (lines.size() > tagged.size()) best = lines;
+        }
+        paragraphs.clear();
+        paragraphs.addAll(best);
+    }
+
+    /**
+     * {@code tagStart}에서 열린 요소가 닫히는 위치. 같은 이름의 중첩 요소를 세어 짝을 맞춘다.
+     * 짝을 찾지 못하면 예전처럼 20만 자까지만 본다.
+     */
+    static int elementEnd(String html, int tagStart, int contentStart) {
+        Matcher name = Pattern.compile("<([a-zA-Z][a-zA-Z0-9]*)").matcher(html);
+        int fallback = Math.min(html.length(), contentStart + 200_000);
+        if (!name.find(tagStart) || name.start() != tagStart) return fallback;
+        Matcher tags = Pattern.compile("<(/?)" + name.group(1) + "\\b[^>]*?(/?)>", Pattern.CASE_INSENSITIVE).matcher(html);
+        tags.region(contentStart, html.length());
+        int depth = 1;
+        while (tags.find()) {
+            if (!tags.group(1).isEmpty()) {
+                if (--depth == 0) return tags.start();
+            } else if (tags.group(2).isEmpty()) {
+                depth++;
+            }
+        }
+        return fallback;
     }
 
     private static void addIfBody(List<String> paragraphs, String fragment) {

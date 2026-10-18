@@ -3,7 +3,7 @@ import { Delta } from "./Delta";
 import { GameIcon } from "./GameIcon";
 import { Link } from "./Link";
 import { apiFetch } from "../lib/api";
-import { kstDateTime, since, won } from "../market/format";
+import { kstDateTime, recentSince, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { newsEffect } from "../market/selectors";
 import type { NewsItem } from "../market/types";
@@ -46,13 +46,13 @@ function readDescription(raw: string | undefined, title: string): { paragraphs: 
 type Excerpt = { paragraphs: string[]; url: string | null };
 const excerptCache = new Map<string, Excerpt>();
 
-/** 서버가 원문 기사에서 뽑은 첫 두 문단. Google News 링크가 있는 소식만 묻는다. */
-function useExcerpt(link: string | null): { excerpt: Excerpt | null; loading: boolean } {
+/** 서버가 원문 기사에서 뽑은 첫 두 문단. 목록에 미리 실려 왔으면 그대로 쓰고, 아니면 Google News 링크가 있는 소식만 묻는다. */
+function useExcerpt(link: string | null, preloaded: Excerpt | null): { excerpt: Excerpt | null; loading: boolean } {
   const [state, setState] = useState<{ link: string | null; excerpt: Excerpt | null }>(() => ({
     link,
     excerpt: link ? excerptCache.get(link) ?? null : null,
   }));
-  const remote = link !== null && link.startsWith("https://news.google.com/");
+  const remote = preloaded === null && link !== null && link.startsWith("https://news.google.com/");
 
   useEffect(() => {
     if (!remote || !link) return;
@@ -75,6 +75,7 @@ function useExcerpt(link: string | null): { excerpt: Excerpt | null; loading: bo
     return () => controller.abort();
   }, [link, remote]);
 
+  if (preloaded) return { excerpt: preloaded, loading: false };
   const current = state.link === link ? state.excerpt : null;
   return { excerpt: current, loading: remote && current === null };
 }
@@ -93,13 +94,19 @@ export function NewsDetail({ item }: Props) {
   const api = useMarketApi();
   const heading = useRef<HTMLHeadingElement>(null);
   const quote = snapshot.quotes[item.code];
-  const effect = item.priceChangeRatio ?? newsEffect(item.priceAtPublish, quote);
+  /* 화면에 함께 보이는 발행가와 실시간 현재가로 계산해야 세 숫자가 서로 맞는다. 서버 값은 시세가 없을 때만 쓴다. */
+  const effect = quote && item.priceAtPublish > 0 ? newsEffect(item.priceAtPublish, quote) : item.priceChangeRatio ?? 0;
   const name = LISTING_BY_CODE[item.code]?.name ?? item.code;
   const watched = snapshot.watch.includes(item.code);
   const stored = useMemo(() => readDescription(item.description, item.title), [item.description, item.title]);
-  const { excerpt, loading } = useExcerpt(stored.link);
+  const preloaded = useMemo<Excerpt | null>(
+    () => (item.articleUrl ? { paragraphs: (item.excerpt ?? []).slice(0, EXCERPT_PARAGRAPHS), url: item.articleUrl } : null),
+    [item.articleUrl, item.excerpt],
+  );
+  const { excerpt, loading } = useExcerpt(stored.link, preloaded);
   const paragraphs = excerpt?.paragraphs.length ? excerpt.paragraphs : loading ? [] : stored.paragraphs;
   const original = excerpt?.url ?? stored.link;
+  const recent = recentSince(item.at, snapshot.updatedAt);
 
   /* 기사를 바꿀 때마다 제목으로 포커스를 옮겨 화면 낭독기가 새 본문을 읽게 한다. */
   useEffect(() => {
@@ -124,7 +131,9 @@ export function NewsDetail({ item }: Props) {
         {item.title}
       </h2>
       <p className="news-detail-time">
-        <time dateTime={new Date(item.at).toISOString()}>{kstDateTime(item.at)}</time> · {since(item.at, snapshot.updatedAt)}
+        {/* 날짜와 시각은 이미 보이므로, 1시간 안의 소식에만 "3분 전" 같은 경과 시간을 붙인다. */}
+        <time dateTime={new Date(item.at).toISOString()}>{kstDateTime(item.at)}</time>
+        {recent && <> · {recent}</>}
       </p>
 
       <dl className="news-detail-stats">
@@ -134,10 +143,10 @@ export function NewsDetail({ item }: Props) {
         </div>
         <div>
           <dt>현재가</dt>
-          <dd className="num">{quote ? won(quote.price) : "—"}</dd>
+          <dd className="num">{quote ? won(quote.price) : "-"}</dd>
         </div>
         <div>
-          <dt>발행 후 반영</dt>
+          <dt>발행 후 등락</dt>
           <dd><Delta change={effect} ratio={effect} showAmount={false} /></dd>
         </div>
       </dl>

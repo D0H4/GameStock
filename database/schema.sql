@@ -15,6 +15,8 @@ CREATE TABLE users (
   role VARCHAR(20) NOT NULL DEFAULT 'USER',
   account_reset_at TIMESTAMP NULL,
   reset_used_at TIMESTAMP NULL,
+  trade_banned_until TIMESTAMP NULL,
+  trade_ban_reason VARCHAR(200) NULL,
   cash BIGINT NOT NULL DEFAULT 1000000,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -95,14 +97,6 @@ CREATE TABLE market_events (
   CONSTRAINT fk_events_stock FOREIGN KEY (stock_id) REFERENCES stocks(id),
   INDEX ix_market_events_stock_type_time (stock_id, event_type, published_at, created_at, id),
   INDEX ix_market_events_stock_title (stock_id, title)
-);
-
--- 수집한 소식 원문의 첫 문단 미리보기. 수집 시점에 채워 두고 요청은 여기서 바로 읽는다.
-CREATE TABLE news_excerpts (
-  article_id VARCHAR(600) CHARACTER SET ascii NOT NULL PRIMARY KEY,
-  payload MEDIUMTEXT NOT NULL,
-  expires_at TIMESTAMP NOT NULL,
-  fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE orders (
@@ -318,6 +312,7 @@ CREATE TABLE user_titles (
 CREATE TABLE weekly_return_weeks (
   week_start DATE NOT NULL PRIMARY KEY,
   snapshot_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  closing_at TIMESTAMP NULL,
   awarded_at TIMESTAMP NULL
 );
 
@@ -325,6 +320,7 @@ CREATE TABLE weekly_return_snapshots (
   week_start DATE NOT NULL,
   user_id BIGINT NOT NULL,
   baseline_asset BIGINT NOT NULL,
+  closing_asset BIGINT NULL,
   PRIMARY KEY (week_start, user_id),
   CONSTRAINT fk_weekly_snapshot_user FOREIGN KEY (user_id) REFERENCES users(id)
 );

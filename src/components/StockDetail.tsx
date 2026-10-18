@@ -3,7 +3,7 @@ import { GameIcon } from "./GameIcon";
 import { Link } from "./Link";
 import { PriceCell } from "./PriceCell";
 import { ReferenceSeriesChart } from "./ReferenceSeriesChart";
-import { clock, shares, won } from "../market/format";
+import { fillTime, shares, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -112,7 +112,7 @@ export function StockDetail({ code }: { code: string }) {
           <ul className="fill-list">
             {fills.map((fill) => (
               <li key={fill.id}>
-                <span className="num fill-time">{clock(fill.at)}</span>
+                <span className="num fill-time">{fillTime(fill.at)}</span>
                 <span className={fill.side === "buy" ? "is-up" : "is-down"}>{fill.side === "buy" ? "매수" : "매도"}</span>
                 <span className="num">{fill.qty}주</span>
                 <span className="num fill-amount">{won(fill.price * fill.qty)}</span>

@@ -31,6 +31,11 @@ class TitleServiceTest {
     private boolean lastWeekOpen;
     private final Map<Long, Long> adjustedAssets = new LinkedHashMap<>();
     private final List<Long> tradedLastWeek = new ArrayList<>();
+    /** Closing snapshot of last week; null when none was taken. */
+    private java.sql.Timestamp closingAt;
+    private final Map<Long, Long> closingAssets = new LinkedHashMap<>();
+    /** user id → weekly titles awarded to that user. */
+    private final Map<Long, List<String>> weeklyWinners = new LinkedHashMap<>();
 
     private TitleService service() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class, call -> {
@@ -44,6 +49,7 @@ class TitleServiceTest {
                     return titles.putIfAbsent((String) args[2], 1) == null ? 1 : 0;
                 if (sql.contains("INSERT INTO user_titles")) {
                     titles.merge((String) args[2], 1, Integer::sum);
+                    weeklyWinners.computeIfAbsent((Long) args[1], id -> new ArrayList<>()).add((String) args[2]);
                     return 1;
                 }
                 if (sql.startsWith("UPDATE user_titles SET equipped = (title_id = ?)")) {
@@ -67,12 +73,35 @@ class TitleServiceTest {
                 return List.of();
             }
             if (method.equals("query")) {
+                if (sql.startsWith("SELECT closing_at FROM weekly_return_weeks"))
+                    return closingAt == null ? List.of() : List.of(closingAt);
+                if (sql.startsWith("SELECT user_id, closing_asset") && args[1] instanceof RowCallbackHandler handler) {
+                    for (var entry : closingAssets.entrySet()) {
+                        ResultSet rs = mock(ResultSet.class);
+                        when(rs.getLong(1)).thenReturn(entry.getKey());
+                        when(rs.getLong(2)).thenReturn(entry.getValue());
+                        handler.processRow(rs);
+                    }
+                    return null;
+                }
                 if (sql.contains("FROM users u WHERE u.id = ?")) {
                     ResultSet rs = mock(ResultSet.class);
                     when(rs.getLong(anyString())).thenAnswer(i -> ((Number) user.getOrDefault(i.getArgument(0), 0L)).longValue());
                     when(rs.getInt(anyString())).thenAnswer(i -> ((Number) user.getOrDefault(i.getArgument(0), 0)).intValue());
                     when(rs.getBoolean(anyString())).thenAnswer(i -> (Boolean) user.getOrDefault(i.getArgument(0), false));
                     return List.of(((RowMapper<?>) args[1]).mapRow(rs, 0));
+                }
+                // Checked before the portfolio branch: the display query also joins portfolios.
+                if (sql.contains("u.id IN (") && args[1] instanceof RowCallbackHandler handler) {
+                    for (Object id : java.util.Arrays.copyOfRange(args, 2, args.length)) {
+                        ResultSet rs = mock(ResultSet.class);
+                        when(rs.getLong("id")).thenReturn((Long) id);
+                        when(rs.getString("nickname")).thenReturn("user" + id);
+                        when(rs.getString("profile_image_url")).thenReturn(null);
+                        when(rs.getLong("total_asset")).thenReturn(adjustedAssets.get((Long) id));
+                        handler.processRow(rs);
+                    }
+                    return null;
                 }
                 if (sql.contains("FROM portfolios p JOIN stocks s") && args[1] instanceof RowCallbackHandler handler) {
                     for (long[] position : positions) {
@@ -156,6 +185,40 @@ class TitleServiceTest {
         // A second tick in the same week must not award again.
         service.awardWeeklyTitles();
         assertEquals(1, titles.get("weekly_1"));
+    }
+
+    @Test void weeklyTitlesRankTheStoredClosingAssetsNotTheLiveOnes() {
+        TitleService service = service();
+        // After the close user 1 surged and user 2 fell; the award must ignore that.
+        adjustedAssets.put(1L, 3_000_000L);
+        adjustedAssets.put(2L, 1_000_000L);
+        closingAt = java.sql.Timestamp.from(Instant.parse("2026-10-11T14:59:00Z"));
+        closingAssets.put(1L, 1_100_000L);
+        closingAssets.put(2L, 1_500_000L);
+        tradedLastWeek.addAll(List.of(1L, 2L));
+        lastWeekOpen = true;
+        service.awardWeeklyTitles();
+        assertEquals(List.of("weekly_1", "weekly_2", "weekly_3"), weeklyWinners.get(2L));
+        assertEquals(List.of("weekly_2", "weekly_3"), weeklyWinners.get(1L));
+    }
+
+    @Test void weeklyRankingRanksTradersByReturnAndAddsViewerRow() {
+        TitleService service = service();
+        adjustedAssets.put(1L, 1_100_000L);
+        adjustedAssets.put(2L, 1_300_000L);
+        adjustedAssets.put(3L, 900_000L);
+        adjustedAssets.put(4L, 5_000_000L);
+        tradedLastWeek.addAll(List.of(1L, 2L, 3L));
+        var ranking = service.weeklyRanking(3L);
+        // User 4 did not trade this week, so a large asset does not place them.
+        assertEquals(3, ranking.participants());
+        assertEquals(List.of("user2", "user1", "user3"), ranking.entries().stream().map(TitleService.WeeklyRankingEntry::nickname).toList());
+        assertEquals(30.0, ranking.entries().get(0).weeklyReturnPercent(), 1e-9);
+        assertEquals(3, ranking.me().rank());
+        assertEquals("2026-10-12", ranking.weekStart());
+        assertEquals("2026-10-18", ranking.weekEnd());
+        assertEquals("2026-10-18T15:00:00Z", ranking.awardAt());
+        assertNull(service.weeklyRanking(4L).me());
     }
 
     @Test void onlyOwnedTitlesCanBeEquippedAndOneAtATime() {

@@ -6,7 +6,7 @@ import { Link } from "../components/Link";
 import { Panel } from "../components/Panel";
 import { RestrictionBadge } from "../components/RestrictionBadge";
 import { apiFetch } from "../lib/api";
-import { clock as hm, serverTimestamp, won } from "../market/format";
+import { fillTime, serverTimestamp, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate, totals } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -31,6 +31,7 @@ export function MyPage() {
   const holdingCount = Object.keys(snapshot.portfolio.positions).length;
   const [openOrders, setOpenOrders] = useState<ActiveOrder[]>([]);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersFailed, setOrdersFailed] = useState(false);
   const [message, setMessage] = useState("");
 
   // 미체결 주문은 체결·만료로 자주 바뀌므로 1초마다 다시 읽는다.
@@ -42,9 +43,11 @@ export function MyPage() {
         if (active) {
           setOpenOrders(next);
           setOrdersLoaded(true);
+          setOrdersFailed(false);
         }
       } catch {
-        // 일시적인 네트워크 오류가 있어도 마지막 목록을 유지한다.
+        // 받은 목록이 있으면 일시적인 오류에도 그대로 둔다. 처음부터 못 받았을 때만 화면에 알린다.
+        if (active) setOrdersFailed(true);
       }
     };
     void refresh();
@@ -73,8 +76,8 @@ export function MyPage() {
 
       <section className="head" aria-label="계좌 요약">
         <div>
-          <p className="head-label">총 자산</p>
-          <p className="head-value">{won(money.total)}</p>
+          <p className="head-label">{money.loan > 0 ? "순자산" : "총 자산"}</p>
+          <p className="head-value">{won(money.net)}</p>
           <p className="head-sub">
             <Delta change={money.pnl} ratio={money.pnlRate} />
           </p>
@@ -88,6 +91,12 @@ export function MyPage() {
             <dt>주식</dt>
             <dd className="num">{won(money.stockValue)}</dd>
           </div>
+          {money.loan > 0 && (
+            <div className="loan-debt">
+              <dt>대출</dt>
+              <dd className="num">−{won(money.loan)}<Link to="/loan">관리</Link></dd>
+            </div>
+          )}
         </dl>
       </section>
 
@@ -101,8 +110,12 @@ export function MyPage() {
         )}
       </Panel>
 
-      <Panel id="mypage-open-orders" title="미체결 주문" meta={ordersLoaded ? openOrders.length + "건" : "불러오는 중…"}>
-        {!ordersLoaded ? <p className="empty">주문을 불러오는 중…</p> : openOrders.length === 0 ? (
+      <Panel id="mypage-open-orders" title="미체결 주문" meta={ordersLoaded ? openOrders.length + "건" : ordersFailed ? "연결 끊김" : "불러오는 중…"}>
+        {!ordersLoaded ? (
+          ordersFailed
+            ? <p className="empty" role="alert">미체결 주문을 불러오지 못했습니다. 서버에 다시 연결되면 자동으로 불러옵니다.</p>
+            : <p className="empty" role="status">주문을 불러오는 중…</p>
+        ) : openOrders.length === 0 ? (
           <p className="empty">현재 미체결 주문이 없습니다.</p>
         ) : (
           <div className="table-scroll">
@@ -128,9 +141,9 @@ export function MyPage() {
                     </th>
                     <td className={order.side === "BUY" ? "is-up" : "is-down"}>{order.side === "BUY" ? "매수" : "매도"}</td>
                     <td>{order.orderType === "LIMIT" ? "지정가" : "시장가"}</td>
-                    <td className="cell-num num">{order.price > 0 ? won(order.price) : "—"}</td>
+                    <td className="cell-num num">{order.price > 0 ? won(order.price) : "-"}</td>
                     <td className="cell-num num">{order.quantity.toLocaleString("ko-KR")} / {order.remainingQuantity.toLocaleString("ko-KR")}주</td>
-                    <td className="cell-num num">{Number.isNaN(serverTimestamp(order.createdAt)) ? "—" : hm(serverTimestamp(order.createdAt))}</td>
+                    <td className="cell-num num">{Number.isNaN(serverTimestamp(order.createdAt)) ? "-" : fillTime(serverTimestamp(order.createdAt))}</td>
                     <td className="cell-num"><button type="button" className="account-button" onClick={() => void cancelOrder(order.id)}>취소</button></td>
                   </tr>
                 ))}
@@ -174,7 +187,7 @@ export function MyPage() {
                     <td className={fill.side === "buy" ? "is-up" : "is-down"}>{fill.side === "buy" ? "매수" : "매도"}</td>
                     <td className="cell-num num">{fill.qty}주</td>
                     <td className="cell-num num">{won(fill.price * fill.qty)}</td>
-                    <td className="cell-num num">{hm(fill.at)}</td>
+                    <td className="cell-num num">{fillTime(fill.at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -200,7 +213,7 @@ export function MyPage() {
                     <span className="name-text">{LISTING_BY_CODE[code]?.name ?? code}</span>
                   </Link>
                   <span className="account-watch-quote num">
-                    {quote ? won(quote.price) : "—"}
+                    {quote ? won(quote.price) : "-"}
                     <Delta change={rate} ratio={rate} showAmount={false} />
                   </span>
                   <button type="button" className="text-button" aria-label={(LISTING_BY_CODE[code]?.name ?? code) + " 관심종목 해제"} onClick={() => api.toggleWatch(code)}>

@@ -107,14 +107,27 @@ export function minutes(at: number): string {
   return kstMinuteFormatter.format(new Date(at));
 }
 
-/** 방금 / 42초 전 / 3분 전 / 12:04 */
+/** 방금 / 42초 전 / 3분 전 / 12:04 / 어제 18:46 / 10월 13일 17:06 */
 export function since(at: number, now: number): string {
   const seconds = Math.max(0, Math.round((now - at) / 1000));
   if (seconds < 5) return "방금";
   if (seconds < 60) return `${seconds}초 전`;
   const minute = Math.floor(seconds / 60);
   if (minute < 60) return `${minute}분 전`;
-  return minutes(at);
+  // 오늘이 아닌 소식은 날짜를 붙여야 시각만으로 순서가 뒤섞여 보이지 않는다.
+  const day = dayLabel(at, now);
+  return day === "오늘" ? minutes(at) : `${day} ${minutes(at)}`;
+}
+
+/** 1시간 안의 소식만 "방금 / 42초 전 / 3분 전"으로 알려 준다. 그보다 오래되면 null. */
+export function recentSince(at: number, now: number): string | null {
+  return now - at < 3_600_000 ? since(at, now) : null;
+}
+
+/** 체결 시각. 오늘 체결은 12:04:31, 그 전 체결은 날짜를 붙여 "어제 23:37" / "10월 13일 17:06". */
+export function fillTime(at: number, now = Date.now()): string {
+  const day = dayLabel(at, now);
+  return day === "오늘" ? clock(at) : `${day} ${minutes(at)}`;
 }
 
 /** 공식 게시 시각을 한국 시간으로 고정해 표시한다. */

@@ -1,0 +1,185 @@
+package com.gamestock.backend.market;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gamestock.backend.auth.AuthService;
+import com.zaxxer.hikari.*;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static com.gamestock.backend.market.AdminOperationsService.*;
+import static com.gamestock.backend.market.MarketModels.*;
+
+/** Only a new disposable schema on an explicitly selected loopback MySQL is touched. */
+@EnabledIfEnvironmentVariable(named="ADMIN_TEST_JDBC",matches="jdbc:mysql://(?:localhost|127\\.0\\.0\\.1):[0-9]+/.*")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class AdminOperationsIntegrationTest {
+    JdbcTemplate root,db;HikariDataSource source;String schema;
+    MarketService market;AdminSupport support;AdminRuntimeControl runtime;
+    AdminOperationsService operations;AdminContentService content;AdminSeasonService seasons;
+    TransactionTemplate transaction;long buyer,seller,admin,stock;
+    @BeforeAll void start() throws Exception {
+        String url=System.getenv("ADMIN_TEST_JDBC"),user=System.getenv("ADMIN_TEST_USER"),password=System.getenv("ADMIN_TEST_PASSWORD");
+        root=new JdbcTemplate(new DriverManagerDataSource(url,user,password));
+        schema="admin_test_"+UUID.randomUUID().toString().replace("-","");root.execute("CREATE DATABASE "+schema);
+        HikariConfig config=new HikariConfig();config.setJdbcUrl(url.replaceFirst("/[^/?]*(\\?|$)","/"+schema+"$1"));config.setUsername(user);config.setPassword(password);config.setMaximumPoolSize(6);config.setConnectionInitSql("SET time_zone = '+00:00'");
+        source=new HikariDataSource(config);db=new JdbcTemplate(source);transaction=new TransactionTemplate(new DataSourceTransactionManager(source));
+        String sql=Files.readString(Path.of("../database/schema.sql")).replaceAll("(?m)^--.*$","").replaceAll("(?is)CREATE DATABASE[^;]+;","").replaceAll("(?is)USE gamestock;","");
+        for(String statement:sql.split(";"))if(!statement.isBlank())db.execute(statement);
+        var events=mock(ApplicationEventPublisher.class);var protection=new TradingProtectionService(db);
+        market=new MarketService(events,db,new UserFeatureService(db),protection);
+        var titles=new TitleService(db,new DataSourceTransactionManager(source));market.configureTitles(titles);market.initializeData();
+        runtime=new AdminRuntimeControl(db);market.configureAdminRuntime(runtime);protection.configureAdminRuntime(runtime);
+        titles.configureAdminRuntime(runtime);
+        support=new AdminSupport(db,mock(AuthService.class),new ObjectMapper().findAndRegisterModules());
+        operations=new AdminOperationsService(db,support,market,runtime,events);content=new AdminContentService(db,support);seasons=new AdminSeasonService(db,support,operations,runtime);
+        db.update("INSERT INTO users(username,password_hash,nickname,google_uid,role,cash) VALUES('admin-test','TEST','admin-test','admin-test','ADMIN',1000000),('buyer-test','TEST','buyer-test','buyer-test','USER',1000000),('seller-test','TEST','seller-test','seller-test','USER',1000000)");
+        admin=id("admin-test");buyer=id("buyer-test");seller=id("seller-test");stock=db.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);
+    }
+    @BeforeEach void reset(){
+        tx(()->{
+            for(String table:List.of("admin_season_entries","admin_seasons","user_reports","admin_content","admin_mission_config","admin_cash_epochs","admin_cash_adjustments","admin_permissions","admin_audit","settlements","trades","orders","portfolios","mission_rewards","attendance_rewards"))db.update("DELETE FROM "+table);
+            db.update("DELETE FROM admin_stock_state");db.update("UPDATE admin_runtime SET bots_paused=FALSE,market_paused=FALSE,cadence_ms=NULL,target_per_symbol=NULL");
+            db.update("UPDATE users SET cash=1000000,loan_balance=0,account_reset_at=NULL WHERE id IN (?,?)",buyer,seller);
+            db.update("UPDATE stocks SET current_price=10000,previous_price=10000 WHERE id=?",stock);
+            new TradingProtectionService(db).refreshDay();
+            db.update("UPDATE stock_protection_state SET day_reference=10000,static_reference=10000,dynamic_reference=10000,last_trade_price=10000,vi_type=NULL WHERE stock_id=?",stock);
+            db.update("INSERT INTO portfolios(user_id,stock_id,quantity,settled_quantity,average_price) VALUES(?,?,100,100,10000)",seller,stock);return null;
+        });
+    }
+    @AfterAll void stop(){if(source!=null)source.close();if(root!=null&&schema!=null)root.execute("DROP DATABASE "+schema);}
+    private long id(String name){return db.queryForObject("SELECT id FROM users WHERE username=?",Long.class,name);}
+    private <T>T tx(Supplier<T> task){return transaction.execute(status->task.get());}
+    private long cash(long id){return db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,id);}
+    private void pause(){tx(()->operations.runtime(admin,new RuntimeChange(true,true,500,20,"복구 점검")));}
+
+    @Test void cashAdjustmentIsIdempotentAndCannotOverdraw(){
+        var request=new CashChange("incident-1",50000,"장애 보상");
+        assertEquals(true,tx(()->operations.cash(admin,buyer,request)).get("applied"));
+        assertEquals(false,tx(()->operations.cash(admin,buyer,request)).get("applied"));assertEquals(1050000,cash(buyer));
+        assertThrows(IllegalArgumentException.class,()->tx(()->operations.cash(admin,seller,request)));
+        assertThrows(IllegalArgumentException.class,()->tx(()->operations.cash(admin,buyer,new CashChange("negative",-2000000,"오류 차감"))));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM admin_cash_adjustments",Integer.class));
+    }
+    @Test void concurrentRetriesPayExactlyOnce() throws Exception {
+        ExecutorService pool=Executors.newFixedThreadPool(2);
+        try{var request=new CashChange("parallel",100,"중복 요청");var a=pool.submit(()->tx(()->operations.cash(admin,buyer,request)));var b=pool.submit(()->tx(()->operations.cash(admin,buyer,request)));a.get(10,TimeUnit.SECONDS);b.get(10,TimeUnit.SECONDS);assertEquals(1000100,cash(buyer));}finally{pool.shutdownNow();}
+    }
+    @Test void auditFailureRollsBackBothCashAndIdempotencyReceipt(){
+        ObjectMapper broken=mock(ObjectMapper.class);try{when(broken.writeValueAsString(any())).thenThrow(new IllegalArgumentException("audit failure"));}catch(Exception e){throw new RuntimeException(e);}
+        var service=new AdminOperationsService(db,new AdminSupport(db,mock(AuthService.class),broken),market,runtime,mock(ApplicationEventPublisher.class));
+        assertThrows(IllegalArgumentException.class,()->tx(()->service.cash(admin,buyer,new CashChange("rollback",100,"원자성 검사"))));
+        assertEquals(1000000,cash(buyer));assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM admin_cash_adjustments",Integer.class));
+    }
+    @Test void forcedOrderCancellationReturnsTheReservation(){
+        tx(()->market.order(new OrderRequest("UMA","BUY",3,"LIMIT",9900L),buyer));assertTrue(cash(buyer)<1000000);
+        long order=db.queryForObject("SELECT id FROM orders WHERE user_id=?",Long.class,buyer);
+        tx(()->{operations.cancelOrder(admin,order,"미체결 복구");return null;});assertEquals(1000000,cash(buyer));
+        assertEquals(0,db.queryForObject("SELECT reserved_cash FROM orders WHERE id=?",Long.class,order));
+    }
+    @Test void haltCancelsRestingOrdersAndBlocksActualMatchingUntilResumed(){
+        tx(()->market.order(new OrderRequest("UMA","SELL",3,"LIMIT",10000L),seller));
+        tx(()->operations.stockState(admin,"UMA",new StockState("HALTED","종목 점검")));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM orders WHERE status='OPEN'",Integer.class));
+        assertThrows(IllegalArgumentException.class,()->tx(()->market.order(new OrderRequest("UMA","BUY",1,"LIMIT",10000L),buyer)));
+        tx(()->operations.stockState(admin,"UMA",new StockState("ACTIVE","점검 완료")));
+        assertEquals("OPEN",tx(()->market.order(new OrderRequest("UMA","BUY",1,"LIMIT",10000L),buyer)).status());
+    }
+    @Test void settlementReversalRestoresBothSidesAndFeesExactlyOnce(){
+        tx(()->market.order(new OrderRequest("UMA","SELL",3,"LIMIT",10000L),seller));
+        tx(()->market.order(new OrderRequest("UMA","BUY",3,"MARKET",null),buyer));
+        long settlement=db.queryForObject("SELECT id FROM settlements",Long.class);assertEquals(969970,cash(buyer));assertEquals(1029970,cash(seller));pause();
+        tx(()->{operations.reverse(admin,settlement,"오체결 정정");return null;});
+        assertEquals(1000000,cash(buyer));assertEquals(1000000,cash(seller));
+        assertEquals(100,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,seller,stock));
+        assertEquals(0,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,buyer,stock));
+        assertThrows(IllegalArgumentException.class,()->tx(()->{operations.reverse(admin,settlement,"중복 취소");return null;}));
+    }
+    @Test void contentOnlyPublishesDuringItsVisibilityWindow(){
+        tx(()->content.save(admin,null,new AdminContentService.Content("NOTICE","점검 안내","안내 본문",null,false,null,null,"초안")));
+        tx(()->content.save(admin,null,new AdminContentService.Content("NEWS","종목 소식","소식 본문","UMA",true,null,null,"게시")));
+        tx(()->content.save(admin,null,new AdminContentService.Content("EVENT","지난 이벤트","종료 본문",null,true,java.time.Instant.now().minusSeconds(100),java.time.Instant.now().minusSeconds(10),"종료")));
+        assertEquals(3,content.content(false,null,0,50).size());assertEquals(1,content.content(true,null,0,50).size());
+    }
+    @Test void reportsAreDeduplicatedAndResolutionIsAudited(){
+        long id=((Number)tx(()->content.report(buyer,new AdminContentService.Report(seller,"반복 거래 의심"))).get("id")).longValue();
+        assertThrows(IllegalArgumentException.class,()->tx(()->content.report(buyer,new AdminContentService.Report(seller,"중복 신고"))));
+        tx(()->{content.resolve(admin,id,new AdminContentService.Resolution("DISMISSED","확인 결과 정상 거래","검토 완료"));return null;});
+        assertEquals(1,content.reports("DISMISSED",0,50).size());assertEquals(1,operations.audit(admin,"REPORT_RESOLVE",0,50).size());
+    }
+    @Test void missionConfigurationChangesTheActualRewardAndDuplicateClaimsPayNothing(){
+        String mission=MarketService.dailyMissionIds(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))).stream().filter(x->!x.equals("watch")).findFirst().orElseThrow();
+        tx(()->{content.mission(admin,mission,new AdminContentService.Mission(true,1234,0,"보상 조정"));return null;});
+        assertEquals(1234,tx(()->market.rewardMission(mission,buyer)).rewardCash());
+        assertEquals(0,tx(()->market.rewardMission(mission,buyer)).rewardCash());assertEquals(1001234,cash(buyer));
+        tx(()->{content.mission(admin,mission,new AdminContentService.Mission(false,1234,0,"미션 중지"));return null;});
+        assertThrows(IllegalArgumentException.class,()->tx(()->market.rewardMission(mission,seller)));
+    }
+    @Test void seasonSnapshotsRewardsAndResetHaveExplicitStateTransitions(){
+        long season=((Number)tx(()->seasons.create(admin,new AdminSeasonService.Create("시즌 1","시즌 생성"))).get("id")).longValue();
+        tx(()->{seasons.start(admin,season,"시작");return null;});
+        assertThrows(IllegalArgumentException.class,()->tx(()->{seasons.start(admin,season,"중복 시작");return null;}));
+        tx(()->operations.cash(admin,buyer,new CashChange("outside",100000,"시즌 외부 보상")));
+        var ranking=tx(()->seasons.close(admin,season,new AdminSeasonService.Close(List.of(1000L),"시즌 종료")));assertEquals(2,ranking.size());
+        assertEquals(buyer,((Number)ranking.get(0).get("user_id")).longValue());
+        assertThrows(IllegalArgumentException.class,()->tx(()->{seasons.reset(admin,season,"초기화");return null;}));pause();
+        tx(()->{seasons.reset(admin,season,"새 시즌 준비");return null;});assertEquals(1000000,cash(buyer));assertEquals(1000000,cash(seller));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM portfolios WHERE user_id IN (?,?)",Integer.class,buyer,seller));
+        assertEquals(2,operations.audit(admin,"SEASON_USER_RESET",0,50).size());
+        assertEquals(0,runtime.externalCash(buyer));assertEquals(0,market.portfolio(buyer).adminAdjustmentCash());
+    }
+    @Test void listQueriesAndStockRegistrationUseRealMysql(){
+        for(String reserved:List.of("NEXA","STAR","MOMO","VOID"))assertThrows(IllegalArgumentException.class,()->tx(()->operations.createStock(admin,new StockCreate(reserved,"예약 종목","개발사","RPG",10000,"등록 검사"))));
+        operations.dashboard();operations.user(buyer);operations.orders(null,null,null,0,50);operations.trades(null,null,0,50);operations.settlements(null,null,0,50);operations.suspicious(24,2);operations.legacyAudit(null,0,50);
+        String code="T"+System.nanoTime()%100000000;
+        var created=tx(()->operations.createStock(admin,new StockCreate(code,"새 게임","개발사","RPG",10000,"신규 종목")));
+        assertNotNull(created.get("id"));tx(()->operations.updateStock(admin,code,new StockChange("수정 게임","개발사","전략","정보 수정")));
+        assertEquals("OPEN",tx(()->market.order(new OrderRequest(code,"BUY",1,"LIMIT",9900L),buyer)).status());
+        StockCatalog.ensureListings(db);AdminSchema.restoreStockMetadata(db);
+        assertEquals("수정 게임",operations.stocks().stream().filter(x->code.equals(x.get("stock_code"))).findFirst().orElseThrow().get("name"));
+    }
+    @Test void botPauseWithdrawsExistingQuotesAndKeepsHumanTradingAvailable(){
+        long bot=db.queryForObject("SELECT id FROM users WHERE password_hash='BOT' ORDER BY id LIMIT 1",Long.class);
+        db.update("UPDATE users SET cash=990000 WHERE id=?",bot);
+        db.update("INSERT INTO orders(user_id,stock_id,side,order_type,price,quantity,remaining_quantity,reserved_cash,reserved_quantity,status) VALUES(?,?,'BUY','LIMIT',10000,1,1,10000,0,'OPEN')",bot,stock);
+        tx(()->operations.runtime(admin,new RuntimeChange(true,false,1000,10,"봇만 정지")));
+        assertEquals(1000000,cash(bot));assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,bot));
+        assertEquals("OPEN",tx(()->market.order(new OrderRequest("UMA","BUY",1,"LIMIT",9900L),buyer)).status());
+    }
+    @Test void bulkRewardsAndAbsoluteHoldingRecoveryAreAuditedAndCannotRepeat(){
+        tx(()->operations.rewardAll(admin,new CashChange("all-test",100,"전체 보상")));assertEquals(1000100,cash(buyer));assertEquals(1000100,cash(seller));assertEquals(1000000,cash(admin));
+        assertThrows(IllegalArgumentException.class,()->tx(()->operations.rewardAll(admin,new CashChange("all-test",100,"전체 보상"))));
+        tx(()->operations.holding(admin,buyer,new HoldingChange("restore-1","UMA",5,10000,"누락 주식 복구")));
+        assertEquals(5,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,buyer,stock));
+        assertThrows(IllegalArgumentException.class,()->tx(()->operations.holding(admin,buyer,new HoldingChange("restore-1","UMA",5,10000,"누락 주식 복구"))));
+    }
+    @Test void externalRewardsDoNotCountAsTradingReturns(){
+        double before=market.ranking().stream().filter(x->x.nickname().equals("buyer-test")).findFirst().orElseThrow().changePercent();
+        tx(()->operations.cash(admin,buyer,new CashChange("neutral",100000,"장애 보상")));
+        assertEquals(before,market.ranking().stream().filter(x->x.nickname().equals("buyer-test")).findFirst().orElseThrow().changePercent());
+        assertEquals(100000,market.portfolio(buyer).adminAdjustmentCash());
+    }
+    @Test void delegatedPermissionsAreStoredAndRevokedWithoutChangingPlayerRole(){
+        tx(()->{operations.permissions(admin,buyer,new Grants(Set.of("READ","CONTENT"),"콘텐츠 담당"));return null;});assertEquals(2,operations.permissions().size());
+        tx(()->{operations.permissions(admin,buyer,new Grants(Set.of(),"권한 회수"));return null;});assertTrue(operations.permissions().isEmpty());
+        assertEquals("USER",db.queryForObject("SELECT role FROM users WHERE id=?",String.class,buyer));
+    }
+    @Test void recoveringAMissingMissionMarksItClaimedAndCannotPayItAgain(){
+        var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        String mission=MarketService.dailyMissionIds(today).stream().filter(x->!x.equals("watch")).findFirst().orElseThrow();
+        var request=new MissionRecovery(mission,today,50000,"누락 미션 복구");
+        assertEquals(true,tx(()->operations.recoverMission(admin,buyer,request)).get("awarded"));
+        assertEquals(false,tx(()->operations.recoverMission(admin,buyer,request)).get("awarded"));
+        assertEquals(0,tx(()->market.rewardMission(mission,buyer)).rewardCash());assertEquals(1050000,cash(buyer));
+        assertEquals(0,market.portfolio(buyer).adminAdjustmentCash());
+    }
+}

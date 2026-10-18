@@ -11,6 +11,9 @@ export type Profile = {
   resetAvailable: boolean;
   nicknameChangeAvailable?: boolean;
   nicknameChangeAvailableAt?: string | null;
+  admin?: boolean;
+  tradeBannedUntil?: string | null;
+  tradeBanReason?: string | null;
 };
 
 type ProfileState = { uid: string | null; profile: Profile | null };

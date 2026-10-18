@@ -8,10 +8,13 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Presence comes from visitors/requests, never from bots, broadcasts or health probes. */
 final class MarketActivityPolicy {
+    static final long VISITOR_OVERDUE_MILLIS=30000;
     private final Set<String> viewers=ConcurrentHashMap.newKeySet();
     private final AtomicLong lastActivity=new AtomicLong(Long.MIN_VALUE);
-    private Boolean preparedActive;
-    private long nextMaintenance, pulseUntil, epoch;
+    /* Volatile so visitors can check the wake barrier without waiting on a running maintenance pass. */
+    private volatile Boolean preparedActive;
+    private volatile long nextMaintenance;
+    private long pulseUntil, epoch;
     private int pulseBatches;
     private final Map<String,Integer> attempts=new HashMap<>();
     void touch(long now){lastActivity.accumulateAndGet(now,Math::max);}
@@ -38,6 +41,14 @@ final class MarketActivityPolicy {
     }
     synchronized boolean needsPreparation(boolean active) {return preparedActive==null||preparedActive!=active;}
     synchronized boolean maintenanceDue(long now,boolean active) {return needsPreparation(active)||now>=nextMaintenance;}
+    /**
+     * Lock-free check for HTTP visitors. Routine maintenance belongs to the 500ms scheduler; a visitor
+     * only waits at the wake barrier or when maintenance is so overdue that the scheduler cannot be running.
+     */
+    boolean visitorMustWait(long now,boolean active) {
+        Boolean prepared=preparedActive;
+        return prepared==null || prepared!=active || now>=nextMaintenance+VISITOR_OVERDUE_MILLIS;
+    }
     synchronized void requestMaintenance() {nextMaintenance=Long.MIN_VALUE;}
     synchronized boolean pulseOpen(long now) {return Boolean.FALSE.equals(preparedActive)&&now<pulseUntil;}
     synchronized boolean workDue(String worker,long now,boolean active) {

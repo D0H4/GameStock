@@ -28,7 +28,6 @@ final class MarketSchema {
         ensurePriceHistoryTable();
         ensureAuthenticationTables();
         ensureMarketEventColumns();
-        ensureNewsExcerptTable();
         ensureTradeTable();
         ensurePortfolioColumns();
         ensureSettlementTable();
@@ -44,6 +43,7 @@ final class MarketSchema {
         priceMetrics.ensureTables();
         ensureOrderTimestampPrecision();
         ensureNewsPriceState();
+        AdminSchema.ensure(jdbc);
     }
 
     private void ensureOrderTimestampPrecision() {
@@ -103,6 +103,29 @@ final class MarketSchema {
         addUserColumnIfMissing("account_reset_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("reset_used_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("nickname_changed_at", "TIMESTAMP NULL");
+        // 관리자가 부계정 의심 계정에 거는 기간제 거래 제한.
+        addUserColumnIfMissing("trade_banned_until", "TIMESTAMP NULL");
+        addUserColumnIfMissing("trade_ban_reason", "VARCHAR(200) NULL");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS admin_actions (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY, admin_id BIGINT NOT NULL, target_user_id BIGINT NOT NULL,
+                  action VARCHAR(32) NOT NULL, detail VARCHAR(300) NOT NULL DEFAULT '',
+                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  KEY ix_admin_actions_target (target_user_id, id)
+                )
+                """);
+        // 모의 자금 대출: 잔액에는 쌓인 이자가 포함되고, 이자는 한국시간 하루에 한 번 붙는다.
+        addUserColumnIfMissing("loan_balance", "BIGINT NOT NULL DEFAULT 0");
+        addUserColumnIfMissing("loan_interest_on", "DATE NULL");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS loan_ledger (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL,
+                  kind VARCHAR(16) NOT NULL, amount BIGINT NOT NULL, balance_after BIGINT NOT NULL,
+                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  KEY ix_loan_ledger_user (user_id, id),
+                  CONSTRAINT fk_loan_ledger_user FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """);
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS attendance_rewards (
                   id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, rewarded_on DATE NOT NULL,
@@ -196,6 +219,9 @@ final class MarketSchema {
         Integer priceAtPublishCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'price_at_publish'", Integer.class);
         if (priceAtPublishCount != null && priceAtPublishCount == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN price_at_publish BIGINT NULL AFTER published_at");
         jdbc.update("UPDATE market_events SET published_at = created_at WHERE published_at IS NULL");
+        // 속보 본문 미리보기. NewsExcerptService가 수집된 소식의 원문 첫 문단을 미리 뽑아 두고 목록과 함께 내려 준다.
+        Integer excerptCount = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'market_events' AND column_name = 'excerpt'", Integer.class);
+        if (excerptCount != null && excerptCount == 0) jdbc.execute("ALTER TABLE market_events ADD COLUMN excerpt TEXT NULL, ADD COLUMN excerpt_checked_at TIMESTAMP NULL");
         // Existing events predate the persisted baseline. Reuse the closest
         // historical quote when available and fall back to the current quote
         // only for rows without enough history. Newly collected events receive
@@ -217,21 +243,6 @@ final class MarketSchema {
         ensureIndex("market_events", "ix_market_events_stock_type_time",
                 "stock_id,event_type,published_at,created_at,id");
         ensureIndex("market_events", "ix_market_events_stock_title", "stock_id,title");
-    }
-
-    /**
-     * 수집한 소식 원문의 첫 문단을 담아 두는 표. 뉴스 수집 작업이 수집 직후 채우고,
-     * /api/news/excerpt 요청은 여기 저장된 값을 바로 돌려주므로 외부 사이트를 다시 읽지 않는다.
-     */
-    private void ensureNewsExcerptTable() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS news_excerpts (
-                  article_id VARCHAR(600) CHARACTER SET ascii NOT NULL PRIMARY KEY,
-                  payload MEDIUMTEXT NOT NULL,
-                  expires_at TIMESTAMP NOT NULL,
-                  fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
     }
 
     private void ensureOrderIndex(String name,String columns) {

@@ -32,14 +32,18 @@ public record BotProfile(String username, String nickname, Strategy strategy,
                 Strategy.FAST_MOMENTUM,Strategy.DEEP_VALUE,Strategy.BOOK_IMBALANCE,Strategy.ZSCORE,
                 Strategy.NEWS_REACTOR,Strategy.SWING_TREND,Strategy.AGGRESSIVE_VALUE,Strategy.NOISE_RANDOM,
                 Strategy.MICRO_TREND,Strategy.RSI_FADE,Strategy.CATALYST_VALUE,Strategy.TREND_FOLLOW,Strategy.LIQUIDITY_TAKER};
-        for(int i=20;i<count;i++)result.add(create(String.format("trader_bot_%02d",i+1),flow[(i-20)%flow.length],random).atSpeed(.05).microLots());
+        for(int i=20;i<count;i++)result.add(create(String.format("trader_bot_%02d",i+1),flow[(i-20)%flow.length],random).microLots());
         return List.copyOf(result);
     }
     private BotProfile microLots() {
+        // Fast decisions do not imply a compulsory exit a few seconds after buying.
+        BotProfile fast=atSpeed(.05);
+        boolean patient=strategy.family()==Family.VALUE || strategy.family()==Family.SWING;
+        boolean flow=strategy.family()==Family.NOISE || strategy.family()==Family.AGGRESSIVE_LIQUIDITY_TAKER;
         return new BotProfile(username,nickname,strategy,riskTolerance,aggression,confidenceThreshold,marketOrderProbability,
-                1,2,holdingTimePreference,strategy.family()==Family.VALUE || strategy.family()==Family.SWING ? 12 : 2,
-                stopLoss,takeProfit,decisionInterval,reactionLatency,
-                newsSensitivity,volatilityTolerance,inventoryAversion,buyBias,sellBias,noiseLevel,cancelSpeed,
+                1,2,flow?fast.holdingTimePreference():holdingTimePreference,patient?12:flow?4:8,
+                stopLoss,takeProfit,fast.decisionInterval(),fast.reactionLatency(),
+                newsSensitivity,volatilityTolerance,inventoryAversion,buyBias,sellBias,noiseLevel,fast.cancelSpeed(),
                 valueError,confidence,entryThreshold,exitThreshold,updateSpeed);
     }
     public static List<BotProfile> population(long seed,int count) {

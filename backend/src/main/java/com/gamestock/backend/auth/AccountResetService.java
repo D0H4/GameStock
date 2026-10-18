@@ -1,5 +1,6 @@
 package com.gamestock.backend.auth;
 
+import com.gamestock.backend.market.MarketBookCache;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,14 +44,19 @@ public class AccountResetService {
         jdbc.update("DELETE FROM portfolios WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM attendance_rewards WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM mission_rewards WHERE user_id = ?", userId);
+        jdbc.update("INSERT INTO admin_cash_epochs(user_id,last_adjustment_id) SELECT ?,COALESCE(MAX(id),0) FROM admin_cash_adjustments WHERE user_id=? ON DUPLICATE KEY UPDATE last_adjustment_id=VALUES(last_adjustment_id)",userId,userId);
+        jdbc.update("DELETE FROM loan_ledger WHERE user_id = ?", userId);
         // 상세 화면의 개인 기능도 계정 리셋 범위에 포함한다.
         jdbc.update("DELETE FROM price_alerts WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_comments WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_tags WHERE created_by = ?", userId);
         jdbc.update("DELETE FROM user_watchlists WHERE user_id = ?", userId);
+        // 리셋 닉네임을 바로 바꿀 수 있도록 이전 닉네임 변경 제한도 지운다.
         jdbc.update("""
                 UPDATE users
                 SET cash = ?,
+                    loan_balance = 0,
+                    loan_interest_on = NULL,
                     nickname = LEFT(CONCAT('reset_', id, '_', UNIX_TIMESTAMP()), 50),
                     profile_image_url = '',
                     profile_completed = FALSE,
@@ -66,6 +72,9 @@ public class AccountResetService {
 
     private void lockMarket() {
         jdbc.queryForObject("SELECT id FROM market_locks WHERE id = 1 FOR UPDATE", Integer.class);
+        // The bot matching cache still holds this user's open orders and holdings.
+        // Bumping the revisions in this transaction makes the next batch reload them.
+        MarketBookCache.invalidate(jdbc, null);
     }
 
     private void cancelOpenOrders(long userId) {

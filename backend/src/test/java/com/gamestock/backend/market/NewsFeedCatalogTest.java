@@ -30,7 +30,7 @@ class NewsFeedCatalogTest {
             return List.of();
         }).when(jdbc).query(anyString(), any(RowMapper.class));
 
-        NewsFeedService service = new NewsFeedService(jdbc, null);
+        NewsFeedService service = new NewsFeedService(jdbc);
         service.setFeeds(List.of("BA|https://example.com/custom-rss", "REMOVED|https://example.com/old", "invalid"));
         List<String> feeds = service.resolveFeeds();
         assertEquals(3, feeds.size());

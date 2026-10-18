@@ -31,6 +31,13 @@ const ITEMS = [
     icon: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 8v8M8 12h8",
   },
   {
+    label: "대출",
+    hint: "모의 자금 빌리기 · 갚기",
+    to: "/loan",
+    match: "loan",
+    icon: "M3.5 9.5L12 4.5l8.5 5M5.5 10v7M10 10v7M14 10v7M18.5 10v7M3.5 19.5h17",
+  },
+  {
     label: "설정",
     hint: "닉네임 · 프로필 사진 · 계좌 초기화",
     to: "/settings",
@@ -38,6 +45,15 @@ const ITEMS = [
     icon: "M4 7h10M18 7h2M4 17h2M10 17h10M16 4.5v5M8 14.5v5",
   },
 ] as const;
+
+/* 관리자 계정에만 설정 아래에 붙는다. 실제 권한은 서버가 매 요청마다 확인한다. */
+const ADMIN_ITEM = {
+  label: "관리자",
+  hint: "계정 조회 · 거래 제한 · 닉네임 변경",
+  to: "/admin",
+  match: "admin",
+  icon: "M12 3.5l7.5 3v5.5c0 4.2-3.1 7.4-7.5 8.5-4.4-1.1-7.5-4.3-7.5-8.5V6.5zM9 12l2.2 2.2L15.5 10",
+} as const;
 
 /** 상단 오른쪽 프로필 버튼. 누르면 오른쪽에서 계좌·설정·칭호·충전·로그아웃 패널이 밀려 나온다. */
 export function ProfileMenu({ route }: { route: Route }) {
@@ -80,7 +96,8 @@ export function ProfileMenu({ route }: { route: Route }) {
 
   const nickname = profile?.nickname ?? auth.user.displayName ?? "내 계정";
   const avatar = profile?.profileImageUrl || DEFAULT_PROFILE_AVATAR;
-  const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge";
+  const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge" || route.name === "admin";
+  const items = profile?.admin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
 
   const logout = async () => {
     setOpen(false);
@@ -126,7 +143,6 @@ export function ProfileMenu({ route }: { route: Route }) {
               <img className="profile-panel-avatar" src={avatar} alt="" onError={fallbackAvatar} />
               <div className="profile-panel-who">
                 <p className="profile-panel-name">{nickname}</p>
-                <p className="profile-panel-sub">모의 투자 계정</p>
               </div>
               <button type="button" className="profile-panel-close" aria-label="메뉴 닫기" onClick={close}>
                 <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -135,7 +151,7 @@ export function ProfileMenu({ route }: { route: Route }) {
               </button>
             </div>
             <ul className="profile-panel-list">
-              {ITEMS.map((item) => (
+              {items.map((item) => (
                 <li key={item.to}>
                   <Link
                     className={`profile-panel-item${route.name === item.match ? " is-active" : ""}`}

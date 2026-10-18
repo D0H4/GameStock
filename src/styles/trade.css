@@ -226,7 +226,7 @@
     font-weight: 600;
     white-space: nowrap;
   }
-  .trade-page .terminal-tab.is-active { color: var(--brand-deep); background: var(--brand-wash); border-color: var(--brand); }
+  .trade-page .terminal-tab.is-active { color: var(--brand-wine); background: var(--brand-wash); border-color: var(--brand); }
   .trade-page .terminal-tab.is-buy.is-active { color: var(--up-deep); background: var(--up-wash); border-color: var(--up); }
   .trade-page .terminal-tab.is-sell.is-active { color: var(--down-deep); background: var(--down-wash); border-color: var(--down); }
   .trade-page .terminal-help { position: relative; margin-left: auto; }
@@ -303,7 +303,9 @@
   .trade-page .terminal-filter { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; white-space: nowrap; cursor: pointer; }
   .trade-page .terminal-filter input { width: 13px; height: 13px; accent-color: var(--brand-deep); }
   .trade-page .terminal-currency { padding: 3px 8px; border: 1px solid var(--rule); border-radius: 4px; color: var(--ink); white-space: nowrap; }
-  .trade-page .terminal-table-scroll { overflow: auto; min-height: 140px; max-height: 240px; }
+  /* 바깥 상자는 가로, 안쪽 상자는 세로만 스크롤한다. 터치 한 번은 한 상자에만 붙으므로 대각선으로 끌려다니지 않는다. */
+  .trade-page .terminal-table-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+  .trade-page .terminal-table-rows { width: max-content; min-width: 100%; overflow-x: hidden; overflow-y: auto; min-height: 140px; max-height: 240px; }
   .trade-page .terminal-table { width: 100%; border-collapse: collapse; font-size: var(--step--1); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .trade-page .terminal-table thead { background: var(--sunken); color: var(--ink-muted); }
   .trade-page .terminal-table th,
@@ -349,6 +351,13 @@
     .trade-page .terminal-field small { display: none; }
     .trade-page .terminal-field-note { font-size: var(--step--2); }
     .trade-page .terminal-account-toolbar { gap: 7px; padding-inline: 8px; }
+    /* 표가 폭 안에 들어오게 해 세로로만 스크롤되게 한다. 가로·세로가 같이 움직이면 손가락에 대각선으로 끌려다닌다. */
+    .trade-page .terminal-table { font-size: var(--step--2); }
+    .trade-page .terminal-table th,
+    .trade-page .terminal-table td { padding-inline: 4px; }
+    .trade-page .terminal-table th:first-child { padding-left: 8px; white-space: normal; word-break: keep-all; }
+    .trade-page .terminal-table th:last-child,
+    .trade-page .terminal-table td:last-child { padding-right: 8px; }
     .trade-page .terminal-account-toolbar > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .trade-page .terminal-ticket-body { padding-inline: 10px; }
   }
@@ -373,4 +382,9 @@
     .trade-page button:active:not(:disabled),
     .trade-page .terminal-empty-action:active { scale: 1; }
   }
+}
+
+@layer component {
+  .trade-page .terminal-loan-hint { display: flex; justify-content: space-between; gap: 8px; margin: -6px 0 12px; font-size: var(--step--1); color: var(--ink-muted); }
+  .trade-page .terminal-loan-hint a { font-weight: 700; color: var(--brand-deep); white-space: nowrap; }
 }

@@ -6,6 +6,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BotProfile.*;
 
 class SimulationEngineTest {
+    @Test void desiredInventoryDoesNotExpireIntoAnAutomaticSale() {
+        var engine=new BotStrategyEngine(1);
+        var p=profile(Strategy.FAST_MOMENTUM);var m=history(0);
+        double fresh=engine.score(p,m,neutral,new BotStrategyEngine.Position(3,1_000_000,10000,0,3),10000,0,0);
+        double old=engine.score(p,m,neutral,new BotStrategyEngine.Position(3,1_000_000,10000,86_400_000,3),10000,0,0);
+        assertEquals(fresh,old,"Time alone must not liquidate a desired position at the next day");
+        var rising=history(10);
+        double withoutProfit=engine.score(p,rising,neutral,new BotStrategyEngine.Position(3,1_000_000,0,0,3),10600,0,0);
+        double profitable=engine.score(p,rising,neutral,new BotStrategyEngine.Position(3,1_000_000,8000,0,3),10600,0,0);
+        assertEquals(withoutProfit,profitable,"A still-positive trend is allowed to retain its winners");
+    }
+
     private final MarketEnvironment neutral=MarketEnvironment.neutral();
     private PriceMetricService.Metrics history(double step) {
         List<PriceMetricService.Trade> trades=new ArrayList<>();
@@ -189,7 +201,8 @@ class SimulationEngineTest {
         var engine=new BotStrategyEngine(31); var identical=new BotStrategyEngine(31);
         var p=profile(Strategy.NOISE_RANDOM); var m=history(0);
         assertEquals(0,engine.targetQuantity(p,"ES",0,0,15,10000));
-        assertEquals(0,engine.targetQuantity(profile(Strategy.FAST_MOMENTUM),"ES",0,1000000,15,10000));
+        assertTrue(engine.targetQuantity(profile(Strategy.FAST_MOMENTUM),"ES",0,1000000,15,10000)>0,
+                "Trend traders also need a funded holding target rather than a permanent zero-inventory target");
         double budget=0;
         for(int i=0;i<15;i++) {
             double target=engine.targetQuantity(p,"S"+i,1000000,1000000,15,10000);

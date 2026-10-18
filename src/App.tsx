@@ -1,28 +1,32 @@
 import { AuthBridge } from "./components/AuthBridge";
 import { useEffect, useRef } from "react";
-import { LoginModal } from "./components/LoginModal";
-import { StatusBar } from "./components/StatusBar";
 import { Topbar } from "./components/Topbar";
 import { HomePage } from "./pages/HomePage";
-import { LoginPage } from "./pages/LoginPage";
 import { TradePage } from "./pages/TradePage";
 import { MarketPage } from "./pages/MarketPage";
-import { MyPage } from "./pages/MyPage";
 import { NewsPage } from "./pages/NewsPage";
 import { RankingPage } from "./pages/RankingPage";
+import { MyPage } from "./pages/MyPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ChargePage } from "./pages/ChargePage";
+import { LoanPage } from "./pages/LoanPage";
 import { TitlesPage } from "./pages/TitlesPage";
+import { AdminPage } from "./pages/AdminPage";
+import { LoginPage } from "./pages/LoginPage";
+import { StatusBar } from "./components/StatusBar";
 import { MissionRewardToast } from "./components/MissionRewardToast";
 import { TitleWatcher } from "./components/TitleWatcher";
+import { LoginModal } from "./components/LoginModal";
 import { CircuitBreakerNotice } from "./components/CircuitBreakerNotice";
 import { SiteNoticeDialog } from "./components/SiteNoticeDialog";
+import { SuspensionNotice, useSuspendedUntil } from "./components/SuspensionNotice";
+import { useProfile } from "./lib/profile";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
 import type { Route } from "./router";
 
-const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge"]);
+const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge", "loan", "admin"]);
 
 function titleFor(route: Route): string {
   if (route.name === "market") {
@@ -39,6 +43,8 @@ function titleFor(route: Route): string {
   if (route.name === "settings") return "설정 · 슈엔증권";
   if (route.name === "titles") return "칭호 설정 · 슈엔증권";
   if (route.name === "charge") return "충전하기 · 슈엔증권";
+  if (route.name === "loan") return "대출 · 슈엔증권";
+  if (route.name === "admin") return "관리자 · 슈엔증권";
   if (route.name === "login") return "로그인 · 슈엔증권";
   return "슈엔증권";
 }
@@ -46,6 +52,8 @@ function titleFor(route: Route): string {
 export default function App() {
   const route = useRoute();
   const auth = useAuthUser();
+  const profile = useProfile();
+  const suspendedUntil = useSuspendedUntil(auth.user ? profile : null);
   const main = useRef<HTMLElement>(null);
   const previous = useRef(route);
 
@@ -55,6 +63,7 @@ export default function App() {
 
   useEffect(() => {
     document.title = titleFor(route);
+    /* 최초 렌더에서는 포커스를 옮기지 않는다. 이동할 때만 본문으로 보낸다. */
     if (previous.current === route) return;
     const withinNews = previous.current.name === "news" && route.name === "news";
     previous.current = route;
@@ -76,6 +85,7 @@ export default function App() {
       <AuthBridge />
       <Topbar route={route} />
       <main id="content" className="content" ref={main} tabIndex={-1}>
+        {suspendedUntil ? <SuspensionNotice until={suspendedUntil} reason={profile?.tradeBanReason} /> : <>
         {route.name === "home" && <HomePage />}
         {route.name === "market" && <MarketPage ticker={route.ticker} />}
         {route.name === "trade" && <TradePage ticker={route.ticker} />}
@@ -86,7 +96,10 @@ export default function App() {
         {route.name === "settings" && auth.user && <SettingsPage />}
         {route.name === "titles" && auth.user && <TitlesPage />}
         {route.name === "charge" && auth.user && <ChargePage />}
+        {route.name === "loan" && auth.user && <LoanPage />}
+        {route.name === "admin" && auth.user && <AdminPage />}
         {route.name === "login" && <LoginPage method={route.method} />}
+        </>}
       </main>
       <StatusBar />
       <MissionRewardToast />
