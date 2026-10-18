@@ -17,3 +17,5 @@ backend/.m2-repository/
 logs/
 .expo/
 .firebase/
+firebase-debug.log
+ui-debug.log

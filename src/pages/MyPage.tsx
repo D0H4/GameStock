@@ -69,6 +69,7 @@ export function MyPage() {
   return (
     <div className="page-stack">
       <h1 className="page-title">내 계좌</h1>
+      {snapshot.portfolioError && <p role="status" className="empty">{snapshot.portfolioError}</p>}
 
       <section className="head" aria-label="계좌 요약">
         <div>

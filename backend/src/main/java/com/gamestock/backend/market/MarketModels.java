@@ -53,7 +53,13 @@ public final class MarketModels {
      */
     public record Position(String stockCode, int quantity, int settledQuantity, int unsettledQuantity,
                            long averagePrice, long marketValue, long profitLoss, double profitLossPercent,
-                           long realizedProfitLoss) {
+                           long realizedProfitLoss, int availableQuantity) {
+        public Position(String stockCode, int quantity, int settledQuantity, int unsettledQuantity,
+                        long averagePrice, long marketValue, long profitLoss, double profitLossPercent,
+                        long realizedProfitLoss) {
+            this(stockCode, quantity, settledQuantity, unsettledQuantity, averagePrice, marketValue,
+                    profitLoss, profitLossPercent, realizedProfitLoss, settledQuantity);
+        }
         public Position(String stockCode, int quantity, long averagePrice, long marketValue,
                         long profitLoss, double profitLossPercent) {
             this(stockCode, quantity, quantity, 0, averagePrice, marketValue, profitLoss,

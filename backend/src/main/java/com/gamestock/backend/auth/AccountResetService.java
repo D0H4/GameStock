@@ -32,6 +32,10 @@ public class AccountResetService {
         if (state.resetUsedAt() != null)
             throw new IllegalArgumentException("인생 리셋은 계정당 한 번만 사용할 수 있습니다.");
 
+        // The admission lock alone does not evict committed books in bot lanes
+        // (including copies in another process). Invalidate in this transaction.
+        jdbc.update("UPDATE market_book_revisions SET revision = revision + 1");
+
         // Pending T+1 entries are matured first, so counterparties receive the
         // money/shares they are owed before this account is cleared.
         settleUserPendingPayments(userId);
@@ -50,6 +54,7 @@ public class AccountResetService {
                     nickname = LEFT(CONCAT('reset_', id, '_', UNIX_TIMESTAMP()), 50),
                     profile_image_url = '',
                     profile_completed = FALSE,
+                    nickname_changed_at = NULL,
                     account_reset_at = CURRENT_TIMESTAMP,
                     reset_used_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND reset_used_at IS NULL

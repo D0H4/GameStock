@@ -27,7 +27,7 @@ class MarketSimulationIntegrationTest {
     private long buyer,seller,stock;
 
     @BeforeAll void createDisposableDatabase() throws Exception {
-        dataSource=new SingleConnectionDataSource(System.getProperty("market.test.jdbc"),"root","",true);
+        dataSource=new SingleConnectionDataSource(System.getProperty("market.test.jdbc")+"&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true","root","",true);
         jdbc=new JdbcTemplate(dataSource);
         database="simulation_test_"+UUID.randomUUID().toString().replace("-","");
         jdbc.execute("CREATE DATABASE "+database+" CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -36,6 +36,7 @@ class MarketSimulationIntegrationTest {
         schema=schema.replaceAll("(?m)^--.*$","").replaceAll("(?is)CREATE DATABASE[^;]+;","").replaceAll("(?is)USE gamestock;","");
         for(String statement:schema.split(";")) if(!statement.isBlank()) jdbc.execute(statement);
         market=new MarketService(event->{},jdbc,new UserFeatureService(jdbc),new TradingProtectionService(jdbc));
+        ReflectionTestUtils.setField(market,"titles",new TitleService(jdbc,new DataSourceTransactionManager(dataSource)));
         ReflectionTestUtils.setField(market,"configuredSeed","12345");
         market.initializeData();
         market.maintainMarket();
@@ -105,7 +106,7 @@ class MarketSimulationIntegrationTest {
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM bot_trade_tape",Integer.class));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM bot_account_fees",Integer.class));
         assertEquals(beforeCash,jdbc.queryForObject("SELECT SUM(cash) FROM users",Long.class));
-        assertEquals(100,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
+        assertEquals(before.inventory(),jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
     }
     @Test @Order(1) void compactRetentionKeepsLongRangeOhlcAndLatestTapeAfterFineDetailExpires() {
         jdbc.update("UPDATE users SET password_hash='TRADER' WHERE id IN (?,?)",buyer,seller);
@@ -198,9 +199,9 @@ class MarketSimulationIntegrationTest {
                 jdbc.queryForList("SELECT current_price,previous_price,total_volume FROM stocks WHERE id=?",stock));
     }
     @Test @Order(1) void batchCannotFundAnEarlierBuyWithLaterSaleProceedsAfterConcurrentSpending() {
-        jdbc.update("UPDATE users SET password_hash='BOT',cash=10010 WHERE id=?",buyer);
-        jdbc.update("UPDATE users SET password_hash='BOT' WHERE id=?",seller);
-        jdbc.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES ('batch_third','BOT','batch third',100000)");
+        jdbc.update("UPDATE users SET password_hash='TRADER',cash=10010 WHERE id=?",buyer);
+        jdbc.update("UPDATE users SET password_hash='TRADER' WHERE id=?",seller);
+        jdbc.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES ('batch_third','TRADER','batch third',100000)");
         long third=id("batch_third");
         var repository=new BatchMarketRepository(jdbc);long now=System.currentTimeMillis();var book=repository.load(now);
         book.submit(seller,stock,"SELL","LIMIT",1,10000,now,5000);
@@ -280,13 +281,14 @@ class MarketSimulationIntegrationTest {
     }
     @Test @Order(1) void lpBudgetsRemainIsolatedAfterARealFill() {
         long lp=id("liquidity_provider");
+        int initialInventory=jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock);
         MarketMakerEngine.RiskBook before=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","BA",lp);
         market.liquidityBotAction("UMA","BOTH");
         market.order(new OrderRequest("UMA","SELL",5,"MARKET",null),seller);
         MarketMakerEngine.RiskBook after=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","BA",lp);
         assertEquals(before,after);
         MarketMakerEngine.RiskBook changed=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","UMA",lp);
-        assertEquals(105,changed.inventory());
+        assertEquals(initialInventory+5,changed.inventory());
     }
     @Test @Order(1) void fullyDepletedLpInventoryRestoresSellSideLiquidity() {
         long lp=id("liquidity_provider");
@@ -294,7 +296,7 @@ class MarketSimulationIntegrationTest {
 
         market.liquidityBotAction("UMA","BOTH");
 
-        assertEquals(100,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
+        assertEquals(StockMarketProfile.initialLiquidityInventory("UMA",100),jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
         assertTrue(jdbc.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND stock_id=? AND side='SELL' AND status='OPEN'",Integer.class,lp,stock)>0);
     }
     @Test @Order(1) void lpReplacesBothSidesAtBandBoundaryWithoutChangingLastPrice() {
@@ -428,16 +430,17 @@ class MarketSimulationIntegrationTest {
     }
 
     @Test @Order(2) void restartRetainsDepletedInventoryBudgetsAndNewsState() {
+        long lp=id("liquidity_provider");
+        int initialInventory=jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock);
         market.liquidityBotAction("UMA","BOTH");
         market.order(new OrderRequest("UMA","BUY",5,"MARKET",null),buyer);
-        long lp=id("liquidity_provider");
         long cashBefore=jdbc.queryForObject("SELECT cash+COALESCE((SELECT SUM(reserved_cash) FROM orders WHERE user_id=? AND status='OPEN'),0) FROM users WHERE id=?",Long.class,lp,lp);
         var allocations=jdbc.queryForList("SELECT * FROM lp_risk_books ORDER BY stock_id");
         manager.commit(transaction); transaction=null;
         // Run the actual startup path a second time, including idempotent schema upgrades.
         market.initializeData();
         assertEquals(cashBefore,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,lp));
-        assertEquals(95,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
+        assertEquals(initialInventory-5,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
         assertEquals(allocations,jdbc.queryForList("SELECT * FROM lp_risk_books ORDER BY stock_id"));
     }
 }

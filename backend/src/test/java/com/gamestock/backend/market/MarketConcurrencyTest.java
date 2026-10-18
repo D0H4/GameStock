@@ -59,7 +59,9 @@ class MarketConcurrencyTest {
     }
     private long user(long cash) {
         String name="concurrent_"+UUID.randomUUID();
-        db.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES (?,'BOT',?,?)",name,name,cash);
+        // BOT denotes a liquidity provider with a protected emergency cash reserve.
+        // These actors exercise ordinary automated participants instead.
+        db.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES (?,'TRADER',?,?)",name,name,cash);
         return db.queryForObject("SELECT id FROM users WHERE username=?",Long.class,name);
     }
     private void shares(long user,String code,int quantity) {
@@ -71,6 +73,84 @@ class MarketConcurrencyTest {
             for(int i=0;i<count;i++){int n=i;jobs.add(pool.submit(()->{try{start.await();action.accept(n);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new RuntimeException(e);}}));}
             start.countDown();for(var job:jobs) job.get(30,TimeUnit.SECONDS);
         } finally {pool.shutdownNow();assertTrue(pool.awaitTermination(10,TimeUnit.SECONDS));}
+    }
+
+    @Test void accountResetInvalidatesWarmBooksAndCannotResurrectCancelledOrders() {
+        long buyer=user(1000000),seller=user(0);shares(seller,"UMA",20);
+        first.order(new OrderRequest("UMA","SELL",10,"LIMIT",10000L),seller);
+        long stock=db.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);
+        long order=db.queryForObject("SELECT id FROM orders WHERE user_id=? AND status='OPEN'",Long.class,seller);
+        var cache=new MarketBookCache();
+        var original=tx.execute(s->{
+            var repository=new BatchMarketRepository(db);long now=System.currentTimeMillis();
+            var book=cache.borrow(repository,now,Set.of(stock),Set.of(buyer,seller));
+            repository.persist(book,now);cache.saved(now);return book;
+        });
+        db.update("UPDATE users SET nickname_changed_at=CURRENT_TIMESTAMP WHERE id=?",seller);
+        tx.execute(s->new com.gamestock.backend.auth.AccountResetService(db).reset(seller));
+        tx.executeWithoutResult(s->{
+            var repository=new BatchMarketRepository(db);long now=System.currentTimeMillis();
+            var book=cache.borrow(repository,now,Set.of(stock),Set.of(buyer,seller));
+            assertNotSame(original,book);
+            book.submit(buyer,stock,"BUY","MARKET",4,0,now,0);
+            assertTrue(book.fills.isEmpty());
+            repository.persist(book,now);cache.saved(now);
+        });
+        assertEquals("CANCELLED",db.queryForObject("SELECT status FROM orders WHERE id=?",String.class,order));
+        assertEquals(1000000,first.portfolio(seller).cash());
+        assertTrue(first.portfolio(seller).positions().isEmpty());
+        assertNull(db.queryForObject("SELECT nickname_changed_at FROM users WHERE id=?",java.sql.Timestamp.class,seller));
+    }
+
+    @Test void humanMarketDoubleClickIsRejectedAndResetHidesPriorSettlements() {
+        long buyer=user(1000000),seller=user(0);shares(seller,"UMA",20);
+        db.update("UPDATE users SET password_hash='TEST' WHERE id=?",buyer);
+        first.order(new OrderRequest("UMA","SELL",10,"LIMIT",10000L),seller);
+        assertEquals("FILLED",first.order(new OrderRequest("UMA","BUY",1,"MARKET",null),buyer).status());
+        assertThrows(IllegalArgumentException.class,()->first.order(new OrderRequest("UMA","BUY",1,"MARKET",null),buyer));
+        assertEquals(1,first.settlements(buyer).size());
+        tx.execute(s->new com.gamestock.backend.auth.AccountResetService(db).reset(buyer));
+        assertTrue(first.settlements(buyer).isEmpty());
+    }
+
+    @Test void cancelAllIncludesMoreThanOneHundredOrdersAndReleasesAllReservations() {
+        long seller=user(0);shares(seller,"UMA",200);
+        long stock=db.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);
+        for(int i=0;i<105;i++) db.update("INSERT INTO orders(user_id,stock_id,side,order_type,price,quantity,remaining_quantity,reserved_quantity,status) VALUES (?,?,'SELL','LIMIT',10000,1,1,1,'OPEN')",seller,stock);
+        assertEquals(95,first.portfolio(seller).positions().get(0).availableQuantity());
+        assertEquals(5,first.activeOrders(seller,"UMA").size());
+        assertTrue(first.activeOrders(seller,"BA").isEmpty());
+        assertEquals(105,first.cancelAllOrders(seller));
+        assertTrue(first.activeOrders(seller).isEmpty());
+        assertEquals(200,first.portfolio(seller).positions().get(0).availableQuantity());
+    }
+
+    @Test void mobileLoginCodeIsSharedAndConsumedExactlyOnceAcrossInstances() throws Exception {
+        var issuer=new com.gamestock.backend.auth.AuthService(db);
+        var redeemer=new com.gamestock.backend.auth.AuthService(db);
+        issuer.initializeMobileCodes();
+        var firebase=org.mockito.Mockito.mock(com.google.firebase.auth.FirebaseAuth.class);
+        var token=org.mockito.Mockito.mock(com.google.firebase.auth.FirebaseToken.class);
+        org.mockito.Mockito.when(token.getUid()).thenReturn("test-user");
+        org.mockito.Mockito.when(firebase.verifyIdToken("valid",true)).thenReturn(token);
+        org.mockito.Mockito.when(firebase.createCustomToken("test-user")).thenReturn("test-custom-token");
+        try(var mocked=org.mockito.Mockito.mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
+            mocked.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
+            var issued=issuer.issueMobileCode("Bearer valid");
+            AtomicInteger succeeded=new AtomicInteger(),rejected=new AtomicInteger();
+            parallel(2,i->{
+                try {
+                    var result=tx.execute(s->redeemer.exchangeMobileCode(new com.gamestock.backend.auth.AuthService.MobileCodeExchange(issued.code(),null)));
+                    assertEquals("test-custom-token",result.customToken());succeeded.incrementAndGet();
+                } catch(org.springframework.web.server.ResponseStatusException error) {
+                    assertEquals(401,error.getStatusCode().value());rejected.incrementAndGet();
+                }
+            });
+            assertEquals(1,succeeded.get());assertEquals(1,rejected.get());
+            var expired=issuer.issueMobileCode("Bearer valid");
+            db.update("UPDATE mobile_login_codes SET expires_at=DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 1 SECOND)");
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,()->tx.execute(s->redeemer.exchangeMobileCode(new com.gamestock.backend.auth.AuthService.MobileCodeExchange(expired.code(),null))));
+        }
     }
     @Test void sharedCashCannotBeOverspentAcrossSymbolsOrInstances() throws Exception {
         long buyer=user(100100),seller=user(0);shares(seller,"UMA",20);shares(seller,"BA",20);
@@ -88,17 +168,20 @@ class MarketConcurrencyTest {
         long buyer=user(1000000),seller=user(0);shares(seller,"UMA",20);
         long stock=db.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);
         var cache=new MarketBookCache();var users=Set.of(buyer,seller);var symbols=Set.of(stock);
+        long counterTime=System.currentTimeMillis();
+        AtomicInteger previousFills=new AtomicInteger();
         var original=tx.execute(s->{
-            var repository=new BatchMarketRepository(db);long now=System.currentTimeMillis();
+            var repository=new BatchMarketRepository(db);long now=counterTime;
             var book=cache.borrow(repository,now,symbols,users);
+            previousFills.set(cache.recent(now).getOrDefault(stock,0));
             book.submit(seller,stock,"SELL","LIMIT",10,10000,now,60000);
             book.submit(buyer,stock,"BUY","MARKET",2,0,now,0);
             repository.persist(book,now);cache.saved(now);return book;
         });
         tx.executeWithoutResult(s->{
-            var repository=new BatchMarketRepository(db);long now=System.currentTimeMillis();
+            var repository=new BatchMarketRepository(db);long now=counterTime;
             var book=cache.borrow(repository,now,symbols,users);assertSame(original,book);
-            assertEquals(2,book.holding(buyer,stock).quantity());assertEquals(2,cache.recent(now).get(stock));
+            assertEquals(2,book.holding(buyer,stock).quantity());assertEquals(previousFills.get()+1,cache.recent(now).get(stock));
             book.submit(buyer,stock,"BUY","MARKET",1,0,now,0);repository.persist(book,now);cache.saved(now);
         });
         second.order(new OrderRequest("UMA","BUY",1,"MARKET",null),buyer);

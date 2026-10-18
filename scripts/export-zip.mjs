@@ -7,7 +7,8 @@
  * node_modules·빌드 산출물·에디터 찌꺼기는 넣지 않는다. zip 명령이 없는
  * 환경(윈도우 기본 Git Bash 등)에서도 돌도록 zip을 직접 쓴다.
  */
-import { readdirSync, readFileSync, statSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, statSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, resolve, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync, inflateRawSync } from "node:zlib";
@@ -18,8 +19,13 @@ const targetFile = join(targetDir, "ssokdex.zip");
 /** 압축 안에서의 최상위 폴더. 풀면 이 폴더 하나가 생긴다. */
 const topFolder = "ssokdex";
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "export", ".git", ".freebuff", ".idea", ".vscode"]);
-const SKIP_FILES = /(?:^|[\\/])(?:\.DS_Store|Thumbs\.db)$|\.tsbuildinfo$/;
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "target", "export", ".git", ".freebuff", ".idea", ".vscode", ".agents", ".codex", ".commandcode", ".aws", "secrets", "credentials", "logs"]);
+const SKIP_FILES = /^(?:\.env(?:\..*)?|\.npmrc|\.netrc|\.DS_Store|Thumbs\.db)$|\.(?:tsbuildinfo|log|pem|key|p12|pfx|jks|keystore)$|(?:firebase-admin|service[-_]?account|credentials)/i;
+
+export function exportablePath(path) {
+  const parts = path.replaceAll("\\", "/").split("/");
+  return parts.every(part => part && part !== ".." && !SKIP_DIRS.has(part.toLowerCase()) && !SKIP_FILES.test(part));
+}
 
 /* ---------------------------------------------------------------- zip 쓰기 */
 
@@ -48,18 +54,19 @@ function dosStamp(mtime) {
   };
 }
 
-function collect(dir, found = []) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      collect(join(dir, entry.name), found);
-      continue;
-    }
-    const path = join(dir, entry.name);
-    if (SKIP_FILES.test(path)) continue;
-    found.push(path);
-  }
-  return found;
+export function collect(dir) {
+  // Use the index as an allowlist; untracked local configuration never enters the ZIP.
+  const tracked = execFileSync("git", ["-C", dir, "ls-files", "-z"], { encoding: "utf8" }).split("\0");
+  return [...new Set(tracked)].filter(exportablePath).filter(path => {
+    let current = dir;
+    try {
+      for (const part of path.split("/")) {
+        current = join(current, part);
+        if (lstatSync(current).isSymbolicLink()) return false;
+      }
+      return lstatSync(current).isFile();
+    } catch { return false; }
+  }).map(path => join(dir, path));
 }
 
 function buildZip(files) {
@@ -172,6 +179,7 @@ function formatSize(bytes) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)}MB` : `${Math.round(bytes / 1024)}KB`;
 }
 
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 const files = collect(root);
 if (files.length === 0) throw new Error("압축할 파일이 없습니다.");
 
@@ -184,3 +192,4 @@ writeFileSync(targetFile, zip);
 console.log(`압축 완료: ${targetFile} (${formatSize(zip.length)} · 파일 ${names.length}개)`);
 console.log(`최상위 폴더: ${topFolder}/`);
 console.log(`받는 사람: 풀고 \`npm install\` → \`npm run dev\``);
+}

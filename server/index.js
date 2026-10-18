@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { stat, realpath } from "node:fs/promises";
+import { extname, join, normalize, resolve, relative, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const distDir = resolve(fileURLToPath(new URL("../dist", import.meta.url)));
@@ -22,13 +22,20 @@ const mimeTypes = {
 
 const immutable = /-[A-Za-z0-9_]{8,}\./;
 
-async function resolveFile(pathname) {
-  const candidate = normalize(join(distDir, decodeURIComponent(pathname)));
-  if (!candidate.startsWith(distDir)) return null;
+const inside = (root, path) => {
+  const suffix = relative(root, path);
+  return suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix);
+};
+
+async function resolveFile(root, pathname) {
+  const candidate = normalize(join(root, decodeURIComponent(pathname)));
+  if (!inside(root, candidate)) return null;
   try {
-    const info = await stat(candidate);
+    const [actualRoot, actualFile] = await Promise.all([realpath(root), realpath(candidate)]);
+    if (!inside(actualRoot, actualFile)) return null;
+    const info = await stat(actualFile);
     if (!info.isFile()) return null;
-    return { path: candidate, size: info.size };
+    return { path: actualFile, size: info.size };
   } catch {
     return null;
   }
@@ -49,7 +56,10 @@ function send(res, status, headers, body) {
   body.pipe(res);
 }
 
-const server = createServer(async (req, res) => {
+export function createStaticServer(root = distDir) {
+  root = resolve(root);
+  return createServer(async (req, res) => {
+  try {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, { allow: "GET, HEAD" });
@@ -60,7 +70,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const asset = await resolveFile(url.pathname);
+  const asset = await resolveFile(root, url.pathname);
   if (asset) {
     const type = mimeTypes[extname(asset.path)] ?? "application/octet-stream";
     const cache = immutable.test(asset.path)
@@ -75,7 +85,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const fallback = await resolveFile("/index.html");
+  const fallback = await resolveFile(root, "/index.html");
   if (!fallback) {
     send(res, 503, { "content-type": "text/plain; charset=utf-8" }, "dist/ not found. Run npm run build.");
     return;
@@ -86,8 +96,16 @@ const server = createServer(async (req, res) => {
     { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" },
     req.method === "HEAD" ? null : createReadStream(fallback.path),
   );
-});
+  } catch (error) {
+    if (res.headersSent) { res.destroy(); return; }
+    send(res, error instanceof URIError || error instanceof TypeError ? 400 : 500,
+      { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }, "Invalid request");
+  }
+  });
+}
 
-server.listen(port, "0.0.0.0", () => {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+createStaticServer().listen(port, "0.0.0.0", () => {
   console.log(`씹덕주식 프론트엔드: http://0.0.0.0:${port} (dist: ${distDir})`);
 });
+}

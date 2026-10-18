@@ -683,12 +683,18 @@ public class MarketService {
 
     @Transactional(readOnly = true)
     public List<ActiveOrder> activeOrders(long userId) {
+        return activeOrders(userId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ActiveOrder> activeOrders(long userId, String stockCode) {
         return jdbc.query("""
                 SELECT o.id, s.stock_code, o.side, o.quantity, o.remaining_quantity, COALESCE(o.price, 0) AS price,
                        o.status, o.order_type, COALESCE(o.reserved_cash, 0) AS reserved_cash,
                        COALESCE(o.reserved_quantity, 0) AS reserved_quantity, o.created_at, o.expires_at
                 FROM orders o JOIN stocks s ON s.id = o.stock_id
                 WHERE o.user_id = ? AND o.status = 'OPEN'
+                  AND (? IS NULL OR s.stock_code = ?)
                 ORDER BY o.created_at DESC, o.id DESC
                 LIMIT 5
                 """, (rs, row) -> new ActiveOrder(
@@ -696,7 +702,7 @@ public class MarketService {
                 rs.getInt("quantity"), rs.getInt("remaining_quantity"), rs.getLong("price"),
                 rs.getString("status"), rs.getString("order_type"), rs.getLong("reserved_cash"),
                 rs.getInt("reserved_quantity"), databaseInstant(rs.getTimestamp("created_at")).toString(),
-                rs.getTimestamp("expires_at") == null ? null : databaseInstant(rs.getTimestamp("expires_at")).toString()), userId);
+                rs.getTimestamp("expires_at") == null ? null : databaseInstant(rs.getTimestamp("expires_at")).toString()), userId, stockCode, stockCode);
     }
 
     /** The user's recently completed fills. Cash and shares settle immediately. */
@@ -722,8 +728,9 @@ public class MarketService {
                                     AND st.seller_average_price_before IS NOT NULL
                                     AND st.seller_realized_profit_loss_before IS NOT NULL
                               THEN TRUE ELSE FALSE END AS cancellable
-                  FROM settlements st
+                  FROM settlements st JOIN users owner ON owner.id = ?
                   WHERE (st.buyer_id = ? OR st.seller_id = ?) AND st.status = 'SETTLED'
+                    AND st.created_at > COALESCE(owner.account_reset_at, '1970-01-01')
                 ) x JOIN stocks s ON s.id = x.stock_id
                 ORDER BY x.created_at DESC, x.id DESC
                 LIMIT 5
@@ -734,7 +741,7 @@ public class MarketService {
                 databaseInstant(rs.getTimestamp("settlement_at")).toString(),
                 databaseInstant(rs.getTimestamp("created_at")).toString(),
                 rs.getBoolean("cancellable")),
-                userId, userId, userId, userId, userId);
+                userId, userId, userId, userId, userId, userId);
     }
 
     /**
@@ -805,6 +812,19 @@ public class MarketService {
         jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE id = ?", orderId);
         events.publishEvent(new MarketChangedEvent());
         events.publishEvent(new UserMarketEvent(userId,"ORDER_CANCELLED",Map.of("orderId",orderId,"portfolio",portfolioUnsafe(userId))));
+    }
+
+    /** Cancel the complete account order set under the same admission lock as matching. */
+    @Transactional
+    public int cancelAllOrders(long userId) {
+        requireMatchingOwner();
+        acquireMarketLock();
+        long refund = jdbc.queryForObject("SELECT COALESCE(SUM(reserved_cash), 0) FROM orders WHERE user_id = ? AND status = 'OPEN'", Long.class, userId);
+        int cancelled = jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE user_id = ? AND status = 'OPEN'", userId);
+        if (refund > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", refund, userId);
+        events.publishEvent(new MarketChangedEvent());
+        events.publishEvent(new UserMarketEvent(userId, "ORDER_CANCELLED", Map.of("cancelled", cancelled, "portfolio", portfolioUnsafe(userId))));
+        return cancelled;
     }
 
     @Transactional(readOnly = true)
@@ -1539,8 +1559,10 @@ public class MarketService {
                 jdbc.update("INSERT IGNORE INTO lp_risk_books VALUES (?,?,?,?,?,?)",
                         id,allocation,baseline,batchEnabled?100:400,1200,stock.price()*1200L);
                 int target=StockMarketProfile.initialLiquidityInventory(code,LP_INITIAL_INVENTORY);
-                jdbc.update("UPDATE lp_risk_books SET target_inventory=?,max_inventory=GREATEST(max_inventory,?),risk_limit=GREATEST(risk_limit,?) WHERE stock_id=?",
-                        target,target*4,stock.price()*target*4L,id);
+                // A profile migration may increase the budget; an ordinary
+                // restart must not inflate it just because the last price rose.
+                jdbc.update("UPDATE lp_risk_books SET target_inventory=?,max_inventory=GREATEST(max_inventory,?),risk_limit=GREATEST(risk_limit,?) WHERE stock_id=? AND (target_inventory<>? OR max_inventory<?)",
+                        target,target*4,stock.price()*target*4L,id,target,target*4);
                 jdbc.update("INSERT IGNORE INTO market_price_metrics (stock_id,mark_price,hidden_fundamental,anchor_price) VALUES (?,?,?,?)",
                         id,stock.price(),stock.price(),stock.price());
                 sectors.put(code,stock.genre());
@@ -1913,7 +1935,7 @@ public class MarketService {
     private void enforceOrderLimits(long userId, long stockId, String side, String orderType,
                                     int quantity, long price) {
         String passwordHash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?", String.class, userId);
-        if ("BOT".equals(passwordHash)) return;
+        if ("BOT".equals(passwordHash) || "TRADER".equals(passwordHash)) return;
         Integer recentCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE user_id = ? "
                         + "AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL " + USER_ORDER_WINDOW_SECONDS + " SECOND)",
@@ -1922,7 +1944,7 @@ public class MarketService {
             throw new IllegalArgumentException("주문 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
         Integer duplicateCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE user_id = ? AND stock_id = ? AND side = ? AND order_type = ? "
-                        + "AND quantity = ? AND COALESCE(price, 0) = ? "
+                        + "AND quantity = ? AND (order_type = 'MARKET' OR COALESCE(price, 0) = ?) "
                         + "AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL " + DUPLICATE_ORDER_WINDOW_SECONDS + " SECOND)",
                 Integer.class, userId, stockId, side, orderType, quantity, price);
         if (duplicateCount != null && duplicateCount > 0)
@@ -2410,6 +2432,10 @@ public class MarketService {
                 SELECT s.stock_code, p.quantity, COALESCE(p.settled_quantity, p.quantity) AS settled_quantity,
                        p.average_price, COALESCE(p.realized_profit_loss, 0) AS realized_profit_loss,
                        p.quantity * COALESCE(pm.mark_price,s.current_price) AS market_value,
+                       GREATEST(0, COALESCE(p.settled_quantity,p.quantity) - COALESCE((
+                           SELECT SUM(o.reserved_quantity) FROM orders o
+                           WHERE o.user_id = p.user_id AND o.stock_id = p.stock_id AND o.status = 'OPEN' AND o.side = 'SELL'
+                       ),0)) AS available_quantity,
                        p.quantity * (COALESCE(pm.mark_price,s.current_price) - p.average_price) AS profit_loss
                 FROM portfolios p JOIN stocks s ON s.id = p.stock_id
                 LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
@@ -2422,7 +2448,7 @@ public class MarketService {
                 rs.getLong("average_price") == 0 ? 0 :
                         Math.round(rs.getLong("profit_loss") * 10000.0 /
                                 (rs.getInt("quantity") * rs.getLong("average_price"))) / 100.0,
-                rs.getLong("realized_profit_loss")), userId);
+                rs.getLong("realized_profit_loss"), rs.getInt("available_quantity")), userId);
         long reservedCash = jdbc.queryForObject("SELECT COALESCE(SUM(reserved_cash), 0) FROM orders WHERE user_id = ? AND status = 'OPEN'", Long.class, userId);
         long unsettledCash = jdbc.queryForObject("""
                 SELECT COALESCE(SUM(gross_amount - seller_fee), 0)

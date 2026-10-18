@@ -15,9 +15,11 @@ export function totals(snapshot: MarketSnapshot): Totals {
   let stockValue = 0;
   for (const position of Object.values(snapshot.portfolio.positions)) {
     const quote = snapshot.quotes[position.code];
-    if (quote) stockValue += quote.price * position.qty;
+    if (position.marketValue !== undefined) stockValue += position.marketValue;
+    else if (quote) stockValue += quote.price * position.qty;
   }
-  const total = snapshot.portfolio.cash + stockValue;
+  stockValue = snapshot.portfolio.assetValue ?? stockValue;
+  const total = snapshot.portfolio.totalAsset ?? (snapshot.portfolio.cash + stockValue);
   // 출석·미션 보상은 투자 성과가 아니므로 손익에서 뺀다. 랭킹 수익률과 같은 기준이다.
   const rewardCash = (snapshot.portfolio.attendanceRewardCash ?? 0) + (snapshot.portfolio.missionRewardCash ?? 0);
   const pnl = total - INITIAL_CASH - rewardCash;
@@ -41,7 +43,7 @@ export function holdings(snapshot: MarketSnapshot, total: number): Holding[] {
     const listing = LISTING_BY_CODE[position.code];
     const quote = snapshot.quotes[position.code];
     if (!listing || !quote) continue;
-    const value = quote.price * position.qty;
+    const value = position.marketValue ?? quote.price * position.qty;
     const cost = position.avgCost * position.qty;
     rows.push({
       listing,

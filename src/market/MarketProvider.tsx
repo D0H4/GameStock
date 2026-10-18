@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
@@ -12,6 +12,7 @@ import { serverTimestamp } from "./format";
 import { LISTING_BY_CODE, dailyPriceBand, roundToTick } from "./universe";
 import type { DailyMissionStatus, MarketSnapshot, OrderRequest, OrderResult, Portfolio, Position, Quote, TradingRestriction } from "./types";
 import { BackendLoadingScreen } from "../components/BackendLoadingScreen";
+import { affordableQuantity } from "./orderSizing";
 
 export interface MarketApi {
   placeOrder: (request: OrderRequest) => Promise<OrderResult>;
@@ -60,8 +61,8 @@ type BackendEvent = {
   priceChangePercent?: number;
   priceDirection?: string;
 };
-type BackendPosition = { stockCode: string; quantity: number; averagePrice: number };
-type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number };
+type BackendPosition = { stockCode: string; quantity: number; averagePrice: number; availableQuantity?: number; marketValue?: number };
+type BackendPortfolio = { cash: number; assetValue?: number; totalAsset?: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number };
 type BackendSettlement = { id: number; stockCode: string; side: string; quantity: number; grossAmount: number; createdAt: string };
 type BackendActiveOrder = { id: number; stockCode: string; status: string };
 type BackendMissionReward = { rewardCash: number; awarded: boolean; portfolio: BackendPortfolio; missions: DailyMissionStatus };
@@ -80,10 +81,12 @@ function toPortfolio(value?: BackendPortfolio): Portfolio {
   const positions: Record<string, Position> = {};
   for (const item of value.positions ?? []) {
     if (!LISTING_BY_CODE[item.stockCode] || item.quantity < 1) continue;
-    positions[item.stockCode] = { code: item.stockCode, qty: item.quantity, avgCost: item.averagePrice };
+    positions[item.stockCode] = { code: item.stockCode, qty: item.quantity, avgCost: item.averagePrice, availableQty: item.availableQuantity, marketValue: item.marketValue };
   }
   return {
     cash: value.cash,
+    assetValue: value.assetValue,
+    totalAsset: value.totalAsset,
     positions,
     fills: [],
     realized: value.realizedProfitLoss ?? 0,
@@ -222,6 +225,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const refreshAgainRef = useRef(false);
   const detailRefreshInFlightRef = useRef(false);
   const snapshotFillsRef = useRef<Portfolio["fills"]>([]);
+  const codesRef = useRef(snapshot.codes);
+  codesRef.current = snapshot.codes;
+  const setActiveDetailCode = useCallback((code: string | null) => {
+    activeDetailCodeRef.current = code;
+    streamRef.current?.subscribe(code ? [code] : codesRef.current, code);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,7 +266,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           id: trade.id, code: trade.stockCode, side: trade.side.toUpperCase() === "BUY" ? "buy" : "sell",
           qty: trade.quantity, price: trade.quantity > 0 ? trade.grossAmount / trade.quantity : 0, at: serverTimestamp(trade.createdAt),
         }));
-        setSnapshot((current) => ({ ...current, portfolio: { ...toPortfolio(data.portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
+        setSnapshot((current) => ({ ...current, portfolioError: undefined, portfolio: { ...toPortfolio(data.portfolio), fills: snapshotFillsRef.current }, updatedAt: Date.now() }));
       }
     }, (ready) => { streamReadyRef.current = ready; });
     streamRef.current = stream;
@@ -277,12 +286,13 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       const privateRevision = privateRevisionRef.current;
       try {
         const [stocks, events, market] = await Promise.all([
-          apiFetch<BackendStock[]>("/api/stocks"),
-          apiFetch<BackendEvent[]>("/api/market-events"),
-          apiFetch<BackendMarketStatus>("/api/market-status"),
+          apiFetch<BackendStock[]>("/api/stocks", { auth: false }),
+          apiFetch<BackendEvent[]>("/api/market-events", { auth: false }),
+          apiFetch<BackendMarketStatus>("/api/market-status", { auth: false }),
         ]);
         writePublicCache(stocks, events, market);
         let portfolio: BackendPortfolio | undefined;
+        let portfolioError: string | undefined;
         let fills: Portfolio["fills"] = [];
         if (firebaseAuth.currentUser) {
           try {
@@ -315,13 +325,13 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               watchRef.current = watch.map((item) => item.stockCode);
             }
           } catch {
-            /* 공개 시세는 로그인 API가 실패해도 계속 표시한다. */
+            portfolioError = "계좌 정보를 갱신하지 못했습니다. 마지막 확인한 잔고입니다.";
           }
         }
         if (!cancelled && firebaseAuth.currentUser?.uid === refreshingUid) {
           const nextSnapshot = toSnapshot(stocks, events, portfolio, watchRef.current, market);
           nextSnapshot.portfolio.fills = fills;
-          if (privateRevision === privateRevisionRef.current) snapshotFillsRef.current = fills;
+          if (!portfolioError && privateRevision === privateRevisionRef.current) snapshotFillsRef.current = fills;
           // The two-second quote refresh must not clear the one-second detail
           // data while the order book/trade requests are in flight. Keeping
           // the previous rows prevents a visible empty-frame flicker.
@@ -344,7 +354,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               } : { ...quote, series: nextSeries.slice(-60) }];
             }));
             hasServerSnapshotRef.current = true;
-            return { ...nextSnapshot, quotes, portfolio: privateRevision === privateRevisionRef.current ? nextSnapshot.portfolio : current.portfolio };
+            const privateUnchanged = privateRevision === privateRevisionRef.current;
+            return { ...nextSnapshot, quotes,
+              portfolioError: privateUnchanged ? portfolioError : current.portfolioError,
+              portfolio: !portfolioError && privateUnchanged ? nextSnapshot.portfolio : current.portfolio };
           });
           setServerAvailable(true);
           stream.subscribe(activeDetailCodeRef.current ? [activeDetailCodeRef.current] : nextSnapshot.codes, activeDetailCodeRef.current);
@@ -379,8 +392,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         const entries = await Promise.all([code].map(async (code) => {
           try {
             const [book, trades] = await Promise.all([
-              apiFetch<BackendOrderBook>(`/api/stocks/${code}/orderbook`),
-              apiFetch<BackendTrade[]>(`/api/stocks/${code}/trades`),
+              apiFetch<BackendOrderBook>(`/api/stocks/${code}/orderbook`, { auth: false }),
+              apiFetch<BackendTrade[]>(`/api/stocks/${code}/trades`, { auth: false }),
             ]);
             return [code, { book, trades }] as const;
           } catch {
@@ -467,7 +480,9 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     orderable: (code, side) => {
       const quote = snapshot.quotes[code];
       if (!quote) return 0;
-      return side === "buy" ? Math.floor(snapshot.portfolio.cash / quote.price) : snapshot.portfolio.positions[code]?.qty ?? 0;
+      if (snapshot.portfolioError) return 0;
+      const position = snapshot.portfolio.positions[code];
+      return side === "buy" ? affordableQuantity(snapshot.portfolio.cash, quote.price) : position?.availableQty ?? 0;
     },
     placeOrder: async (request) => {
       if (!requireSignIn(`/market/${request.code}`)) return { ok: false, message: "로그인 후 주문할 수 있습니다." };
@@ -494,7 +509,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     cancelOpenOrder: async (code) => {
       if (!requireSignIn(`/market/${code}`)) return { ok: false, cancelled: 0, message: "로그인 후 주문을 취소할 수 있습니다." };
       try {
-        const orders = await apiFetch<BackendActiveOrder[]>("/api/orders");
+        const orders = await apiFetch<BackendActiveOrder[]>(`/api/orders?stockCode=${encodeURIComponent(code)}`);
         const target = orders.find((order) => order.stockCode === code && order.status === "OPEN");
         if (!target) return { ok: true, cancelled: 0, message: "현재 종목에 취소할 미체결 주문이 없습니다." };
         await apiFetch(`/api/orders/${target.id}`, { method: "DELETE" });
@@ -507,14 +522,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       if (!requireSignIn()) return { ok: false, cancelled: 0, message: "로그인 후 주문을 취소할 수 있습니다." };
       let cancelled = 0;
       try {
-        // /api/orders는 화면용으로 최대 5건만 반환하므로, 남은 주문이 없어질 때까지 반복한다.
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          const orders = await apiFetch<BackendActiveOrder[]>("/api/orders");
-          if (orders.length === 0) break;
-          await Promise.all(orders.map((order) => apiFetch(`/api/orders/${order.id}`, { method: "DELETE" })));
-          cancelled += orders.length;
-          if (orders.length < 5) break;
-        }
+        const result = await apiFetch<{ cancelled: number }>("/api/orders", { method: "DELETE" });
+        cancelled = result.cancelled;
         return {
           ok: true,
           cancelled,
@@ -551,12 +560,9 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           if (watchSettledSeq.current < seq) watchSettledSeq.current = seq;
         });
     },
-    setActiveDetailCode: (code) => {
-      activeDetailCodeRef.current = code;
-      streamRef.current?.subscribe(code ? [code] : snapshot.codes, code);
-    },
+    setActiveDetailCode,
     claimMissionReward,
-  }), [snapshot]);
+  }), [snapshot, setActiveDetailCode]);
 
   return (
     <ApiContext.Provider value={api}>

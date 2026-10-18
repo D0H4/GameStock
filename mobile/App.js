@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Alert, Image, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { isTrustedAppUrl, authInjection } from './src/web-origin';
 import { API_BASE_URL, MARKET_SOCKET_URL, FIREBASE_CONFIG, GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID, WEB_APP_URL } from './src/config';
 
 // These bundled PNGs are the same source files used by the web client.
@@ -101,12 +102,11 @@ function WebMirrorScreen() {
   const pendingAuthState = useRef(null);
   const pendingWebAuth = useRef(null);
   const webViewReady = useRef(false);
+  const currentWebUrl = useRef(webUrl);
 
   const injectWebAuth = payload => {
-    const serialized = JSON.stringify(payload);
-    webViewRef.current?.injectJavaScript(
-      `window.dispatchEvent(new CustomEvent('gamestock-native-auth',{detail:${serialized}})); true;`,
-    );
+    if (!webViewReady.current || !isTrustedAppUrl(currentWebUrl.current, webUrl)) return;
+    webViewRef.current?.injectJavaScript(authInjection(payload, webUrl));
   };
 
   const postWebAuth = payload => {
@@ -118,6 +118,7 @@ function WebMirrorScreen() {
   };
 
   const handleWebMessage = event => {
+    if (!isTrustedAppUrl(event.nativeEvent.url, webUrl)) return;
     let message;
     try {
       message = JSON.parse(event.nativeEvent.data);
@@ -199,7 +200,13 @@ function WebMirrorScreen() {
     return () => subscription.remove();
   }, []);
 
-  const handleWebViewLoadEnd = () => {
+  const handleWebViewLoadEnd = event => {
+    currentWebUrl.current = event.nativeEvent.url;
+    if (!isTrustedAppUrl(currentWebUrl.current, webUrl)) {
+      webViewReady.current = false;
+      pendingWebAuth.current = null;
+      return;
+    }
     webViewReady.current = true;
     if (pendingWebAuth.current) {
       const payload = pendingWebAuth.current;
@@ -212,6 +219,13 @@ function WebMirrorScreen() {
     <WebView
       ref={webViewRef}
       source={{ uri: webUrl }}
+      originWhitelist={[new URL(webUrl).origin]}
+      onShouldStartLoadWithRequest={request => isTrustedAppUrl(request.url, webUrl)}
+      onLoadStart={event => { webViewReady.current = false; currentWebUrl.current = event.nativeEvent.url; }}
+      onNavigationStateChange={state => {
+        currentWebUrl.current = state.url;
+        if (!isTrustedAppUrl(state.url, webUrl)) { webViewReady.current = false; pendingWebAuth.current = null; }
+      }}
       style={{ flex: 1 }}
       startInLoadingState
       javaScriptEnabled

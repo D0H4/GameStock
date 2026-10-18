@@ -1,5 +1,5 @@
 import { getApps, initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
 
 /** Firebase Web SDK 설정. 공개 Web 키는 인증 초기화에만 사용하고,
  * 관리자 서비스 계정 키는 절대 프론트 번들에 포함하지 않는다. */
@@ -29,4 +29,7 @@ export const firebaseConfigured = missing.length === 0;
 
 export const firebaseApp = getApps()[0] ?? initializeApp(firebaseConfig);
 export const firebaseAuth = getAuth(firebaseApp);
+if (import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATOR === "true") {
+  connectAuthEmulator(firebaseAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+}
 export const googleProvider = new GoogleAuthProvider();

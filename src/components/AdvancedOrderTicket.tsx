@@ -9,6 +9,7 @@ import { LISTING_BY_CODE } from "../market/universe";
 import { useAuthUser } from "../lib/auth";
 import { GameIcon } from "./GameIcon";
 import { navigate, TRADE_PATH } from "../router";
+import { affordableQuantity } from "../market/orderSizing";
 
 const RATIOS = [
   { label: "10%", ratio: 0.1 },
@@ -55,7 +56,7 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
 
   const setQuantityRatio = (ratio: number) => {
     const price = orderType === "LIMIT" && Number(limitPrice) > 0 ? Number(limitPrice) : quote?.price ?? 0;
-    const maxQty = side === "buy" ? (price > 0 ? Math.min(1000, Math.floor(snapshot.portfolio.cash / price)) : 0) : Math.min(1000, api.orderable(code, side));
+    const maxQty = snapshot.portfolioError ? 0 : side === "buy" ? affordableQuantity(snapshot.portfolio.cash, price) : Math.min(1000, api.orderable(code, side));
     const next = Math.min(maxQty, Math.max(1, Math.floor(maxQty * ratio)));
     setQty(String(maxQty > 0 ? next : ""));
     setResult(null);
@@ -147,7 +148,7 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
   const validLimitPrice = Number.isFinite(parsedLimitPrice) && Number.isInteger(parsedLimitPrice) && parsedLimitPrice > 0 && roundToTick(parsedLimitPrice) === parsedLimitPrice;
   const executionPrice = orderType === "MARKET" ? quote.price : (validLimitPrice ? parsedLimitPrice : suggestedLimit);
   const amount = valid ? parsed * executionPrice : 0;
-  const maxQty = side === "buy" ? Math.min(1000, Math.floor(snapshot.portfolio.cash / executionPrice)) : Math.min(1000, api.orderable(code, side));
+  const maxQty = snapshot.portfolioError ? 0 : side === "buy" ? affordableQuantity(snapshot.portfolio.cash, executionPrice) : Math.min(1000, api.orderable(code, side));
   const affordable = parsed <= maxQty;
   const quantityError = qty === "" ? "" : !valid ? "수량은 1~1,000주 사이의 정수로 입력해 주세요." : !affordable ? `주문 가능 수량은 최대 ${maxQty.toLocaleString()}주입니다.` : "";
   const priceError = orderType === "LIMIT" && !validLimitPrice ? "단가를 해당 가격대의 호가 단위에 맞춰 입력해 주세요." : "";
@@ -156,12 +157,12 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
   const submit = async (orderSide: "buy" | "sell" = side) => {
     if (submissionPendingRef.current || shortcutPending) return;
     setShortcutMessage("");
-    const error = blocked ? "현재 해당 주문 유형의 거래가 제한되어 있습니다."
+    const error = snapshot.portfolioError ?? (blocked ? "현재 해당 주문 유형의 거래가 제한되어 있습니다."
       : !valid ? "주문할 수량을 1~1,000주 사이의 정수로 입력해 주세요."
       : orderType === "LIMIT" && !validLimitPrice ? "올바른 호가 단가를 입력해 주세요."
-      : orderSide === "buy" && amount > snapshot.portfolio.cash ? "매수 주문 가능 금액이 부족합니다."
+      : orderSide === "buy" && parsed > affordableQuantity(snapshot.portfolio.cash, executionPrice) ? "수수료를 포함한 매수 주문 가능 금액이 부족합니다."
       : orderSide === "sell" && parsed > api.orderable(code, "sell") ? "매도 가능한 보유 수량이 부족합니다."
-      : null;
+      : null);
     if (error) {
       setResult({ ok: false, message: error });
       return;

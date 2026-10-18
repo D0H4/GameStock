@@ -49,6 +49,14 @@ public class OrderService {
             reject(userId,result,PersistenceWorker.unavailable());
         return result;
     }
+    public CompletableFuture<Integer> cancelAll(long userId) {
+        try {
+            market.requireMatchingOwner();
+            return persistence.submit(UUID.randomUUID().toString(), Integer.class, 1, () -> market.cancelAllOrders(userId));
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
+        }
+    }
     public CompletableFuture<List<BotActivityEngine.Activity>> submitBotBatch(int shard){
         if(!running.get()||!persistence.acceptingWrites()||!botPending.add(shard))return CompletableFuture.completedFuture(List.of());
         if(!botBatchInFlight.compareAndSet(false,true)){

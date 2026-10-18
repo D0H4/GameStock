@@ -16,6 +16,7 @@ export function TradePage({ ticker }: { ticker: string | null }) {
   const snapshot = useMarket();
   const [accountTab, setAccountTab] = useState<AccountTab>("holdings");
   const api = useMarketApi();
+  const { setActiveDetailCode } = api;
   const code = ticker?.toUpperCase() ?? null;
   const listing = code ? LISTING_BY_CODE[code] : undefined;
   const quote = code ? snapshot.quotes[code] : undefined;
@@ -23,9 +24,9 @@ export function TradePage({ ticker }: { ticker: string | null }) {
 
   useEffect(() => {
     if (!code) return undefined;
-    api.setActiveDetailCode(code);
-    return () => api.setActiveDetailCode(null);
-  }, [api, code]);
+    setActiveDetailCode(code);
+    return () => setActiveDetailCode(null);
+  }, [setActiveDetailCode, code]);
 
   if (!code || !listing || !quote) {
     return (
@@ -42,6 +43,7 @@ export function TradePage({ ticker }: { ticker: string | null }) {
 
   return (
     <div className="page-stack integration-tools trade-page">
+      {snapshot.portfolioError && <p role="status" className="empty">{snapshot.portfolioError}</p>}
       <Link className="trade-back" to={MARKET_PATH(code)}>
         ← 종목 상세
       </Link>

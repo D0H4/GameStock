@@ -3,26 +3,14 @@ import { firebaseAuth } from "./firebase";
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
 const productionApiBase = "https://gamestock-production-bcd2.up.railway.app";
 const localApiBase = "http://localhost:8081";
-const isLocalBase = (value: string) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(value);
 
 // A full market simulation can briefly hold a quote request while bots trade.
-// Give the selected backend time to answer before falling back to another DB.
+// Give the selected backend time to answer without switching databases.
 const API_TIMEOUT_MS = 15_000;
 
-// 개발 화면은 로컬 백엔드를 먼저 보고, 로컬 서버가 꺼져 있으면 Railway로
-// 재시도한다. 배포 화면은 Railway를 먼저 보되 사용자의 로컬 백엔드도
-// 마지막 후보로 남겨 둔다. 이렇게 하면 어느 화면을 열었는지에 따라
-// API 주소가 하나로 고정되지 않는다.
-const preferredApiBase = import.meta.env.PROD
-  ? (configuredApiBase && !isLocalBase(configuredApiBase) ? configuredApiBase : productionApiBase)
-  : (configuredApiBase || localApiBase);
-const API_BASES = [...new Set(
-  [preferredApiBase, productionApiBase, localApiBase]
-    .map((base) => base.replace(/\/$/, "")),
-)];
-
-let connectedApiBase = API_BASES[0];
-export const currentApiBaseUrl = () => connectedApiBase;
+// Reads and mutations always belong to the same explicitly selected environment.
+export const apiBaseUrl = (configuredApiBase || (import.meta.env.PROD ? productionApiBase : localApiBase)).replace(/\/$/, "");
+export const currentApiBaseUrl = () => apiBaseUrl;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -34,33 +22,41 @@ export class ApiError extends Error {
   }
 }
 
-/** Spring Boot API 공통 호출기. 로그인된 경우 Firebase ID 토큰을 자동 첨부한다. */
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+type ApiRequestInit = RequestInit & { auth?: boolean };
+
+/** 공개 조회는 인증 갱신에 의존하지 않는다. 계좌·주문 요청은 기본적으로 토큰을 첨부한다. */
+export async function apiFetch<T>(path: string, options: ApiRequestInit = {}): Promise<T> {
+  const { auth = true, ...init } = options;
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const user = firebaseAuth.currentUser;
-  if (user) headers.set("Authorization", `Bearer ${await user.getIdToken()}`);
+  if (auth && user) {
+    let tokenTimeout: number | undefined;
+    try {
+      const token = await Promise.race([
+        user.getIdToken(),
+        new Promise<never>((_, reject) => {
+          tokenTimeout = window.setTimeout(() => reject(new Error("로그인 연결이 지연되고 있습니다. 잠시 후 다시 로그인해 주세요.")), API_TIMEOUT_MS);
+        }),
+      ]);
+      headers.set("Authorization", `Bearer ${token}`);
+    } finally {
+      window.clearTimeout(tokenTimeout);
+    }
+  }
 
-  let lastNetworkError: unknown;
-  const readOnly = !init.method || ["GET", "HEAD", "OPTIONS"].includes(init.method.toUpperCase());
-  // A timed-out mutation may already have committed. Never replay it against another database.
-  for (const base of readOnly ? [...new Set([connectedApiBase, ...API_BASES])] : [connectedApiBase]) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     const abortFromCaller = () => controller.abort();
+    if (init.signal?.aborted) throw new DOMException("요청이 취소되었습니다.", "AbortError");
+    const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     if (init.signal) {
-      if (init.signal.aborted) throw new DOMException("요청이 취소되었습니다.", "AbortError");
       init.signal.addEventListener("abort", abortFromCaller, { once: true });
     }
     try {
-      const response = await fetch(`${base}${path}`, { ...init, headers, signal: controller.signal });
+      const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers, signal: controller.signal });
       if (response.ok) {
-        if (connectedApiBase !== base) {
-          connectedApiBase = base;
-          window.dispatchEvent(new Event("gamestock:api-base"));
-        }
         if (response.status === 204) return undefined as T;
         return (await response.json()) as T;
       }
@@ -77,20 +73,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       throw new ApiError(response.status, message);
     } catch (error) {
       const timedOut = controller.signal.aborted && !init.signal?.aborted;
-      const networkFailure = error instanceof TypeError || timedOut;
-      if (!networkFailure || init.signal?.aborted) throw error;
-      lastNetworkError = error;
-      // 연결 거부·CORS·네트워크 단절처럼 서버에 도달하지 못한 경우만
-      // 다음 API 후보로 넘긴다.
+      if (timedOut) throw new Error("서버 응답이 지연되고 있습니다. 주문 내역을 확인한 뒤 다시 시도해 주세요.");
+      throw error;
     } finally {
       window.clearTimeout(timeoutId);
       init.signal?.removeEventListener("abort", abortFromCaller);
     }
-  }
-
-  throw lastNetworkError instanceof Error
-    ? lastNetworkError
-    : new Error("연결 가능한 백엔드가 없습니다.");
 }
-
-export const apiBaseUrl = API_BASES[0];

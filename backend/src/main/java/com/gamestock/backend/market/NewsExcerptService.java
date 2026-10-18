@@ -29,6 +29,14 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Flow;
+import java.util.concurrent.CompletionStage;
+import java.nio.ByteBuffer;
+import java.io.IOException;
 
 /**
  * 속보 본문 미리보기. 뉴스는 Google News RSS 링크로만 저장되므로
@@ -86,6 +94,9 @@ public class NewsExcerptService {
     private static final Duration HIT_TTL = Duration.ofHours(12);
     private static final Duration MISS_TTL = Duration.ofMinutes(10);
     private static final String REDIS_PREFIX = "gamestock:news-excerpt:";
+    static final int MAX_RESPONSE_BYTES = 3_000_000;
+    private final Map<String, CompletableFuture<Excerpt>> inFlight = new ConcurrentHashMap<>();
+    private final Semaphore downloads = new Semaphore(4);
 
     private final JdbcTemplate jdbc;
     private final ObjectProvider<StringRedisTemplate> redis;
@@ -95,11 +106,6 @@ public class NewsExcerptService {
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
-    /* Google News 기사 페이지는 같은 도메인 안에서 한 번 리다이렉트한다. 주소가 고정이라 자동으로 따라간다. */
-    private final HttpClient google = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
     private final Map<String, Cached> cache = new LinkedHashMap<>(64, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Cached> eldest) { return size() > 400; }
@@ -116,12 +122,42 @@ public class NewsExcerptService {
         Excerpt cached = readCached(articleId);
         if (cached != null) return cached;
 
-        /* 저장된 소식의 링크만 받는다. 아무 주소나 대신 읽어 주는 중계기가 되지 않게 한다. */
-        Integer known = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM market_events WHERE event_type = 'NEWS' AND description LIKE ?",
-                Integer.class, "%" + articleId + "%");
-        if (known == null || known == 0) throw new NoSuchElementException("저장된 소식이 아닙니다.");
+        // LOCATE is literal (article IDs contain LIKE metacharacters). Check the
+        // complete extracted token as well, so a substring cannot impersonate it.
+        List<String> descriptions = jdbc.queryForList(
+                "SELECT description FROM market_events WHERE event_type = 'NEWS' AND LOCATE(?, description) > 0",
+                String.class, articleId);
+        if (descriptions.stream().noneMatch(description -> containsArticle(description, articleId)))
+            throw new NoSuchElementException("저장된 소식이 아닙니다.");
+        var pending = new CompletableFuture<Excerpt>();
+        var existing = inFlight.putIfAbsent(articleId, pending);
+        if (existing != null) {
+            // Never tie up another servlet thread waiting for the same download.
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "뉴스 본문을 준비하고 있습니다. 잠시 후 다시 조회해 주세요.");
+        }
+        try {
+            if (!downloads.tryAcquire())
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "잠시 후 다시 조회해 주세요.");
+            try {
+                cached = readCached(articleId);
+                Excerpt result = cached != null ? cached : download(articleId);
+                pending.complete(result);
+                return result;
+            } finally { downloads.release(); }
+        } catch (RuntimeException error) {
+            pending.completeExceptionally(error);
+            throw error;
+        } finally { inFlight.remove(articleId, pending); }
+    }
 
+    static boolean containsArticle(String description, String articleId) {
+        if (description == null) return false;
+        var links = Pattern.compile("https://news\\.google\\.com/rss/articles/([A-Za-z0-9_-]{20,600})(?![A-Za-z0-9_-])").matcher(description);
+        while (links.find()) if (links.group(1).equals(articleId)) return true;
+        return false;
+    }
+
+    private Excerpt download(String articleId) {
         String url = null;
         List<String> paragraphs = List.of();
         try {
@@ -275,9 +311,46 @@ public class NewsExcerptService {
     }
 
     private String send(HttpRequest request) throws Exception {
-        HttpResponse<String> response = google.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() / 100 != 2) throw new IllegalStateException("HTTP " + response.statusCode());
-        return response.body();
+        for (int hop = 0; hop < 3; hop++) {
+            if (!"https".equals(request.uri().getScheme()) || !"news.google.com".equals(request.uri().getHost()))
+                throw new IllegalStateException("Google News 외부 리다이렉트입니다.");
+            requirePublicHost(request.uri());
+            var response = sendBounded(request);
+            if (response.statusCode() / 100 == 3 && request.method().equals("GET")) {
+                URI next = request.uri().resolve(response.headers().firstValue("Location").orElseThrow());
+                request = HttpRequest.newBuilder(next).timeout(Duration.ofSeconds(8)).header("User-Agent", USER_AGENT).GET().build();
+                continue;
+            }
+            if (response.statusCode() / 100 != 2) throw new IllegalStateException("HTTP " + response.statusCode());
+            return new String(response.body(), StandardCharsets.UTF_8);
+        }
+        throw new IllegalStateException("리다이렉트가 너무 많습니다.");
+    }
+
+    private HttpResponse<byte[]> sendBounded(HttpRequest request) throws Exception {
+        var response = http.sendAsync(request, ignored -> new BoundedBodySubscriber(MAX_RESPONSE_BYTES));
+        try { return response.get(8, TimeUnit.SECONDS); }
+        catch (Exception error) { response.cancel(true); throw error; }
+    }
+
+    static final class BoundedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+        private final HttpResponse.BodySubscriber<byte[]> delegate = HttpResponse.BodySubscribers.ofByteArray();
+        private final int limit;
+        private long received;
+        private Flow.Subscription subscription;
+        private boolean done;
+        BoundedBodySubscriber(int limit) { this.limit = limit; }
+        public CompletionStage<byte[]> getBody() { return delegate.getBody(); }
+        public void onSubscribe(Flow.Subscription subscription) { this.subscription = subscription; delegate.onSubscribe(subscription); }
+        public void onNext(List<ByteBuffer> buffers) {
+            if (done) return;
+            for (ByteBuffer buffer : buffers) received += buffer.remaining();
+            if (received > limit) {
+                done = true; subscription.cancel(); delegate.onError(new IOException("페이지가 너무 큽니다."));
+            } else delegate.onNext(buffers);
+        }
+        public void onError(Throwable error) { if (!done) { done = true; delegate.onError(error); } }
+        public void onComplete() { if (!done) { done = true; delegate.onComplete(); } }
     }
 
     /** 언론사 페이지를 읽는다. 리다이렉트는 직접 따라가며 매번 내부망 주소가 아닌지 확인한다. */
@@ -285,12 +358,12 @@ public class NewsExcerptService {
         URI target = URI.create(url);
         for (int hop = 0; hop < 4; hop++) {
             requirePublicHost(target);
-            HttpResponse<byte[]> response = http.send(HttpRequest.newBuilder(target)
+            HttpResponse<byte[]> response = sendBounded(HttpRequest.newBuilder(target)
                     .timeout(Duration.ofSeconds(8))
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "text/html,application/xhtml+xml")
                     .header("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.6")
-                    .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+                    .GET().build());
             int status = response.statusCode();
             if (status / 100 == 3) {
                 String location = response.headers().firstValue("Location").orElseThrow();
@@ -299,19 +372,24 @@ public class NewsExcerptService {
             }
             if (status / 100 != 2) throw new IllegalStateException("HTTP " + status);
             byte[] bytes = response.body();
-            if (bytes.length > 3_000_000) throw new IllegalStateException("페이지가 너무 큽니다.");
             return new String(bytes, charsetOf(response.headers().firstValue("Content-Type").orElse(""), bytes));
         }
         throw new IllegalStateException("리다이렉트가 너무 많습니다.");
     }
 
-    private static void requirePublicHost(URI uri) throws Exception {
+    static void requirePublicHost(URI uri) throws Exception {
         String scheme = uri.getScheme();
-        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme) || uri.getHost() == null) {
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme) || uri.getHost() == null
+                || uri.getUserInfo() != null || uri.getPort() != -1 && uri.getPort() != 80 && uri.getPort() != 443) {
             throw new IllegalStateException("지원하지 않는 주소입니다.");
         }
         for (InetAddress address : InetAddress.getAllByName(uri.getHost())) {
-            if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()
+            byte[] bytes = address.getAddress();
+            boolean privateV6 = bytes.length == 16 && ((bytes[0] & 0xfe) == 0xfc || (bytes[0] & 0xe0) != 0x20);
+            boolean reservedV4 = bytes.length == 4 && ((bytes[0] & 0xff) == 0 || (bytes[0] & 0xff) >= 224
+                    || (bytes[0] & 0xff) == 100 && (bytes[1] & 0xc0) == 0x40
+                    || (bytes[0] & 0xff) == 198 && ((bytes[1] & 0xfe) == 18));
+            if (privateV6 || reservedV4 || address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()
                     || address.isAnyLocalAddress() || address.isMulticastAddress()) {
                 throw new IllegalStateException("내부망 주소는 읽지 않습니다.");
             }

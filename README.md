@@ -54,6 +54,15 @@ npm start          # dist/ 를 서빙하는 무의존성 Node 서버 (PORT)
 호스팅 서비스의 빌드 환경변수로 등록하고, 백엔드에는 `FIREBASE_SERVICE_ACCOUNT_JSON`,
 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `GAMESTOCK_CORS_ORIGIN`을 별도 시크릿으로 등록한다.
 
+### 로컬 Firebase 인증 에뮬레이터
+
+`VITE_FIREBASE_EMULATOR=true`인 개발 환경에서는 `fish scripts/run-auth.fish`로
+인증 서버(9099)를 함께 실행한다. 설치된 Firebase CLI를 사용하며, 정상 종료 시
+`.firebase/emulator-data`에 계정을 저장하고 다음 실행에서 복원한다. 이 데이터는 Git에서 제외한다.
+백엔드도 `FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`,
+`FIREBASE_PROJECT_ID=local-development`를 실행 환경에 지정해야 한다.
+이 설정은 로컬 테스트 전용이며 운영 서버에 적용하지 않는다.
+
 ### 배포
 
 - **Railway 백엔드**: 서비스 루트를 `backend/`로 지정하고 `railway.json`이 해당
