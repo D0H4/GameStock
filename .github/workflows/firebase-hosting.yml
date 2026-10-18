@@ -34,7 +34,7 @@ jobs:
         run: |
           cp .env.example .env.production
           sed -i '/^VITE_API_BASE_URL=/d' .env.production
-          echo 'VITE_API_BASE_URL=https://gamestock-production-bcd2.up.railway.app' >> .env.production
+          echo 'VITE_API_BASE_URL=https://gamestock-api.161-33-33-45.sslip.io' >> .env.production
 
       - name: Typecheck and build
         run: |

@@ -1,25 +1,20 @@
 import { firebaseAuth } from "./firebase";
 
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
-const productionApiBase = "https://gamestock-production-bcd2.up.railway.app";
+const productionApiBase = "https://gamestock-api.161-33-33-45.sslip.io";
 const localApiBase = "http://localhost:8081";
 const isLocalBase = (value: string) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(value);
 
 // A full market simulation can briefly hold a quote request while bots trade.
-// Give the selected backend time to answer before falling back to another DB.
+// Give the selected backend time to answer without switching databases.
 const API_TIMEOUT_MS = 15_000;
 
-// 개발 화면은 로컬 백엔드를 먼저 보고, 로컬 서버가 꺼져 있으면 Railway로
-// 재시도한다. 배포 화면은 Railway를 먼저 보되 사용자의 로컬 백엔드도
-// 마지막 후보로 남겨 둔다. 이렇게 하면 어느 화면을 열었는지에 따라
-// API 주소가 하나로 고정되지 않는다.
+// 한 화면은 선택한 DB만 사용한다. 장애가 나도 다른 서버의 자산이나
+// 주문 상태를 섞지 않도록 운영과 로컬 사이의 자동 전환을 하지 않는다.
 const preferredApiBase = import.meta.env.PROD
   ? (configuredApiBase && !isLocalBase(configuredApiBase) ? configuredApiBase : productionApiBase)
   : (configuredApiBase || localApiBase);
-const API_BASES = [...new Set(
-  [preferredApiBase, productionApiBase, localApiBase]
-    .map((base) => base.replace(/\/$/, "")),
-)];
+const API_BASES = [preferredApiBase.replace(/\/$/, "")];
 
 let connectedApiBase = API_BASES[0];
 export const currentApiBaseUrl = () => connectedApiBase;

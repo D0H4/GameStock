@@ -207,14 +207,16 @@ npm start
 
 서비스 계정 JSON, DB 비밀번호, Firebase ID 토큰은 Git에 넣지 않는다. `VITE_*`는 브라우저에 포함되는 공개 설정이므로 관리자 자격증명을 넣으면 안 된다.
 
-저장소에 설정된 기본 주소는 다음과 같다. 이번 README 갱신에서는 접속·배포 상태를 점검하지 않았다.
+운영 웹은 Firebase Hosting, 백엔드와 DB는 OCI를 사용한다.
 
 - 웹: https://gamestock-20994.web.app
-- API: https://gamestock-production-bcd2.up.railway.app
+- API: https://gamestock-api.161-33-33-45.sslip.io
 
-Firebase Hosting은 `firebase.json`에 따라 `dist/`를 제공하고 SPA 경로를 `index.html`로 연결한다. `.github/workflows/firebase-hosting.yml`은 `main` push 또는 수동 실행 시 의존성 설치·타입 검사·빌드 후 배포한다. 현재 워크플로는 API 주소를 Railway 주소로 직접 지정하므로 서버 주소가 바뀌면 워크플로와 웹·앱 기본 주소도 함께 확인해야 한다.
+Firebase Hosting은 `firebase.json`에 따라 `dist/`를 제공하고 SPA 경로를 `index.html`로 연결한다. `.github/workflows/firebase-hosting.yml`은 `main` push 또는 수동 실행 시 의존성 설치·타입 검사·빌드 후 배포한다. 워크플로와 웹·앱 기본 API 주소는 OCI를 가리킨다. 한 화면에서 다른 DB로 자동 전환하지 않는다.
 
-Railway 설정은 서비스 루트에 따라 선택한다.
+OCI에서는 Oracle Linux의 `gamestock.service`가 Java 17 백엔드를 실행하고 Nginx가 HTTPS/WSS를 제공한다. MySQL은 사설망에서 연결하며 자격증명은 `/etc/gamestock/production.env`에만 둔다. IP를 포함한 임시 도메인이므로 공인 IP가 바뀌면 주소와 인증서도 갱신해야 한다. 운영·백업·복구 절차는 [OCI 운영 문서](docs/oci-operations.md)를 따른다.
+
+기존 Railway 설정은 롤백 참고용으로 보존한다. OCI와 Railway의 매칭 엔진을 동시에 실행하지 않는다.
 
 | 서비스 루트 | 설정 파일              | 빌드·실행                                                                                              |
 | ----------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
