@@ -1339,13 +1339,13 @@ public class MarketService {
                 : ceilToTick(Math.round(decision.limitPrice()));
         PriceBand band = quoteBand(code,dailyReferencePrice(code),observation.news());
         price = "BUY".equals(decision.side()) ? floorToTick(band.clamp(price)) : ceilToTick(band.clamp(price));
-        int quantity = "SELL".equals(decision.side()) ? Math.min(decision.quantity(), availableQuantity(userId,id)) : decision.quantity();
+        int quantity = Math.min(2,"SELL".equals(decision.side()) ? Math.min(decision.quantity(), availableQuantity(userId,id)) : decision.quantity());
         if (quantity <= 0) return;
         try {
             order(new OrderRequest(code, decision.side(), quantity, decision.market() ? "MARKET" : "LIMIT",
                     decision.market() ? null : price), userId);
             if (!decision.market()) jdbc.update("UPDATE orders SET expires_at=? WHERE user_id=? AND stock_id=? AND status='OPEN'",
-                    Timestamp.from(clock.instant().plusMillis(decision.ttlMillis())), userId, id);
+                    Timestamp.from(clock.instant().plusMillis(Math.min(30_000,decision.ttlMillis()))), userId, id);
         } catch (IllegalArgumentException unavailable) {
             // Insufficient resources, protection, or user-style rate limits mean HOLD.
         }
@@ -1396,13 +1396,13 @@ public class MarketService {
         }
         List<BotObservation> observations=new ArrayList<>();
         List<BotOpportunitySelector.Opportunity> opportunities=new ArrayList<>();
-        long equity=BotStrategyEngine.hasInventoryDemand(profile)?jdbc.queryForObject("""
+        long equity=jdbc.queryForObject("""
                 SELECT cash
                   + COALESCE((SELECT SUM(reserved_cash) FROM orders WHERE user_id=u.id AND status='OPEN'),0)
                   + COALESCE((SELECT SUM(p.quantity*pm.mark_price) FROM portfolios p
                       JOIN market_price_metrics pm ON pm.stock_id=p.stock_id WHERE p.user_id=u.id),0)
                 FROM users u WHERE id=?
-                """,Long.class,userId):0;
+                """,Long.class,userId);
         for(String code:watched) {
             BotObservation candidate=observeBot(profile,userId,code,equity,codes.size());
             observations.add(candidate);
@@ -1429,19 +1429,15 @@ public class MarketService {
                 strategies.targetQuantity(profile,code,clock.millis(),equity,symbolCount,metrics.markPrice()));
         double news = recentNewsBias(code, profile.reactionLatency()).rate();
         long reference = dailyReferencePrice(code);
-        double estimate = metrics.markPrice();
-        if (profile.strategy().family() == BotProfile.Family.VALUE) {
-            double fundamental = jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?", Double.class, id);
-            // Only value investors receive a noisy, slowly updated observation, never the hidden truth.
-            fundamental=StockMarketProfile.valuationAnchor(code,reference,fundamental,news);
-            double noise=.012*(StockMarketProfile.isLargeCap(code)?StockMarketProfile.of(code).movementWeight():1);
-            estimate = strategies.estimate(profile, code, fundamental * (1 + tickRandom.nextGaussian() * noise));
-        }
+        double fundamental = jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?", Double.class, id);
+        fundamental=StockMarketProfile.valuationAnchor(code,reference,fundamental,news);
+        double noise=.012*(StockMarketProfile.isLargeCap(code)?StockMarketProfile.of(code).movementWeight():1);
+        double estimate = strategies.estimate(profile, code, fundamental * (1 + tickRandom.nextGaussian() * noise));
         double perceived = news == 0 ? 0 : news * (1 + profile.valueError()*8)
                 + tickRandom.nextGaussian() * Math.abs(news) * .25;
         BotStrategyEngine.Decision decision=strategies.decide(profile,metrics,environment(code),position,
                 estimate,perceived,tickSize(Math.round(metrics.lastPrice())),marketScale(code),code,reference);
-        boolean replace=resting.stream().anyMatch(o -> botOrderPolicy.shouldReplace(profile,o,decision,
+        boolean replace=resting.size()>1 || resting.stream().anyMatch(o -> clock.millis()-o.createdAt()>=30_000 || botOrderPolicy.shouldReplace(profile,o,decision,
                 clock.millis(),tickSize(o.price()),o.side().equals("BUY")?metrics.bestBid():metrics.bestAsk(),
                 o.side().equals("BUY")?metrics.bestAsk():metrics.bestBid()));
         return new BotObservation(code,metrics,position,estimate,perceived,decision.score(),resting,decision,replace);
@@ -1513,13 +1509,16 @@ public class MarketService {
                     VALUES (?, ?, ?, ?, ?, 0)
                     """, userId, id, initialInventory, initialInventory, findStock(code).price());
         } else if (holdings.get(0).quantity() <= 0) {
-            // Replenish only after the previous lot is fully consumed. This
-            // preserves ordinary fills and avoids a full production reset.
+            // The startup/legacy path obeys the same finite supply bound as inline quotes.
+            long circulating=jdbc.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM portfolios WHERE stock_id=?",Long.class,id);
+            long nearbyAsks=jdbc.queryForObject("SELECT COALESCE(SUM(remaining_quantity),0) FROM orders WHERE stock_id=? AND user_id<>? AND side='SELL' AND status='OPEN' AND (expires_at IS NULL OR expires_at>CURRENT_TIMESTAMP) AND price<=?",Long.class,id,userId,findStock(code).price()*1.02);
+            int refill=(int)Math.min(32,Math.max(0,Math.max(512L,initialInventory*4L)-circulating));
+            if(refill==0 || nearbyAsks>=4)return;
             jdbc.update("""
                     UPDATE portfolios
                     SET quantity = ?, settled_quantity = ?, average_price = ?
                     WHERE user_id = ? AND stock_id = ?
-                    """, initialInventory, initialInventory, findStock(code).price(), userId, id);
+                    """, refill, refill, findStock(code).price(), userId, id);
         }
     }
 
@@ -1824,8 +1823,9 @@ public class MarketService {
 
     private void settleTrade(long stockId, MatchRow buy, MatchRow sell, MatchRow maker, MatchRow taker, int quantity, long tradePrice) {
         long amount = tradePrice * quantity;
-        long buyerFee = feeFor(amount);
-        long sellerFee = feeFor(amount);
+        boolean internal=jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id IN (?,?) AND password_hash IN ('BOT','TRADER')",Integer.class,buy.userId(),sell.userId())==2;
+        long buyerFee = internal?0:feeFor(amount);
+        long sellerFee = buyerFee;
         HoldingState buyerBefore = holdingState(stockId, buy.userId());
         HoldingState sellerBefore = holdingState(stockId, sell.userId());
         if (buy.reservedCash() > 0) {

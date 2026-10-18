@@ -6,6 +6,36 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BatchOrderBookTest {
+    @Test void internalTurnoverPreservesCashButHumanFillsStillPayFees() {
+        var b=book(1_000_000);
+        b.accounts.put(1L,new Account(1,1_000_000,false,true));
+        b.accounts.put(2L,new Account(2,1_000_000,false,true));
+        long initial=b.accounts.values().stream().mapToLong(a->a.cash).sum();
+        b.submit(2,1,"SELL","LIMIT",2,10000,1000,5000);
+        b.submit(1,1,"BUY","LIMIT",1,10000,1001,5000);
+        assertEquals(0,b.fills.get(0).buyerFee());assertEquals(0,b.fills.get(0).sellerFee());
+        assertEquals(initial,b.accounts.values().stream().mapToLong(a->a.cash).sum());
+        b.submit(3,1,"BUY","LIMIT",1,10000,1002,5000);
+        assertEquals(10,b.fills.get(1).buyerFee());assertEquals(10,b.fills.get(1).sellerFee());
+        assertEquals(initial-20,b.accounts.values().stream().mapToLong(a->a.cash).sum());
+    }
+
+    @Test void supplyLimitAndExistingNearbyAsksPreventRepeatedIssuance() {
+        var b=book(1_000_000);
+        b.holdings.put(new PositionKey(2,1),new Holding(0,0,0,0));
+        b.stocks.get(1L).circulatingShares=512;
+        b.restoreLiquidityInventory(2,1,100,10000);
+        assertEquals(0,b.holding(2,1).quantity());
+        b.stocks.get(1L).circulatingShares=100;
+        b.submit(3,1,"SELL","LIMIT",4,10010,1000,5000);
+        b.restoreLiquidityInventory(2,1,100,10000);
+        assertEquals(0,b.holding(2,1).quantity(),"Use existing sellers before minting more shares");
+        b.working(3,1).forEach(b::cancel);
+        b.restoreLiquidityInventory(2,1,100,10000);
+        assertEquals(32,b.holding(2,1).quantity());
+        assertEquals(132,b.stocks.get(1L).circulatingShares);
+    }
+
     @Test void databaseRetryReplaysTheSameOrderPricesQuantitiesAndSequence(){
         var original=book(1000000);original.capture();
         original.submit(2,1,"SELL","LIMIT",2,10000,1000,5000);
@@ -136,10 +166,10 @@ class BatchOrderBookTest {
         var key=new PositionKey(2,1);
         b.holdings.put(key,new Holding(0,0,0,77));
         b.restoreLiquidityInventory(2,1,400,10050);
-        assertEquals(new Holding(400,400,10050,77),b.holding(2,1));
+        assertEquals(new Holding(32,32,10050,77),b.holding(2,1));
         assertTrue(b.changedHoldings.contains(key));
 
         b.restoreLiquidityInventory(2,1,400,11000);
-        assertEquals(new Holding(400,400,10050,77),b.holding(2,1));
+        assertEquals(new Holding(32,32,10050,77),b.holding(2,1));
     }
 }

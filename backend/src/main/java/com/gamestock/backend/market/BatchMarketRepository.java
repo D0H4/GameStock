@@ -61,10 +61,13 @@ final class BatchMarketRepository {
                 rs->{accounts.put(rs.getLong(1),new Account(rs.getLong(1),rs.getLong(2),rs.getBoolean(3),rs.getBoolean(4)));});
         Map<PositionKey,Holding> holdings=new HashMap<>();
         Map<PositionKey,Long> holdingIds=new HashMap<>();
+        Map<Long,Long> circulating=new HashMap<>();
         db.query("SELECT user_id,stock_id,quantity,settled_quantity,average_price,realized_profit_loss,id FROM portfolios "+(symbols==null?"":"WHERE stock_id IN ("+selected+")"),
-                rs->{if(accounts.containsKey(rs.getLong(1))) {var key=new PositionKey(rs.getLong(1),rs.getLong(2));holdings.put(key,new Holding(rs.getInt(3),rs.getInt(4),rs.getLong(5),rs.getLong(6)));holdingIds.put(key,rs.getLong(7));}});
+                rs->{circulating.merge(rs.getLong(2),(long)rs.getInt(3),Long::sum);if(accounts.containsKey(rs.getLong(1))) {var key=new PositionKey(rs.getLong(1),rs.getLong(2));holdings.put(key,new Holding(rs.getInt(3),rs.getInt(4),rs.getLong(5),rs.getLong(6)));holdingIds.put(key,rs.getLong(7));}});
         long sequence=db.queryForObject("SELECT COALESCE(MAX(id),0) FROM orders",Long.class);
-        var book=new BatchOrderBook(accounts,stocks,holdings,orders,sequence,now);book.holdingIds.putAll(holdingIds);return book;
+        var book=new BatchOrderBook(accounts,stocks,holdings,orders,sequence,now);
+        stocks.values().forEach(stock->stock.circulatingShares=circulating.getOrDefault(stock.id,0L));
+        book.holdingIds.putAll(holdingIds);return book;
     }
 
     void persist(BatchOrderBook book,long now) {

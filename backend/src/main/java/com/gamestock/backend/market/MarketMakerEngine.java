@@ -108,6 +108,7 @@ public final class MarketMakerEngine {
             double riskSize=1/(1+m.volatility()*100+Math.max(0,e.volatilityMultiplier()-1)*.15);
             int size=emergency?Math.max(2,(int)Math.ceil(EMERGENCY_QUOTE_SIZE*scale))
                     :Math.max(1,(int)(18*scale*e.liquidityMultiplier()*riskSize/(1+level*.5)));
+            size=Math.min(32,size);
             int b=bid>=lower&&bid<=upper?Math.min(size,Math.min(buyCapacity,(int)Math.min(Integer.MAX_VALUE,cash/(bid*1.001)))):0;
             int a=ask>=lower&&ask<=upper?Math.min(size,inventory):0;
             if(b>0) {quotes.add(new Quote("BUY",bid,b)); cash-=Math.ceil(bid*b*1.001); buyCapacity-=b;}

@@ -6,6 +6,54 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BotActivityEngineTest {
+    @Test void humanCanBuyAndSellWhileTheLiquidityEngineIsRunning() {
+        var p=BotProfile.defaults(1).get(2);
+        var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,p,1)),1,300);
+        var accounts=new HashMap<Long,Account>();
+        accounts.put(1L,new Account(1,0,false,true));
+        accounts.put(2L,new Account(2,2_000_000,true,true));
+        accounts.put(3L,new Account(3,1_000_000,false,false));
+        var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,"ES",10000,10000,10000,10000,true));
+        var holdings=new HashMap<PositionKey,Holding>();holdings.put(new PositionKey(2,1),new Holding(100,100,10000,0));
+        var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,1000);
+        book.lpCashBudgets.put(1L,2_000_000L);
+        engine.act(book,Map.of(1L,observation()),Map.of(),2000,100,
+                Map.of(1L,new MarketMakerEngine.RiskBook(2_000_000,100,100,400,4_000_000)),2);
+        assertEquals("FILLED",book.submit(3,1,"BUY","MARKET",1,0,2001,0).status);
+        assertEquals("FILLED",book.submit(3,1,"SELL","MARKET",1,0,2002,0).status);
+        assertEquals(0,book.holding(3,1).quantity());
+        assertTrue(book.fills.stream().allMatch(f->f.buyerFee()>0 && f.sellerFee()>0));
+    }
+
+    @Test void fastDecisionsRetainStrategicHoldingHorizonsAndSmallOrders() {
+        var profiles=BotProfile.activePopulation(91,100);
+        for(var p:profiles.subList(20,profiles.size())) {
+            assertEquals(2,p.maxOrderSize());
+            if(!BotStrategyEngine.hasInventoryDemand(p)) {
+                assertTrue(p.holdingTimePreference()>=30_000);
+                assertTrue(p.positionLimit()>=8);
+                assertTrue(p.decisionInterval()<p.holdingTimePreference());
+            }
+        }
+    }
+
+    @Test void staleOversizedBotOrdersAreRefundedWithoutCancellingAHumanOrder() {
+        var p=BotProfile.activePopulation(1,21).get(20);
+        var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,p,1)),1,300);
+        var accounts=new HashMap<Long,Account>();
+        accounts.put(1L,new Account(1,10_000_000,false,true));
+        accounts.put(2L,new Account(2,10_000_000,false,false));
+        var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,"ES",10000,10000,10000,10000,true));
+        var book=new BatchOrderBook(accounts,stocks,new HashMap<>(),List.of(),0,1000);
+        var bot=book.submit(1,1,"BUY","LIMIT",100,8000,1000,100000);
+        var human=book.submit(2,1,"BUY","LIMIT",100,8000,1000,100000);
+        engine.act(book,Map.of(1L,observation()),Map.of(),40_000,100,Map.of(),-1);
+        assertEquals("CANCELLED",bot.status);assertEquals("OPEN",human.status);
+        assertTrue(book.working(1,1).size()<=1);
+        assertTrue(book.working(1,1).stream().allMatch(o->o.remaining<=2));
+        assertEquals(10_000_000,book.accounts.get(1L).cash+book.working(1,1).stream().mapToLong(o->o.reservedCash).sum());
+    }
+
     @Test void scaledProfilesAreReproducibleAndAccountsStayUnique() {
         var a=BotProfile.activePopulation(91,6020);var b=BotProfile.activePopulation(91,6020);
         assertEquals(a,b);assertEquals(BotProfile.defaults(91),a.subList(0,20));

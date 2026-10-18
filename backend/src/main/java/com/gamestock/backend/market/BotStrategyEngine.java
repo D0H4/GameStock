@@ -23,13 +23,13 @@ public final class BotStrategyEngine {
     }
     /** Private cash-backed allocation demand. Inventory is acquired only through normal paid fills. */
     public double targetQuantity(BotProfile p,String symbol,long now,long equity,int symbols,double price) {
-        if(!hasInventoryDemand(p) || equity<=0) return 0;
+        if(equity<=0) return 0;
         Random preference=new Random(seed^((long)(p.username()+":"+symbol).hashCode()*0x9E3779B97F4A7C15L));
         double weight=.75+preference.nextDouble()*.5;
         double period=120_000+preference.nextDouble()*240_000;
         double phase=preference.nextDouble()*Math.PI*2;
         double demand=1+.4*Math.sin((now%((long)period))/period*Math.PI*2+phase);
-        if(p.holdingTimePreference()<5000) {
+        if(hasInventoryDemand(p) && p.holdingTimePreference()<5000) {
             // Fast flow participants have private short-lived allocation needs, not a common fair price.
             // The target is only an intent: every share must first be bought from a real counterparty.
             period=StockMarketProfile.isLargeCap(symbol) ? 30_000+preference.nextDouble()*90_000
@@ -39,7 +39,7 @@ public final class BotStrategyEngine {
         }
         // Even at maximum demand/weight, aggregate targets consume less than 75% of account equity.
         double budget=equity*(.2+.25*p.riskTolerance())/Math.max(1,symbols);
-        return clamp(budget*weight*demand/Math.max(1,price),0,p.positionLimit()*.2);
+        return Math.min(budget/Math.max(1,price),p.positionLimit()*.35)*weight*demand;
     }
 
     public double threshold(BotProfile p,PriceMetricService.Metrics m) {
@@ -111,12 +111,16 @@ public final class BotStrategyEngine {
             if(p.holdingTimePreference()<5000)signal*=.15;
             signal += (p.holdingTimePreference()<5000?1.5:.9)*clamp((position.targetQuantity()-position.quantity())/Math.max(1,position.targetQuantity()),-1,1);
         }
-        signal -= position.quantity()/(double)p.positionLimit()*p.inventoryAversion();
+        // Holding the desired inventory is neutral; only excess inventory encourages selling.
+        double excess=(position.quantity()-position.targetQuantity())/Math.max(1.0,p.positionLimit());
+        signal -= excess*p.inventoryAversion();
         if(position.quantity()>0 && position.averagePrice()>0) {
             double pnl=m.lastPrice()/position.averagePrice()-1;
-            if(pnl<=-p.stopLoss() || pnl>=p.takeProfit()) signal-=1.5;
-            if(position.ageMillis()>p.holdingTimePreference()) signal-=Math.min(.6,
-                    (position.ageMillis()/(double)p.holdingTimePreference()-1)*.15);
+            if(pnl<=-p.stopLoss()) signal-=1.5;
+            // Let profitable trends run. Taking profit is conditional on a weakening thesis.
+            else if(pnl>=p.takeProfit() && signal<=threshold(p,m)) signal-=.6;
+            if(excess>0 && position.ageMillis()>p.holdingTimePreference()) signal-=Math.min(.3,
+                    (position.ageMillis()/(double)p.holdingTimePreference()-1)*.05)*Math.min(1,excess);
         }
         return signal;
     }
@@ -135,7 +139,10 @@ public final class BotStrategyEngine {
             // This changes willingness to trade; only actual matched orders change the price.
             score=score*.35-(m.lastPrice()/dailyAnchor-1)/(StockMarketProfile.normalDailyMove(symbol)*.4);
         } else if(StockMarketProfile.isSpeculative(symbol)) {
-            score+=e.directionBias()*.45+clamp(m.return60s()*8,-.8,.8);
+            // Independent valuation survives the day-reference rollover. Both expensive and
+            // cheap prices meet opposing demand instead of momentum walking to a daily wall.
+            score=clamp(score,-2,2)*.6+e.directionBias()*.2+clamp(m.return60s()*4,-.4,.4)
+                    +clamp(Math.log(Math.max(1,estimatedValue)/Math.max(1,m.markPrice()))/.05,-4,4);
         }
         double dipStrength=dipStrength(m,symbol,dayReference);
         boolean capitulationFloor=dipStrength>0 && m.bidDepth()<=0;
@@ -226,6 +233,13 @@ public final class BotStrategyEngine {
             // Large-cap demand fades before the safety band: avoid a pile-up at a hard +/-3% cap.
             double room=StockMarketProfile.normalDailyMove(symbol);
             price=side.equals("BUY")?Math.min(price,dailyAnchor*(1+room)):Math.max(price,dailyAnchor*(1-room));
+            market=false;
+        } else if(StockMarketProfile.isSpeculative(symbol)) {
+            // A price-sensitive limit follows each participant's research, not today's
+            // lower/upper wall. Neither momentum nor a random market order can ignore it.
+            double room=.04+.02*p.riskTolerance();
+            price=side.equals("BUY")?Math.min(price,estimatedValue*(1+room)):
+                    Math.max(price,estimatedValue*(1-room));
             market=false;
         }
         price=Math.max(tick,price);

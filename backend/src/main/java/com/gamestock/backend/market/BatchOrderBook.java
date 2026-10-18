@@ -18,7 +18,7 @@ final class BatchOrderBook {
     static final class Stock {
         final long id,reference,staticReference; final String code;
         long last,dynamicReference,viTrigger;
-        long totalVolume,previous;
+        long totalVolume,previous,circulatingShares;
         String name,genre;
         boolean continuous;
         boolean adminHalted;
@@ -69,6 +69,8 @@ final class BatchOrderBook {
     BatchOrderBook(Map<Long,Account> accounts,Map<Long,Stock> stocks,Map<PositionKey,Holding> holdings,
                    List<Order> existing,long lastOrderId,long now) {
         this.accounts=accounts;this.stocks=stocks;this.holdings=holdings;this.sequence=lastOrderId;
+        for(var stock:stocks.values()) stock.circulatingShares=holdings.entrySet().stream()
+                .filter(e->e.getKey().stock()==stock.id).mapToLong(e->e.getValue().quantity()).sum();
         for(Order o:existing) {
             add(o);
             if(o.expiresAt>0 && o.expiresAt<=now) cancel(o);
@@ -97,12 +99,19 @@ final class BatchOrderBook {
         while(!expirations.isEmpty() && expirations.peek().expiresAt<=now)cancel(expirations.remove());
     }
     Holding holding(long user,long stock) {return holdings.getOrDefault(new PositionKey(user,stock),EMPTY);}
-    /** Restore only a fully depleted LP lot before inline quotes are generated. */
+    /** Keep a small emergency ask supply, bounded by all outstanding shares, including humans. */
     void restoreLiquidityInventory(long user,long stock,int quantity,long average) {
         PositionKey key=new PositionKey(user,stock);
         Holding current=holdings.get(key);
         if(current!=null && current.quantity()>0)return;
-        holdings.put(key,new Holding(quantity,quantity,average,current==null?0:current.realized()));
+        Stock symbol=stocks.get(stock);
+        long nearbyAsks=side(stock,"SELL").stream().filter(o->o.user!=user && !o.market() && o.price<=symbol.last*1.02)
+                .mapToLong(o->o.remaining).sum();
+        if(nearbyAsks>=4)return;
+        int refill=(int)Math.min(32,Math.max(0,Math.max(512L,quantity*4L)-symbol.circulatingShares));
+        if(refill==0)return;
+        holdings.put(key,new Holding(refill,refill,average,current==null?0:current.realized()));
+        symbol.circulatingShares+=refill;
         changedHoldings.add(key);
     }
     int available(long user,long stock) {return holding(user,stock).settled-reservedSells.getOrDefault(new PositionKey(user,stock),0);}
@@ -198,7 +207,9 @@ final class BatchOrderBook {
             int quantity=Math.min(buy.remaining,sell.remaining);
             if(buy.reservedCash==0)quantity=affordable(accounts.get(buy.user).cash,price,quantity);
             if(quantity<=0){if(buy.market())return;cancel(buy);continue;}
-            long gross=price*quantity,buyerFee=fee(gross),sellerFee=fee(gross);
+            // Internal simulation turnover must not drain all purchasing power over time.
+            // Every fill involving a human retains the ordinary fee on both sides.
+            long gross=price*quantity,buyerFee=buyBot&&sellBot?0:fee(gross),sellerFee=buyerFee;
             long released=release(buy,quantity);
             if(accounts.get(buy.user).cash+released<gross+buyerFee){cancel(buy);continue;}
             if(sell.reservedQuantity==0 && available(sell.user,stock.id)<quantity){cancel(sell);continue;}
