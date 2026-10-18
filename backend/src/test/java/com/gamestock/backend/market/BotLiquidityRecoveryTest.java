@@ -42,7 +42,7 @@ class BotLiquidityRecoveryTest {
         var risk=new MarketMakerEngine.RiskBook(0,0,target,Math.max(1200,target*4),Math.max(1200,target*4)*10000L);
         var engine=new BotActivityEngine(participants,91+index,300);
         var history=new ArrayList<PriceMetricService.Trade>();
-        long fills=0,lateFills=0,lpPurchases=0;
+        long fills=0,lateFills=0,lpPurchases=0,largerOrders=0;
         int twoSided=0;
         for(long elapsed=0;elapsed<180_000;elapsed+=1000) {
             long now=start+elapsed;
@@ -52,6 +52,12 @@ class BotLiquidityRecoveryTest {
             var metrics=PriceMetricService.calculate(history,stocks.get(1L).last,depth[0],depth[1],(long)depth[2],(long)depth[3],now);
             var observation=new BotActivityEngine.Observation(metrics,MarketEnvironment.neutral(),10000*valuation,0,StockMarketProfile.liquidityScale(code,.65));
             engine.microBatches(book,Map.of(1L,observation),Map.of(),now,1000,Map.of(1L,risk),lp,300);
+            assertTrue(book.accepted.size()<=400,"Immediate replenishment must retain the two-pass order bound");
+            for(var order:book.accepted)if(order.user!=lp) {
+                assertTrue(order.quantity<=10);
+                if(order.side.equals("BUY"))assertTrue(order.quantity>=5,"Unfunded minimum lots must not be submitted");
+                if(order.quantity>=5)largerOrders++;
+            }
             fills+=book.fills.size();
             if(elapsed>=120_000)lateFills+=book.fills.size();
             for(var fill:book.fills) {
@@ -65,13 +71,14 @@ class BotLiquidityRecoveryTest {
             for(var participant:participants) {
                 var working=book.working(participant.id(),1);
                 assertTrue(working.size()<=1);
-                assertTrue(working.stream().allMatch(o->o.remaining<=2));
+                assertTrue(working.stream().allMatch(o->o.remaining<=10));
             }
         }
         String context=code+" valuation="+valuation+" fills="+fills+" late="+lateFills+" twoSided="+twoSided+" lpPurchases="+lpPurchases
                 +" last="+stocks.get(1L).last+" lpInventory="+book.holding(lp,1).quantity()+" depth="+Arrays.toString(book.depth(1));
         System.out.println("RECOVERY "+context);
         assertTrue(fills>100,context);
+        assertTrue(largerOrders>100,"Recovery must use actual 5-10 share participant orders: "+context);
         assertTrue(lateFills>30,"Trading must continue after recovery: "+context);
         assertTrue(twoSided>30,"Resting liquidity must survive between batches: "+context);
         assertTrue(lpPurchases>0,"LP must reacquire paid inventory: "+context);

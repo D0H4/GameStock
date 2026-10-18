@@ -22,11 +22,10 @@ public class OrderService {
     private final MarketMetrics metrics;
     private final ApplicationEventPublisher events;
     private final ArrayBlockingQueue<Pending> humans=new ArrayBlockingQueue<>(2048);
-    private final Set<Integer> botPending=ConcurrentHashMap.newKeySet();
-    /** Railway's single MySQL volume is safer with one bot commit at a time.
-     * A skipped tick is regenerated from the in-memory engine; it is not queued
-     * as a second copy of the same high-frequency bot work. */
-    private final AtomicBoolean botBatchInFlight=new AtomicBoolean();
+    private record BotRequest(int shard,CompletableFuture<List<BotActivityEngine.Activity>> result,long queuedAt){}
+    /** One request per group, in arrival order, with only one bot database write in flight. */
+    private final Map<Integer,BotRequest> botRequests=new LinkedHashMap<>();
+    private Integer activeBotShard;
     private final AtomicBoolean running=new AtomicBoolean(true);
     private final ExecutorService admission=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"human-order-batches");t.setDaemon(true);return t;});
     public OrderService(MarketService market,PersistenceWorker persistence,MarketMetrics metrics,ApplicationEventPublisher events){
@@ -50,27 +49,59 @@ public class OrderService {
         return result;
     }
     public CompletableFuture<List<BotActivityEngine.Activity>> submitBotBatch(int shard){
-        if(!running.get()||!persistence.acceptingWrites()||!botPending.add(shard))return CompletableFuture.completedFuture(List.of());
-        if(!botBatchInFlight.compareAndSet(false,true)){
-            botPending.remove(shard);
-            metrics.add("bot.skipped",1);
-            return CompletableFuture.completedFuture(List.of());
+        if(shard<0||shard>=4)throw new IllegalArgumentException("Invalid bot shard");
+        BotRequest request;
+        synchronized(botRequests){
+            if(!running.get()||!persistence.acceptingWrites())return CompletableFuture.completedFuture(List.of());
+            request=botRequests.get(shard);
+            if(request!=null){metrics.add("bot.coalesced",1);return request.result();}
+            request=new BotRequest(shard,new CompletableFuture<>(),System.nanoTime());
+            botRequests.put(shard,request);metrics.gauge("bot.pendingGroups",botRequests.size());
         }
+        dispatchNextBot();
+        return request.result();
+    }
+    private void dispatchNextBot(){
+        if(!running.get()||!persistence.acceptingWrites()){rejectQueuedBots();return;}
+        BotRequest request;
+        synchronized(botRequests){
+            if(!running.get()||activeBotShard!=null||botRequests.isEmpty())return;
+            request=botRequests.values().iterator().next();activeBotShard=request.shard();
+        }
+        long started=System.nanoTime();metrics.timing("bot.queue.wait",started-request.queuedAt());
         var retryPlan=new java.util.concurrent.atomic.AtomicReference<BotBatchPlan>();
         try {
-            return persistence.submitBot(shard,UUID.randomUUID().toString(),BotActivityEngine.Activity[].class,1,()->
-                market.participantBatch(shard,retryPlan).toArray(BotActivityEngine.Activity[]::new)
-            ).handle((activity,error)->{
-                botBatchInFlight.set(false);
-                botPending.remove(shard);
-                if(error!=null)throw new CompletionException(error);
-                return List.of(activity);
-            });
+            persistence.submitBot(request.shard(),UUID.randomUUID().toString(),BotActivityEngine.Activity[].class,1,()->
+                market.participantBatch(request.shard(),retryPlan).toArray(BotActivityEngine.Activity[]::new)
+            ).whenComplete((activity,error)->finishBot(request,activity,error,started));
         } catch (RuntimeException error) {
-            botBatchInFlight.set(false);
-            botPending.remove(shard);
-            throw error;
+            finishBot(request,null,error,started);
         }
+    }
+    private void finishBot(BotRequest request,BotActivityEngine.Activity[] activity,Throwable error,long started){
+        metrics.timing("bot.batch.elapsed",System.nanoTime()-started);
+        metrics.add(error==null?"bot.batches.completed":"bot.batches.failed",1);
+        synchronized(botRequests){
+            botRequests.remove(request.shard(),request);activeBotShard=null;
+            metrics.gauge("bot.pendingGroups",botRequests.size());
+        }
+        // Dispatch before completing client callbacks, outside the lock. No callback can hold the queue hostage.
+        dispatchNextBot();
+        if(error==null)request.result().complete(activity==null?List.of():List.of(activity));
+        else request.result().completeExceptionally(error);
+    }
+    private void rejectQueuedBots(){
+        List<BotRequest> rejected=new ArrayList<>();
+        synchronized(botRequests){
+            var iterator=botRequests.values().iterator();
+            while(iterator.hasNext()){
+                BotRequest request=iterator.next();
+                if(Objects.equals(activeBotShard,request.shard()))continue;
+                rejected.add(request);iterator.remove();
+            }
+            metrics.gauge("bot.pendingGroups",botRequests.size());
+        }
+        rejected.forEach(request->request.result().completeExceptionally(PersistenceWorker.unavailable()));
     }
     private void drain(){
         Pending carry=null;
@@ -111,5 +142,5 @@ public class OrderService {
         if(!"BUY".equalsIgnoreCase(request.side())&&!"SELL".equalsIgnoreCase(request.side()))throw new IllegalArgumentException("주문 구분은 BUY 또는 SELL이어야 합니다.");
         if(request.orderType()!=null&&!request.orderType().isBlank()&&!"MARKET".equalsIgnoreCase(request.orderType())&&!"LIMIT".equalsIgnoreCase(request.orderType()))throw new IllegalArgumentException("주문 유형은 MARKET 또는 LIMIT이어야 합니다.");
     }
-    @PreDestroy public void close(){running.set(false);MatchingEngine.executorShutdown(admission);}
+    @PreDestroy public void close(){running.set(false);rejectQueuedBots();MatchingEngine.executorShutdown(admission);}
 }

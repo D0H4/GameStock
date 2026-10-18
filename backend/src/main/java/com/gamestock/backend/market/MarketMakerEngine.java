@@ -7,7 +7,8 @@ import static com.gamestock.backend.market.PriceLimitPolicy.*;
 /** RiskBook is reconstructed from persistent allocations and actual fills. */
 public final class MarketMakerEngine {
     private static final int QUOTE_LEVELS = 4;
-    private static final int EMERGENCY_QUOTE_SIZE = 8;
+    static final int MAX_QUOTE_ORDERS = QUOTE_LEVELS*2;
+    private static final int EMERGENCY_QUOTE_SIZE = 12;
     public record RiskBook(long cashBudget,int inventory,int targetInventory,int maxInventory,long riskLimit) {}
     public record Quote(String side,double price,int quantity) {}
     /** External best quotes exclude this LP's orders being replaced; zero means no quote. */
@@ -80,7 +81,7 @@ public final class MarketMakerEngine {
     public List<Quote> quotes(PriceMetricService.Metrics m,MarketEnvironment e,RiskBook risk,double tick,double scale,
                               QuoteConstraints constraints,double fundamental) {
         double reference=reservationPrice(m,risk,tick,fundamental),spread=halfSpread(m,e,risk,tick);
-        boolean emergency=m.bidDepth()<4 || m.askDepth()<4;
+        boolean emergency=m.bidDepth()<=4 || m.askDepth()<=4;
         if(emergency) spread=Math.min(spread*1.4,Math.max(tick,m.lastPrice()*.005));
         double step=Math.max(tick,spread*.5);
         long lower=ceilToTick(constraints.lowerPrice()),upper=floorToTick(constraints.upperPrice());
@@ -106,8 +107,8 @@ public final class MarketMakerEngine {
         int buyCapacity=Math.max(0,Math.min(risk.maxInventory()-inventory,(int)(risk.riskLimit()/Math.max(1,m.markPrice()))-inventory));
         for(int level=0;level<QUOTE_LEVELS;level++) {
             double riskSize=1/(1+m.volatility()*100+Math.max(0,e.volatilityMultiplier()-1)*.15);
-            int size=emergency?Math.max(2,(int)Math.ceil(EMERGENCY_QUOTE_SIZE*scale))
-                    :Math.max(1,(int)(18*scale*e.liquidityMultiplier()*riskSize/(1+level*.5)));
+            int size=emergency?Math.max(EMERGENCY_QUOTE_SIZE,(int)Math.ceil(EMERGENCY_QUOTE_SIZE*scale))
+                    :Math.max(EMERGENCY_QUOTE_SIZE,(int)(18*scale*e.liquidityMultiplier()*riskSize/(1+level*.5)));
             size=Math.min(32,size);
             int b=bid>=lower&&bid<=upper?Math.min(size,Math.min(buyCapacity,(int)Math.min(Integer.MAX_VALUE,cash/(bid*1.001)))):0;
             int a=ask>=lower&&ask<=upper?Math.min(size,inventory):0;

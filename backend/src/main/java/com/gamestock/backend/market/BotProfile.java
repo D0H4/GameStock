@@ -9,6 +9,8 @@ public record BotProfile(String username, String nickname, Strategy strategy,
         double newsSensitivity, double volatilityTolerance, double inventoryAversion,
         double buyBias, double sellBias, double noiseLevel, double cancelSpeed,
         double valueError, double confidence, double entryThreshold, double exitThreshold, double updateSpeed) {
+    public static final int MIN_ORDER_SIZE=5;
+    public static final int MAX_ORDER_SIZE=10;
     public enum Family { MOMENTUM, CONTRARIAN, VALUE, INTRADAY, NEWS, NOISE, SWING, AGGRESSIVE_LIQUIDITY_TAKER }
     public enum Strategy {
         FAST_MOMENTUM(Family.MOMENTUM), SLOW_MOMENTUM(Family.MOMENTUM), BREAKOUT(Family.MOMENTUM), TREND_FOLLOW(Family.MOMENTUM), PULLBACK(Family.MOMENTUM), VOLUME_MOMENTUM(Family.MOMENTUM), ACCELERATION(Family.MOMENTUM),
@@ -41,7 +43,7 @@ public record BotProfile(String username, String nickname, Strategy strategy,
         boolean patient=strategy.family()==Family.VALUE || strategy.family()==Family.SWING;
         boolean flow=strategy.family()==Family.NOISE || strategy.family()==Family.AGGRESSIVE_LIQUIDITY_TAKER;
         return new BotProfile(username,nickname,strategy,riskTolerance,aggression,confidenceThreshold,marketOrderProbability,
-                1,2,flow?fast.holdingTimePreference():holdingTimePreference,patient?12:flow?4:8,
+                MIN_ORDER_SIZE,MAX_ORDER_SIZE,flow?fast.holdingTimePreference():holdingTimePreference,patient?60:flow?20:40,
                 stopLoss,takeProfit,fast.decisionInterval(),fast.reactionLatency(),
                 newsSensitivity,volatilityTolerance,inventoryAversion,buyBias,sellBias,noiseLevel,fast.cancelSpeed(),
                 valueError,confidence,entryThreshold,exitThreshold,updateSpeed);
@@ -76,7 +78,7 @@ public record BotProfile(String username, String nickname, Strategy strategy,
                 s.family()==Family.SWING?60000:s.family()==Family.NEWS?2000:7000;
         double aggression=.15+r.nextDouble()*.75;
         return new BotProfile(id,s.name()+" "+id.substring(id.lastIndexOf('_')+1),s,.25+r.nextDouble()*.65,aggression,
-                .10+r.nextDouble()*.18,.05+aggression*.5,1,15+r.nextInt(36),
+                .10+r.nextDouble()*.18,.05+aggression*.5,MIN_ORDER_SIZE,MIN_ORDER_SIZE+r.nextInt(6),
                 s.family()==Family.SWING?600_000:30_000+r.nextInt(150_000),50+r.nextInt(151),
                 .015+r.nextDouble()*.045,.02+r.nextDouble()*.08,(long)(interval*(.75+r.nextDouble()*.5)),
                 s==Strategy.SCALPER?100+r.nextInt(500):s.family()==Family.INTRADAY?200+r.nextInt(1000):

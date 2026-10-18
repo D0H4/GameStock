@@ -65,21 +65,7 @@ final class BotActivityEngine {
             int recent=recentFills.getOrDefault(stock,0);
             var risk=risks.get(stock);
             var marketMetrics=withBook(observation.metrics(),symbol.last,book.depth(stock));
-            if(risk!=null && book.lpCashBudgets.containsKey(stock) && now>=nextQuote.getOrDefault(stock,0L)) {
-                book.working(lp,stock).forEach(book::cancel);
-                double[] external=book.depth(stock,lp);var band=quoteBand(symbol.code,symbol.reference,observation.news());
-                var limits=new MarketMakerEngine.QuoteConstraints(band.lowerPrice(),band.upperPrice(),external[2]>0?Math.round(external[0]):0,external[3]>0?Math.round(external[1]):0);
-                var availableRisk=new MarketMakerEngine.RiskBook(Math.max(0,Math.min(book.accounts.get(lp).cash,book.lpCashBudgets.get(stock))),book.holding(lp,stock).quantity(),risk.targetInventory(),risk.maxInventory(),risk.riskLimit());
-                double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
-                for(var quote:maker.quotes(marketMetrics,observation.environment(),availableRisk,tickSize(symbol.last),observation.scale(),limits,anchor)) {
-                    long price=quote.side().equals("BUY")?floorToTick(Math.round(quote.price())):ceilToTick(Math.round(quote.price()));
-                    int quantity=quote.quantity();
-                    if(quote.side().equals("BUY"))quantity=(int)Math.min(quantity,Math.max(0,book.lpCashBudgets.get(stock))/Math.max(1,price+BatchOrderBook.fee(price)));
-                    else quantity=Math.min(quantity,book.available(lp,stock));
-                    book.submit(lp,stock,quote.side(),"LIMIT",quantity,price,now,LIQUIDITY_QUOTE_TTL);
-                }
-                nextQuote.put(stock,now+(StockMarketProfile.isLargeCap(symbol.code)?500:1200)+random.nextInt(600));
-            }
+            refreshLiquidity(book,symbol,observation,risk,lp,now,true);
             if(risk!=null && now-lastRebalance.getOrDefault(stock,0L)>=500) {
                 // Gradually distribute an over-target LP position through funded external bids.
                 // No transfer, refill, paired counterorder or price change happens outside matching.
@@ -103,8 +89,9 @@ final class BotActivityEngine {
             double credit=Math.min(180,credits.getOrDefault(stock,0.0)+symbolTarget*(elapsed<=0?0:Math.min(500,Math.max(20,elapsed)))/1000.0);
             int budget=Math.max(0,Math.min(150,Math.min((int)credit,symbolTarget+10-recent)));
             if(recent<30 && !StockMarketProfile.isLargeCap(symbol.code))budget=Math.min(90,Math.max(budget,15));
+            int orderBudget=200/bySymbol.size();
             int cursor=cursors.getOrDefault(stock,0),examined=0;
-            while(examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<Math.max(1,200/bySymbol.size()) && symbol.continuous) {
+            while(examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<orderBudget && symbol.continuous) {
                 Participant participant=group.get(cursor++%group.size());examined++;
                 if(due.getOrDefault(participant.id(),0L)>now)continue;
                 BotProfile p=participant.profile();
@@ -117,6 +104,7 @@ final class BotActivityEngine {
                 List<Order> working=book.working(participant.id(),stock);
                 long refundable=working.stream().mapToLong(o->o.reservedCash).sum();
                 double[] depth=book.depth(stock);
+                if(book.accepted.size()-startOrders+liquidityRepairReserve(book,symbol,risk,lp,depth)>=orderBudget)break;
                 PriceMetricService.Metrics m=withBook(observation.metrics(),symbol.last,depth);
                 long equity=account.cash+refundable+Math.round(held.quantity()*m.markPrice());
                 double targetQuantity=strategies.targetQuantity(p,symbol.code,now,equity,1,m.markPrice());
@@ -126,11 +114,14 @@ final class BotActivityEngine {
                 double estimate=strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise));
                 double news=observation.news()*(1+p.valueError()*8+random.nextGaussian()*.25);
                 var decision=strategies.decide(p,m,observation.environment(),position,estimate,news,tickSize(symbol.last),observation.scale(),symbol.code,symbol.reference);
-                boolean replace=working.size()>1 || working.stream().anyMatch(o->o.remaining>2 || now-o.createdAt>=30_000
+                boolean replace=working.size()>1 || working.stream().anyMatch(o->o.remaining>BotProfile.MAX_ORDER_SIZE || now-o.createdAt>=30_000
                         || policy.shouldReplace(p,new BotOrderPolicy.RestingOrder(o.id,o.side,o.price,o.reservedCash,o.createdAt),decision,now,tickSize(o.price),o.side.equals("BUY")?m.bestBid():m.bestAsk(),o.side.equals("BUY")?m.bestAsk():m.bestBid()));
                 if(!working.isEmpty()&&!replace)continue;
-                if(replace)working.forEach(book::cancel);
-                int quantity=Math.min(BotStrategyEngine.hasInventoryDemand(p)?1:2,decision.quantity()); // Micro lots keep a human order economically meaningful.
+                if(replace) {
+                    working.forEach(book::cancel);
+                    if(book.accepted.size()-startOrders+liquidityRepairReserve(book,symbol,risk,lp,book.depth(stock))>=orderBudget)break;
+                }
+                int quantity=Math.min(BotProfile.MAX_ORDER_SIZE,decision.quantity());
                 if(quantity<=0)continue;
                 long price=decision.side().equals("BUY")?floorToTick(Math.round(decision.limitPrice())):ceilToTick(Math.round(decision.limitPrice()));
                 price=quoteBand(symbol.code,symbol.reference,observation.news()).clamp(price);
@@ -138,9 +129,56 @@ final class BotActivityEngine {
             }
             cursors.put(stock,cursor%group.size());
             credits.put(stock,Math.max(0,credit-(book.fills.size()-startFills)));
+            // Repair consumed liquidity before this batch is persisted and broadcast, even at its pacing limit.
+            refreshLiquidity(book,symbol,observation,risk,lp,now,false);
             activity.add(new Activity(stock,symbol.code,book.fills.size()-startFills,book.accepted.size()-startOrders,symbol.continuous));
         }
         return activity;
+    }
+
+    /** Keep room for replenishment only when one participant order could drain a recoverable side. */
+    private int liquidityRepairReserve(BatchOrderBook book,Stock symbol,MarketMakerEngine.RiskBook risk,long lp,double[] depth) {
+        Account account=book.accounts.get(lp);
+        if(risk==null || account==null || !symbol.continuous || symbol.adminHalted || !book.lpCashBudgets.containsKey(symbol.id))return 0;
+        int threshold=BotProfile.MAX_ORDER_SIZE+4;
+        if(depth[2]>threshold && depth[3]>threshold)return 0;
+        // Include encumbered assets: consuming an LP bid creates sellable inventory,
+        // and consuming an LP ask creates cash for new bids within this same batch.
+        long reserved=book.working(lp,symbol.id).stream().mapToLong(o->o.reservedCash).sum();
+        int inventory=book.holding(lp,symbol.id).quantity();
+        boolean resources=inventory>0 || (Math.min(account.cash+reserved,book.lpCashBudgets.get(symbol.id)+reserved)>symbol.last
+                && inventory<Math.min(risk.maxInventory(),risk.riskLimit()/Math.max(1,symbol.last)));
+        return resources?MarketMakerEngine.MAX_QUOTE_ORDERS:0;
+    }
+
+    private void refreshLiquidity(BatchOrderBook book,Stock symbol,Observation observation,
+                                  MarketMakerEngine.RiskBook risk,long lp,long now,boolean scheduled) {
+        long stock=symbol.id;
+        Account account=book.accounts.get(lp);
+        if(risk==null || account==null || !symbol.continuous || symbol.adminHalted || !book.lpCashBudgets.containsKey(stock))return;
+        double[] depth=book.depth(stock);
+        // Four single-share LP reserves are a thin side, not usable depth for a 5-10 share order.
+        boolean asksRecoverable=depth[3]<=4 && book.available(lp,stock)>0;
+        boolean bidsRecoverable=depth[2]<=4 && Math.min(account.cash,book.lpCashBudgets.get(stock))>symbol.last
+                && book.holding(lp,stock).quantity()<Math.min(risk.maxInventory(),risk.riskLimit()/Math.max(1,symbol.last));
+        if(!(scheduled && now>=nextQuote.getOrDefault(stock,0L)) && !asksRecoverable && !bidsRecoverable)return;
+        var metrics=withBook(observation.metrics(),symbol.last,depth);
+        book.working(lp,stock).forEach(book::cancel);
+        double[] external=book.depth(stock,lp);
+        var band=quoteBand(symbol.code,symbol.reference,observation.news());
+        var limits=new MarketMakerEngine.QuoteConstraints(band.lowerPrice(),band.upperPrice(),
+                external[2]>0?Math.round(external[0]):0,external[3]>0?Math.round(external[1]):0);
+        var availableRisk=new MarketMakerEngine.RiskBook(Math.max(0,Math.min(account.cash,book.lpCashBudgets.get(stock))),
+                book.holding(lp,stock).quantity(),risk.targetInventory(),risk.maxInventory(),risk.riskLimit());
+        double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
+        for(var quote:maker.quotes(metrics,observation.environment(),availableRisk,tickSize(symbol.last),observation.scale(),limits,anchor)) {
+            long price=quote.side().equals("BUY")?floorToTick(Math.round(quote.price())):ceilToTick(Math.round(quote.price()));
+            int quantity=quote.side().equals("BUY")
+                    ?(int)Math.min(quote.quantity(),Math.max(0,book.lpCashBudgets.get(stock))/Math.max(1,price+BatchOrderBook.fee(price)))
+                    :Math.min(quote.quantity(),book.available(lp,stock));
+            book.submit(lp,stock,quote.side(),"LIMIT",quantity,price,now,LIQUIDITY_QUOTE_TTL);
+        }
+        nextQuote.put(stock,now+(StockMarketProfile.isLargeCap(symbol.code)?500:1200)+random.nextInt(600));
     }
 
     static PriceMetricService.Metrics withBook(PriceMetricService.Metrics m,long last,double[] d) {

@@ -157,7 +157,7 @@ class SimulationEngineTest {
                 if(Math.abs(buy.score())<=engine.threshold(p,m)) {
                     buys++; assertEquals("BUY",buy.side()); assertFalse(buy.market());
                     assertTrue(buy.limitPrice()<m.bestAsk()); assertTrue(buy.limitPrice()<10000/1.001);
-                    assertTrue(buy.quantity()>0 && buy.quantity()<=2);
+                    assertTrue(buy.quantity()>=5 && buy.quantity()<=10);
                 }
                 var sell=engine.decide(p,m,neutral,new BotStrategyEngine.Position(1,1000000,10000,0),10000,0,10,1);
                 if(Math.abs(sell.score())<=engine.threshold(p,m)) {
@@ -178,12 +178,38 @@ class SimulationEngineTest {
         for(int i=0;i<30;i++) {
             var buy=engine.decide(p,m,neutral,new BotStrategyEngine.Position(0,1000000,0,0),10000,0,10,1);
             assertEquals("BUY",buy.side()); assertFalse(buy.market());
-            assertTrue(buy.limitPrice()<m.bestAsk()); assertTrue(buy.quantity()<=2);
+            assertTrue(buy.limitPrice()<m.bestAsk()); assertTrue(buy.quantity()>=5 && buy.quantity()<=10);
         }
         // A real risk exit can still take liquidity; providing quotes must not disable stop losses.
         var sell=engine.decide(p,m,neutral,new BotStrategyEngine.Position(20,1000000,12000,0),10000,0,10,1);
         assertEquals("SELL",sell.side());assertEquals(m.bestBid(),sell.limitPrice());
     }
+    @Test void staleResearchCannotMakeDirectionalCashOnlyBotsPileUpAtTheUpperSafetyWall() {
+        var engine=new BotStrategyEngine(91);
+        var upper=PriceMetricService.calculate(List.of(),12000,11990,12000,1000,0,0);
+        var lower=PriceMetricService.calculate(List.of(),8000,8000,8010,0,1000,0);
+        int floorBuyers=0;
+        for(var p:BotProfile.defaults(91)) {
+            if(BotStrategyEngine.hasInventoryDemand(p))continue;
+            var chase=engine.decide(p,upper,neutral,new BotStrategyEngine.Position(0,1_000_000,0,0),20000,0,10,1,"ES",10000);
+            assertFalse(chase.side().equals("BUY")&&chase.quantity()>0,"Do not turn all valuations into a hard-wall buy: "+p.strategy());
+            var bid=engine.decide(p,lower,neutral,new BotStrategyEngine.Position(0,1_000_000,0,0),5000,0,10,1,"ES",10000);
+            if(bid.side().equals("BUY")&&bid.quantity()>=5)floorBuyers++;
+        }
+        assertTrue(floorBuyers>10,"The symmetric lower edge must attract funded interest");
+    }
+
+    @Test void minimumBuyLotsRequireRealCashWhileSellRemaindersCanStillExit() {
+        var engine=new BotStrategyEngine(19);var p=profile(Strategy.SCALPER);
+        var m=PriceMetricService.calculate(List.of(),10000,9950,10050,100,100,0);
+        var funded=engine.decide(p,m,neutral,new BotStrategyEngine.Position(0,1_000_000,0,0),10000,0,10,1);
+        assertEquals("BUY",funded.side());assertTrue(funded.quantity()>=5 && funded.quantity()<=10);
+        var insufficient=engine.decide(p,m,neutral,new BotStrategyEngine.Position(0,40_000,0,0),10000,0,10,1);
+        assertEquals(0,insufficient.quantity(),"No undersized or unfunded new buy to reach the minimum lot");
+        var remainder=engine.decide(p,m,neutral,new BotStrategyEngine.Position(3,1_000_000,10000,0),10000,0,10,1);
+        assertEquals("SELL",remainder.side());assertEquals(3,remainder.quantity(),"Existing small remainders must not become stranded");
+    }
+
     @Test void thinningAskRecoveryDoesNotCapAnExistingRiskExitToOnlyExcessInventory() {
         var p=profile(Strategy.BOOK_IMBALANCE);
         var m=PriceMetricService.calculate(List.of(),10000,9900,10010,100,1,0);
@@ -293,14 +319,14 @@ class SimulationEngineTest {
         assertEquals(4,quotes.stream().filter(q->q.side().equals("SELL")).count());
         assertTrue(engine.quotes(m,neutral,new MarketMakerEngine.RiskBook(0,0,400,1200,12000000),10,1,constraints).isEmpty());
     }
-    @Test void thinBooksRefillWithEightSharesPerEmergencyLevel() {
+    @Test void thinBooksRefillWithEnoughSharesForALargerBotLotAndHumanReserve() {
         var engine=new MarketMakerEngine();
         var empty=PriceMetricService.calculate(List.of(),10000,10000,10000,0,0,0);
         var risk=new MarketMakerEngine.RiskBook(5000000,100,100,1200,12000000);
         var quotes=engine.quotes(empty,neutral,risk,10,1,
                 new MarketMakerEngine.QuoteConstraints(8000,12000,0,0));
         assertEquals(8,quotes.size());
-        assertTrue(quotes.stream().allMatch(q->q.quantity()==8));
+        assertTrue(quotes.stream().allMatch(q->q.quantity()==12));
     }
     @Test void oldJumpsAndTradeCountTruncationDoNotInflateCurrentVolatility() {
         var sparse=List.of(new PriceMetricService.Trade(0,8000,10),

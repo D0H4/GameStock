@@ -35,7 +35,7 @@ public final class BotStrategyEngine {
             period=StockMarketProfile.isLargeCap(symbol) ? 30_000+preference.nextDouble()*90_000
                     : 5_000+preference.nextDouble()*15_000;
             double cycle=Math.sin((now%((long)period))/period*Math.PI*2+phase);
-            return Math.min(equity/Math.max(1,price)*.1,Math.max(0,.8+1.4*cycle)*weight);
+            return Math.min(equity/Math.max(1,price)*.1,Math.max(0,4+7*cycle)*weight);
         }
         // Even at maximum demand/weight, aggregate targets consume less than 75% of account equity.
         double budget=equity*(.2+.25*p.riskTolerance())/Math.max(1,symbols);
@@ -144,6 +144,12 @@ public final class BotStrategyEngine {
             // cheap prices meet opposing demand instead of momentum walking to a daily wall.
             score=clamp(score,-2,2)*.6+e.directionBias()*.2+clamp(m.return60s()*4,-.4,.4)
                     +clamp(Math.log(Math.max(1,estimatedValue)/Math.max(1,m.markPrice()))/.05,-4,4);
+        }
+        if(dayReference>0 && StockMarketProfile.isSpeculative(symbol) && !flow) {
+            // Fade pursuit before the +/-20% bot safety wall. A stale common valuation must
+            // not leave every funded bid at the upper wall (or every offer at the lower wall).
+            double move=m.markPrice()/dayReference-1;
+            score-=Math.signum(move)*6*clamp((Math.abs(move)-.15)/.05,0,1);
         }
         double dipStrength=dipStrength(m,symbol,dayReference);
         boolean capitulationFloor=dipStrength>0 && m.bidDepth()<=0;
@@ -268,14 +274,16 @@ public final class BotStrategyEngine {
         int quantity=(int)Math.floor(p.maxOrderSize()*confidence*p.riskTolerance()*marketScale
                 *Math.sqrt(e.volumeMultiplier())*liquidity/volatilityPenalty);
         quantity=Math.min(p.maxOrderSize(),Math.max(p.minOrderSize(),quantity));
-        if(intradayMaker) quantity=Math.min(quantity,2);
+        if(intradayMaker) quantity=Math.min(quantity,MAX_ORDER_SIZE);
         if(hasInventoryDemand(p) && position.targetQuantity()>0)
-            quantity=Math.min(quantity,Math.max(1,(int)Math.ceil(Math.abs(position.targetQuantity()-position.quantity()))));
+            quantity=Math.min(quantity,Math.max(MIN_ORDER_SIZE,(int)Math.ceil(Math.abs(position.targetQuantity()-position.quantity()))));
         if("BUY".equals(side)) quantity=Math.min(quantity,Math.min(p.positionLimit()-position.quantity(),
                 (int)Math.min(Integer.MAX_VALUE,position.cash()/Math.max(1,(market?m.bestAsk()*1.03:price)*1.001))));
         else if("SELL".equals(side)) quantity=Math.min(quantity,position.quantity());
         else quantity=0;
         if(inventoryExit)quantity=Math.min(quantity,excessQuantity);
+        // Never invent cash to reach a lot. Small sell remainders remain eligible for liquidation.
+        if("BUY".equals(side) && quantity<MIN_ORDER_SIZE)quantity=0;
         return new Decision(side,score,confidence,Math.max(0,quantity),market,price,
                 p.decisionInterval()<1000?Math.max(1200,p.ttlMillis(random)):p.ttlMillis(random));
     }
