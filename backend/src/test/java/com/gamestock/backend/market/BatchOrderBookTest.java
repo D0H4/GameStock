@@ -6,6 +6,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BatchOrderBookTest {
+    @Test void humanReservedLpInventoryDoesNotBlockABoundedTopUpOrLoseItsCostBasis() {
+        var b=book(1_000_000);
+        var key=new PositionKey(2,1);
+        b.holdings.put(key,new Holding(2,1,9000,77));
+        b.stocks.get(1L).circulatingShares=511;
+        b.restoreLiquidityInventory(2,1,100,10000);
+        assertEquals(new Holding(3,2,9333,77),b.holding(2,1));
+        assertEquals(512,b.stocks.get(1L).circulatingShares);
+        b.restoreLiquidityInventory(2,1,100,10000);
+        assertEquals(new Holding(3,2,9333,77),b.holding(2,1),"The existing supply limit still applies");
+    }
+
     @Test void internalTurnoverPreservesCashButHumanFillsStillPayFees() {
         var b=book(1_000_000);
         b.accounts.put(1L,new Account(1,1_000_000,false,true));
@@ -158,6 +170,43 @@ class BatchOrderBookTest {
         assertTrue(b.lpCashBudgets.get(1L)>=MarketMakerEngine.emergencyCashRequirement(12000));
         assertEquals(9,b.holding(4,1).quantity());assertEquals(1,b.holding(1,1).quantity());
     }
+    @Test void lpReserveCountsCashAlreadyLockedInItsOwnBidsExactlyOnce() {
+        long reserve=MarketMakerEngine.emergencyCashRequirement(12000);
+        var b=book(reserve+10000);b.accounts.put(1L,new Account(1,reserve+10000,true));
+        b.accounts.put(4L,new Account(4,0,false,true));
+        b.holdings.put(new PositionKey(4,1),new Holding(10,10,10000,0));
+        b.lpCashBudgets.put(1L,reserve+10000);
+        var bid=b.submit(1,1,"BUY","LIMIT",2,10000,1000,4000);
+        assertTrue(b.lpCashBudgets.get(1L)<reserve);
+        var first=b.submit(4,1,"SELL","MARKET",1,0,1001,0);
+        assertEquals("FILLED",first.status);
+        assertEquals(reserve,b.lpCashBudgets.get(1L)+bid.reservedCash);
+        var second=b.submit(4,1,"SELL","MARKET",1,0,1002,0);
+        assertEquals("CANCELLED",second.status,"The same reservation cannot fund another purchase below the reserve");
+        assertEquals(1,b.fills.size());
+        b.submit(2,1,"SELL","MARKET",1,0,1003,0);
+        assertEquals(2,b.fills.size(),"The remaining funded bid stays available to a human seller");
+    }
+
+    @Test void botsCannotConsumeTheFinalShareOfAnLpLevelButHumansCanTradeIt() {
+        var b=book(5_000_000);
+        b.accounts.put(1L,new Account(1,5_000_000,true,true));
+        b.accounts.put(4L,new Account(4,1_000_000,false,true));
+        b.lpCashBudgets.put(1L,5_000_000L);
+        b.holdings.put(new PositionKey(1,1),new Holding(4,4,10000,0));
+        b.holdings.put(new PositionKey(4,1),new Holding(4,4,10000,0));
+        var ask=b.submit(1,1,"SELL","LIMIT",4,10010,1000,10000);
+        b.submit(4,1,"BUY","MARKET",4,0,1001,0);
+        assertEquals(1,ask.remaining,"A multi-share bot order must also leave the human reserve");
+        assertEquals(3,b.fills.get(0).quantity());
+        assertEquals("FILLED",b.submit(3,1,"BUY","MARKET",1,0,1002,0).status);
+        var bid=b.submit(1,1,"BUY","LIMIT",4,10000,1003,10000);
+        b.submit(4,1,"SELL","MARKET",4,0,1004,0);
+        assertEquals(1,bid.remaining);
+        assertEquals("FILLED",b.submit(2,1,"SELL","MARKET",1,0,1005,0).status);
+        assertEquals(0,bid.remaining);
+    }
+
     @Test void depletedInlineLiquidityInventoryRestoresOnceAndPreservesRealizedProfit() {
         var b=book(1000000);
         b.restoreLiquidityInventory(2,1,400,10050);

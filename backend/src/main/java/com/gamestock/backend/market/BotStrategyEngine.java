@@ -132,13 +132,14 @@ public final class BotStrategyEngine {
     public Decision decide(BotProfile p,PriceMetricService.Metrics m,MarketEnvironment e,Position position,
                            double estimatedValue,double perceivedNews,double tick,double marketScale,String symbol,long dayReference) {
         double score=score(p,m,e,position,estimatedValue,perceivedNews,random.nextGaussian());
+        boolean flow=hasInventoryDemand(p);
         boolean large=StockMarketProfile.isLargeCap(symbol) && dayReference>0;
         double dailyAnchor=large?StockMarketProfile.valuationAnchor(symbol,dayReference,estimatedValue,perceivedNews):estimatedValue;
-        if(large) {
+        if(large && !flow) {
             // A stock cannot become a penny stock just because hundreds of accounts trade it.
             // This changes willingness to trade; only actual matched orders change the price.
             score=score*.35-(m.lastPrice()/dailyAnchor-1)/(StockMarketProfile.normalDailyMove(symbol)*.4);
-        } else if(StockMarketProfile.isSpeculative(symbol)) {
+        } else if(StockMarketProfile.isSpeculative(symbol) && !flow) {
             // Independent valuation survives the day-reference rollover. Both expensive and
             // cheap prices meet opposing demand instead of momentum walking to a daily wall.
             score=clamp(score,-2,2)*.6+e.directionBias()*.2+clamp(m.return60s()*4,-.4,.4)
@@ -147,6 +148,7 @@ public final class BotStrategyEngine {
         double dipStrength=dipStrength(m,symbol,dayReference);
         boolean capitulationFloor=dipStrength>0 && m.bidDepth()<=0;
         boolean protectiveExit=protectiveExit(p,m,position) && !capitulationFloor;
+        boolean stopLossExit=protectiveExit && m.bestBid()/position.averagePrice()-1<=-p.stopLoss();
         if(dipStrength>0) {
             // A deep drawdown should attract some cash-backed demand instead of
             // letting every trend signal become another sell order. The amount
@@ -160,6 +162,12 @@ public final class BotStrategyEngine {
             // the lower band. Stop-loss and take-profit exits remain eligible.
             score=Math.max(score,-threshold*.5);
         }
+        // A directional thesis must not indefinitely lock legacy holdings away from the book.
+        // Trim only excess inventory after this trader's own holding horizon, through paid fills.
+        int excessQuantity=Math.max(0,position.quantity()-(int)Math.ceil(position.targetQuantity()));
+        boolean inventoryExit=excessQuantity>0 && position.ageMillis()>=p.holdingTimePreference()
+                && m.bidDepth()>0 && m.askDepth()<=4 && !capitulationFloor && !stopLossExit;
+        if(inventoryExit)score=Math.min(score,-threshold*2);
         String side=score>threshold?"BUY":score<-threshold?"SELL":"HOLD";
         double confidence=clamp(Math.abs(score)*p.confidence(),0,1);
         boolean dipBuyer=false;
@@ -223,23 +231,35 @@ public final class BotStrategyEngine {
             // Cash-flow demand is price sensitive. An urgent allocation change is not permission
             // to chase an empty book arbitrarily far from recent paid transactions.
             double edge=StockMarketProfile.isSpeculative(symbol)?.015+p.aggression()*.02:.004+p.aggression()*.006;
-            double reservation=(.8*m.vwap()+.2*m.microPrice())*(1+clamp(score,-1,1)*edge);
+            double reference=.8*m.vwap()+.2*m.microPrice();
+            // Research nudges a flow trader's execution budget without dictating its allocation side.
+            // Bound stale research locally so both acquisition and disposal remain possible.
+            if(StockMarketProfile.isSpeculative(symbol))
+                reference=.8*reference+.2*clamp(estimatedValue,reference*.95,reference*1.05);
+            double reservation=reference*(1+clamp(score,-1,1)*edge);
             if(market || random.nextDouble()<clamp(p.aggression()+confidence*.65,.3,.95))
                 price=side.equals("BUY")?m.bestAsk():m.bestBid();
             market=false;
             price=side.equals("BUY")?Math.min(price,reservation):Math.max(price,reservation);
         }
-        if(large) {
+        if(large && !flow && !inventoryExit && !riskExit) {
             // Large-cap demand fades before the safety band: avoid a pile-up at a hard +/-3% cap.
             double room=StockMarketProfile.normalDailyMove(symbol);
             price=side.equals("BUY")?Math.min(price,dailyAnchor*(1+room)):Math.max(price,dailyAnchor*(1-room));
             market=false;
-        } else if(StockMarketProfile.isSpeculative(symbol)) {
+        } else if(StockMarketProfile.isSpeculative(symbol) && !flow && !inventoryExit && !riskExit) {
             // A price-sensitive limit follows each participant's research, not today's
             // lower/upper wall. Neither momentum nor a random market order can ignore it.
             double room=.04+.02*p.riskTolerance();
             price=side.equals("BUY")?Math.min(price,estimatedValue*(1+room)):
                     Math.max(price,estimatedValue*(1-room));
+            market=false;
+        }
+        if(inventoryExit) {
+            // An allocation reduction is not a bet that the old fundamental will be reached.
+            // Offer near paid prices; take an existing bid only within a bounded execution cost.
+            double reference=.8*m.vwap()+.2*m.microPrice();
+            price=Math.max(m.bestBid(),reference*.995);
             market=false;
         }
         price=Math.max(tick,price);
@@ -255,6 +275,7 @@ public final class BotStrategyEngine {
                 (int)Math.min(Integer.MAX_VALUE,position.cash()/Math.max(1,(market?m.bestAsk()*1.03:price)*1.001))));
         else if("SELL".equals(side)) quantity=Math.min(quantity,position.quantity());
         else quantity=0;
+        if(inventoryExit)quantity=Math.min(quantity,excessQuantity);
         return new Decision(side,score,confidence,Math.max(0,quantity),market,price,
                 p.decisionInterval()<1000?Math.max(1200,p.ttlMillis(random)):p.ttlMillis(random));
     }

@@ -184,6 +184,16 @@ class SimulationEngineTest {
         var sell=engine.decide(p,m,neutral,new BotStrategyEngine.Position(20,1000000,12000,0),10000,0,10,1);
         assertEquals("SELL",sell.side());assertEquals(m.bestBid(),sell.limitPrice());
     }
+    @Test void thinningAskRecoveryDoesNotCapAnExistingRiskExitToOnlyExcessInventory() {
+        var p=profile(Strategy.BOOK_IMBALANCE);
+        var m=PriceMetricService.calculate(List.of(),10000,9900,10010,100,1,0);
+        var position=new BotStrategyEngine.Position(4,1_000_000,12000,p.holdingTimePreference()+1,3);
+        var decision=new BotStrategyEngine(9).decide(p,m,neutral,position,10000,0,10,100);
+        assertEquals("SELL",decision.side());
+        assertEquals(4,decision.quantity(),"A genuine stop-loss remains eligible for the whole holding");
+        assertEquals(m.bestBid(),decision.limitPrice(),"The recovery offer floor must not block a risk exit");
+    }
+
     @Test void lpBacksCompetitiveExternalQuotesButIgnoresRemoteQuotes() {
         var maker=new MarketMakerEngine(); var m=history(0);
         var risk=new MarketMakerEngine.RiskBook(5000000,400,400,1200,12000000);

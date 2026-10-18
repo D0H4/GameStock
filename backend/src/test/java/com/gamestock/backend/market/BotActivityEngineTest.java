@@ -6,6 +6,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BotActivityEngineTest {
+    @Test void aRecentlyEmptiedBookKeepsZeroDepthWithoutPassingZeroPricesToStrategies() {
+        var metrics=PriceMetricService.calculate(List.of(new PriceMetricService.Trade(1000,10000,10)),10000,9990,10010,4,4,1001);
+        var empty=BotActivityEngine.withBook(metrics,10000,new double[4]);
+        assertTrue(empty.recentVolume()>0);
+        assertEquals(0,empty.bidDepth());assertEquals(0,empty.askDepth());
+        assertEquals(9990,empty.bestBid());assertEquals(10010,empty.bestAsk());
+        var oneSide=BotActivityEngine.withBook(metrics,10000,new double[]{9980,0,5,0});
+        assertEquals(9980,oneSide.bestBid());assertEquals(10010,oneSide.bestAsk());
+        assertEquals(5,oneSide.bidDepth());assertEquals(0,oneSide.askDepth());
+    }
+
     @Test void humanCanBuyAndSellWhileTheLiquidityEngineIsRunning() {
         var p=BotProfile.defaults(1).get(2);
         var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,p,1)),1,300);

@@ -1487,10 +1487,9 @@ public class MarketService {
     }
 
     /**
-     * Seed a new LP lot and restore only a fully depleted lot.
+     * Seed a new LP lot and top up a nearly depleted lot within the finite supply bound.
      *
-     * A non-zero holding remains persistent across restarts, but a zero holding
-     * must not permanently remove the sole public sell-side counterparty.
+     * The last few human-reserved shares must not block an otherwise eligible refill.
      */
     private void ensureLiquidityInventory(String code, long userId) {
         long id = stockId(code);
@@ -1508,17 +1507,21 @@ public class MarketService {
                     INSERT INTO portfolios (user_id, stock_id, quantity, settled_quantity, average_price, realized_profit_loss)
                     VALUES (?, ?, ?, ?, ?, 0)
                     """, userId, id, initialInventory, initialInventory, findStock(code).price());
-        } else if (holdings.get(0).quantity() <= 0) {
+        } else if (holdings.get(0).quantity() <= 4) {
             // The startup/legacy path obeys the same finite supply bound as inline quotes.
             long circulating=jdbc.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM portfolios WHERE stock_id=?",Long.class,id);
             long nearbyAsks=jdbc.queryForObject("SELECT COALESCE(SUM(remaining_quantity),0) FROM orders WHERE stock_id=? AND user_id<>? AND side='SELL' AND status='OPEN' AND (expires_at IS NULL OR expires_at>CURRENT_TIMESTAMP) AND price<=?",Long.class,id,userId,findStock(code).price()*1.02);
             int refill=(int)Math.min(32,Math.max(0,Math.max(512L,initialInventory*4L)-circulating));
             if(refill==0 || nearbyAsks>=4)return;
+            HoldingState current=holdings.get(0);
+            int nextQuantity=current.quantity()+refill;
+            long average=Math.round((current.averagePrice()*(double)current.quantity()
+                    +findStock(code).price()*(double)refill)/nextQuantity);
             jdbc.update("""
                     UPDATE portfolios
                     SET quantity = ?, settled_quantity = ?, average_price = ?
                     WHERE user_id = ? AND stock_id = ?
-                    """, refill, refill, findStock(code).price(), userId, id);
+                    """, nextQuantity, current.settledQuantity()+refill, average, userId, id);
         }
     }
 
