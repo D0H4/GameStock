@@ -120,6 +120,9 @@ public class TitleService {
     }
 
     private final JdbcTemplate jdbc;
+    private AdminRuntimeControl adminRuntime;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void configureAdminRuntime(AdminRuntimeControl runtime){this.adminRuntime=runtime;}
     private final TransactionTemplate transactions;
     private Clock clock = Clock.systemUTC();
     private volatile Population population;
@@ -321,6 +324,7 @@ public class TitleService {
         }, userId);
         if (rows.isEmpty()) return null;
         Stats stats = rows.get(0);
+        if(adminRuntime!=null)stats.rewardCash+=adminRuntime.externalCash(userId);
         jdbc.query("""
                 SELECT p.quantity, p.quantity * COALESCE(pm.mark_price, s.current_price) AS market_value
                 FROM portfolios p JOIN stocks s ON s.id = p.stock_id
@@ -373,6 +377,7 @@ public class TitleService {
 
     /** Asset excluding attendance and mission payouts and loans, the basis of every return figure. */
     private List<InvestorAsset> investorAssets() {
+        Map<Long,Long> externalCash=adminRuntime==null?Map.of():adminRuntime.externalCash();
         return jdbc.query("""
                 SELECT u.id, u.account_reset_at,
                        u.cash
@@ -387,7 +392,7 @@ public class TitleService {
                        - u.loan_balance AS adjusted_asset
                 FROM users u
                 WHERE """ + " " + INVESTOR_FILTER, (rs, row) -> new InvestorAsset(rs.getLong("id"),
-                rs.getLong("adjusted_asset"), rs.getTimestamp("account_reset_at")));
+                rs.getLong("adjusted_asset")-externalCash.getOrDefault(rs.getLong("id"),0L), rs.getTimestamp("account_reset_at")));
     }
 
     /**

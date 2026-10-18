@@ -43,6 +43,7 @@ final class MarketSchema {
         priceMetrics.ensureTables();
         ensureOrderTimestampPrecision();
         ensureNewsPriceState();
+        AdminSchema.ensure(jdbc);
     }
 
     private void ensureOrderTimestampPrecision() {

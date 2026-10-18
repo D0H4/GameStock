@@ -93,6 +93,9 @@ public class MarketService {
         this.matching=matching;this.pipelineMetrics=metrics;this.ownership=ownership;
     }
     private TitleService titles;
+    private AdminRuntimeControl adminRuntime;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void configureAdminRuntime(AdminRuntimeControl controls){this.adminRuntime=controls;}
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     void configureTitles(TitleService titles){this.titles=titles;}
     public boolean matchingEnabled(){return ownership==null||ownership.enabled();}
@@ -149,8 +152,14 @@ public class MarketService {
     }
     public void marketViewerDisconnected(String id){activityPolicy.disconnected(id,clock.millis());}
     boolean activeSimulation(){return !adaptiveActivity||activityPolicy.active(clock.millis(),idleAfterMillis);}
-    public long participantCadenceMillis(){return activeSimulation()?Math.max(50,Math.min(250,activeCadenceMillis)):activityPolicy.pulseOpen(clock.millis())?200:500;}
-    int currentTargetPerSymbol(){return activeSimulation()?targetPerSymbol:Math.min(targetPerSymbol,Math.max(30,idleTargetPerSymbol));}
+    public long participantCadenceMillis(){
+        if(adminRuntime!=null){Integer configured=adminRuntime.settings().cadenceMs();if(configured!=null)return configured;}
+        return activeSimulation()?Math.max(50,Math.min(250,activeCadenceMillis)):activityPolicy.pulseOpen(clock.millis())?200:500;
+    }
+    int currentTargetPerSymbol(){
+        if(adminRuntime!=null){Integer configured=adminRuntime.settings().targetPerSymbol();if(configured!=null)return configured;}
+        return activeSimulation()?targetPerSymbol:Math.min(targetPerSymbol,Math.max(30,idleTargetPerSymbol));
+    }
     boolean botWorkDue(String worker){return !adaptiveActivity||activityPolicy.workDue(worker,clock.millis(),activeSimulation());}
     boolean claimLegacyBotWork(String worker){return !adaptiveActivity||activityPolicy.claim(worker,clock.millis(),activeSimulation())>=0;}
     private void prepareVisitor() {
@@ -232,6 +241,7 @@ public class MarketService {
         removeExistingStock("VOID", "보이드 러너");
 
         StockCatalog.ensureListings(jdbc);
+        AdminSchema.restoreStockMetadata(jdbc);
         MarketBookCache.seedRevisions(jdbc);
         botJournal=new BotLedgerJournal(jdbc);
         ensureTraderBots();
@@ -302,6 +312,7 @@ public class MarketService {
         long started=System.nanoTime();
         BatchMarketRepository repository=new BatchMarketRepository(jdbc,compactLedger?botJournal:null);
         BatchOrderBook book=bookCacheEnabled?lane.cache.borrow(repository,now,lane.stocks,lane.users):repository.load(now,lane.stocks,lane.users);
+        if(adminRuntime!=null){var controls=adminRuntime.settings();if(controls.botsPaused()||controls.marketPaused())return List.of();adminRuntime.apply(book);}
         if(inlineMarketMaker)for(var stock:book.stocks.values()) {
             book.restoreLiquidityInventory(activityLpId,stock.id,
                     StockMarketProfile.initialLiquidityInventory(stock.code,LP_INITIAL_INVENTORY),stock.last);
@@ -583,8 +594,9 @@ public class MarketService {
 
     @Transactional(readOnly = true)
     public List<RankingEntry> ranking() {
+        Map<Long,Long> externalCash=adminRuntime==null?Map.of():adminRuntime.externalCash();
         List<RankingEntry> entries = jdbc.query("""
-                SELECT u.nickname, u.profile_image_url, u.cash, u.loan_balance,
+                SELECT u.id, u.nickname, u.profile_image_url, u.cash, u.loan_balance,
                        COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0) AS reserved_cash,
                        COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0) AS unsettled_cash,
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
@@ -611,7 +623,7 @@ public class MarketService {
             // 빌린 돈으로 순위가 오르지 않도록 랭킹 자산은 대출 잔액을 뺀 순자산이다.
             long totalAsset = cash + reservedCash + unsettledCash + assetValue - rs.getLong("loan_balance");
             // 출석·미션 보상은 투자 성과가 아니므로 수익률에서 제외한다.
-            double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash) * 100.0 / STARTING_CASH;
+            double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash - externalCash.getOrDefault(rs.getLong("id"),0L)) * 100.0 / STARTING_CASH;
             // Rows saved before image validation may hold arbitrary URLs; never expose them to other viewers.
             String image = com.gamestock.backend.auth.ProfileImages.sanitize(rs.getString("profile_image_url"));
             TitleService.TitleDefinition title = TitleService.definition(rs.getString("equipped_title"));
@@ -647,7 +659,8 @@ public class MarketService {
 
     private DailyMissionStatus dailyMissionsAt(long userId, Instant now) {
         LocalDate day = now.atZone(MISSION_ZONE).toLocalDate();
-        List<String> available = dailyMissionIds(day);
+        List<String> available = dailyMissionIds(day).stream()
+                .filter(id -> adminRuntime==null || adminRuntime.missionReward(id,MISSION_REWARD_CASH)>=0).toList();
         Set<String> completedToday = new HashSet<>(jdbc.queryForList(
                 "SELECT mission_id FROM mission_rewards WHERE user_id = ? AND rewarded_on = ? ORDER BY mission_id",
                 String.class, userId, java.sql.Date.valueOf(day)));
@@ -658,18 +671,21 @@ public class MarketService {
 
     @Transactional
     public synchronized MissionRewardResult rewardMission(String missionId, long userId) {
+        if(adminRuntime!=null)AdminSupport.lock(jdbc);
         Long reward = MISSION_REWARDS.get(missionId);
         if (reward == null) throw new IllegalArgumentException("존재하지 않는 미션입니다.");
+        if(adminRuntime!=null){reward=adminRuntime.missionReward(missionId,reward);if(reward<0)throw new IllegalArgumentException("중지된 미션입니다.");}
         LocalDate day = LocalDate.now(clock.withZone(MISSION_ZONE));
         if (!dailyMissionIds(day).contains(missionId)) {
             throw new IllegalArgumentException("오늘의 미션에 포함되지 않은 미션입니다.");
         }
         // 페이지 확인형 미션은 서버가 실제 열람을 확인할 수 없어 랭킹 수익률에서 보상을 제외한다.
         // 관심종목 등록은 서버 상태로 확인할 수 있으므로 등록 여부를 검증한다.
-        if ("watch".equals(missionId)) {
+        int minimumWatchlist=adminRuntime==null?("watch".equals(missionId)?1:0):adminRuntime.minimumWatchlist(missionId);
+        if (minimumWatchlist>0) {
             Long watched = jdbc.queryForObject("SELECT COUNT(*) FROM user_watchlists WHERE user_id = ?", Long.class, userId);
-            if (watched == null || watched == 0)
-                throw new IllegalArgumentException("관심종목을 1개 이상 등록하면 보상을 받을 수 있습니다.");
+            if (watched == null || watched < minimumWatchlist)
+                throw new IllegalArgumentException("관심종목을 "+minimumWatchlist+"개 이상 등록하면 보상을 받을 수 있습니다.");
         }
         int inserted = jdbc.update("INSERT IGNORE INTO mission_rewards (user_id, mission_id, rewarded_on, reward_cash) VALUES (?, ?, ?, ?)",
                 userId, missionId, java.sql.Date.valueOf(day), reward);
@@ -1145,6 +1161,7 @@ public class MarketService {
         }
         for(long account:accounts)jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",Long.class,account);
         var book=repository.loadLocked(now,Set.copyOf(symbols.values()),users);
+        if(adminRuntime!=null)adminRuntime.apply(book);
         List<Integer> valid=new ArrayList<>();
         for(int i=0;i<commands.size();i++)if(outcomes.get(i)==null)try{
             var command=commands.get(i);var request=command.request();
@@ -1266,6 +1283,7 @@ public class MarketService {
     @Transactional
     public synchronized void liquidityBotAction(String code, String ignoredSide) {
         prepareBotAction(code);
+        if(adminRuntime!=null&&adminRuntime.botsPaused())return;
         if (!protection.marketStatus().open()) return;
         TradingRestriction restriction = protection.restriction(code);
         if (restriction != null && !restriction.limitOrdersAllowed()) return;
@@ -1296,6 +1314,7 @@ public class MarketService {
     @Transactional
     public synchronized void participantBotAction(String username) {
         prepareBotAction(null);
+        if(adminRuntime!=null&&adminRuntime.botsPaused())return;
         if (!protection.marketStatus().open()) return;
         BotProfile profile = traderProfiles.stream().filter(p -> p.username().equals(username)).findFirst().orElseThrow();
         List<String> codes = botStockCodes();
@@ -1303,6 +1322,7 @@ public class MarketService {
         long userId = traderBotId(username);
         BotObservation observation = selectBotObservation(profile,userId,codes);
         String code = observation.code();
+        if(adminRuntime!=null&&adminRuntime.restriction(code)!=null)return;
         PriceMetricService.Metrics metrics = observation.metrics();
         long id = stockId(code);
         // Execute the same funded intent that won selection; do not redraw its signal after choosing a symbol.
@@ -1428,6 +1448,7 @@ public class MarketService {
     }
 
     public synchronized long nextBotDelay(String username) {
+        if(adminRuntime!=null){Integer configured=adminRuntime.settings().cadenceMs();if(configured!=null)return configured;}
         Random random = scheduleRandoms.computeIfAbsent(username, key -> new Random(simulationSeed ^ key.hashCode()));
         if (username.startsWith("liquidity:")) return 1000 + random.nextInt(2001);
         BotProfile p = traderProfiles.stream().filter(b -> b.username().equals(username)).findFirst().orElseThrow();
@@ -1676,6 +1697,7 @@ public class MarketService {
 
     /** Maximise executable volume, then minimise imbalance and distance from the quote. */
     private void closeSinglePriceAuction(String code) {
+        if(adminRuntime!=null&&adminRuntime.restriction(code)!=null)return;
         long stockId = stockId(code);
         long reference = findStock(code).price();
         PriceBand daily = dailyPriceBand(code);
@@ -2457,7 +2479,7 @@ public class MarketService {
         long assetValue = positions.stream().mapToLong(Position::marketValue).sum();
         return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue,
                 positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash,
-                missionRewardCash, loanBalance);
+                missionRewardCash, loanBalance,adminRuntime==null?0:adminRuntime.externalCash(userId));
     }
 
     private long currentPrice(String code) {

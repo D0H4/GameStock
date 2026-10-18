@@ -21,6 +21,7 @@ final class BatchOrderBook {
         long totalVolume,previous;
         String name,genre;
         boolean continuous;
+        boolean adminHalted;
         Stock(long id,String code,long last,long reference,long staticReference,long dynamicReference,boolean continuous) {
             this.id=id;this.code=code;this.last=last;this.reference=reference;this.staticReference=staticReference;
             this.dynamicReference=dynamicReference;this.continuous=continuous;
@@ -120,7 +121,7 @@ final class BatchOrderBook {
     }
     Order submit(long user,long stock,String side,String type,int quantity,long price,long now,long ttl) {
         Stock symbol=stocks.get(stock);Account account=accounts.get(user);
-        if(symbol==null || account==null || quantity<=0 || quantity>1000 || !symbol.continuous && !type.equals("LIMIT"))return null;
+        if(symbol==null || symbol.adminHalted || account==null || quantity<=0 || quantity>1000 || !symbol.continuous && !type.equals("LIMIT"))return null;
         if(!side.equals("BUY") && !side.equals("SELL"))return null;
         boolean market=type.equals("MARKET");
         if(!market && (!type.equals("LIMIT") || !dailyBand(symbol.code,symbol.reference).contains(price) || price%tickSize(price)!=0))return null;

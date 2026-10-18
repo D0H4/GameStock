@@ -1,0 +1,56 @@
+package com.gamestock.backend.market;
+
+import org.springframework.web.bind.annotation.*;
+import org.springframework.http.ResponseEntity;
+import java.util.*;
+import static com.gamestock.backend.market.AdminOperationsService.*;
+
+@RestController
+@RequestMapping("/api/admin")
+public class AdminOperationsController {
+    private final AdminSupport access;
+    private final AdminOperationsService operations;
+    private final AdminContentService content;
+    private final AdminSeasonService seasons;
+    private final MarketMetrics metrics;
+    public AdminOperationsController(AdminSupport access,AdminOperationsService operations,AdminContentService content,AdminSeasonService seasons,MarketMetrics metrics){this.access=access;this.operations=operations;this.content=content;this.seasons=seasons;this.metrics=metrics;}
+
+    @GetMapping("/dashboard") public Map<String,Object> dashboard(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");var result=operations.dashboard();result.put("metrics",metrics.snapshot());return result;}
+    @GetMapping("/users/{id}") public Map<String,Object> user(@PathVariable long id,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.user(id);}
+    @GetMapping("/orders") public List<Map<String,Object>> orders(@RequestParam(required=false) Long userId,@RequestParam(required=false) String stockCode,@RequestParam(required=false) String status,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.orders(userId,stockCode,status,before,limit);}
+    @GetMapping("/trades") public List<Map<String,Object>> trades(@RequestParam(required=false) Long userId,@RequestParam(required=false) String stockCode,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.trades(userId,stockCode,before,limit);}
+    @GetMapping("/settlements") public List<Map<String,Object>> settlements(@RequestParam(required=false) Long userId,@RequestParam(required=false) String status,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.settlements(userId,status,before,limit);}
+    @PostMapping("/orders/{id}/cancel") public void cancel(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){operations.cancelOrder(access.require(auth,"MARKET"),id,request.reason());}
+    @PostMapping("/settlements/{id}/settle") public void settle(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){operations.settle(access.require(auth,"MARKET"),id,request.reason());}
+    @PostMapping("/settlements/{id}/reverse") public void reverse(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){operations.reverse(access.root(auth),id,request.reason());}
+    @PutMapping("/runtime") public AdminRuntimeControl.Settings runtime(@RequestBody RuntimeChange request,@RequestHeader(value="Authorization",required=false) String auth){return operations.runtime(access.require(auth,"MARKET"),request);}
+    @GetMapping("/stocks") public List<Map<String,Object>> stocks(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.stocks();}
+    @PostMapping("/stocks") public Map<String,Object> createStock(@RequestBody StockCreate request,@RequestHeader(value="Authorization",required=false) String auth){return operations.createStock(access.require(auth,"MARKET"),request);}
+    @PutMapping("/stocks/{code}") public Map<String,Object> updateStock(@PathVariable String code,@RequestBody StockChange request,@RequestHeader(value="Authorization",required=false) String auth){return operations.updateStock(access.require(auth,"MARKET"),code,request);}
+    @PutMapping("/stocks/{code}/state") public Map<String,Object> stockState(@PathVariable String code,@RequestBody StockState request,@RequestHeader(value="Authorization",required=false) String auth){return operations.stockState(access.require(auth,"MARKET"),code,request);}
+    @PostMapping("/users/{id}/cash-adjustments") public Map<String,Object> cash(@PathVariable long id,@RequestBody CashChange request,@RequestHeader(value="Authorization",required=false) String auth){return operations.cash(access.require(auth,"REWARDS"),id,request);}
+    @PostMapping("/rewards/all") public Map<String,Object> rewardAll(@RequestBody CashChange request,@RequestHeader(value="Authorization",required=false) String auth){return operations.rewardAll(access.root(auth),request);}
+    @PostMapping("/users/{id}/mission-rewards") public Map<String,Object> recoverMission(@PathVariable long id,@RequestBody MissionRecovery request,@RequestHeader(value="Authorization",required=false) String auth){return operations.recoverMission(access.require(auth,"REWARDS"),id,request);}
+    @PutMapping("/users/{id}/holdings") public Map<String,Object> holding(@PathVariable long id,@RequestBody HoldingChange request,@RequestHeader(value="Authorization",required=false) String auth){return operations.holding(access.require(auth,"REWARDS"),id,request);}
+    @GetMapping("/permissions") public List<Map<String,Object>> permissions(@RequestHeader(value="Authorization",required=false) String auth){access.root(auth);return operations.permissions();}
+    @PutMapping("/users/{id}/permissions") public void permissions(@PathVariable long id,@RequestBody Grants request,@RequestHeader(value="Authorization",required=false) String auth){operations.permissions(access.root(auth),id,request);}
+    @GetMapping("/audit") public List<Map<String,Object>> audit(@RequestParam(required=false) Long actorId,@RequestParam(required=false) String action,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.audit(actorId,action,before,limit);}
+    @GetMapping("/audit/legacy") public List<Map<String,Object>> legacy(@RequestParam(required=false) Long userId,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.legacyAudit(userId,before,limit);}
+    @GetMapping("/suspicious-trades") public Map<String,Object> suspicious(@RequestParam(defaultValue="24") int hours,@RequestParam(defaultValue="10") int minimum,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return Map.of("candidates",operations.suspicious(hours,minimum),"notice","반복 거래 후보입니다. 다계정 또는 악용의 확정 증거가 아니며 자동 제재하지 않습니다.");}
+    @GetMapping("/content") public List<Map<String,Object>> content(@RequestParam(required=false) String kind,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return content.content(false,kind,before,limit);}
+    @PostMapping("/content") public Map<String,Object> createContent(@RequestBody AdminContentService.Content request,@RequestHeader(value="Authorization",required=false) String auth){return content.save(access.require(auth,"CONTENT"),null,request);}
+    @PutMapping("/content/{id}") public Map<String,Object> saveContent(@PathVariable long id,@RequestBody AdminContentService.Content request,@RequestHeader(value="Authorization",required=false) String auth){return content.save(access.require(auth,"CONTENT"),id,request);}
+    @DeleteMapping("/content/{id}") public void deleteContent(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){content.delete(access.require(auth,"CONTENT"),id,request.reason());}
+    @GetMapping("/missions") public List<Map<String,Object>> missions(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return content.missions();}
+    @PutMapping("/missions/{id}") public void mission(@PathVariable String id,@RequestBody AdminContentService.Mission request,@RequestHeader(value="Authorization",required=false) String auth){content.mission(access.require(auth,"CONTENT"),id,request);}
+    @GetMapping("/reports") public List<Map<String,Object>> reports(@RequestParam(required=false) String status,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return content.reports(status,before,limit);}
+    @PutMapping("/reports/{id}") public void report(@PathVariable long id,@RequestBody AdminContentService.Resolution request,@RequestHeader(value="Authorization",required=false) String auth){content.resolve(access.require(auth,"USERS"),id,request);}
+    @DeleteMapping("/comments/{id}") public void comment(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){content.deleteComment(access.require(auth,"USERS"),id,request.reason());}
+    @GetMapping("/seasons") public List<Map<String,Object>> seasons(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return seasons.seasons();}
+    @GetMapping("/seasons/{id}/ranking") public List<Map<String,Object>> ranking(@PathVariable long id,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return seasons.ranking(id,limit);}
+    @PostMapping("/seasons") public Map<String,Object> createSeason(@RequestBody AdminSeasonService.Create request,@RequestHeader(value="Authorization",required=false) String auth){return seasons.create(access.require(auth,"SEASONS"),request);}
+    @PostMapping("/seasons/{id}/start") public void start(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){seasons.start(access.require(auth,"SEASONS"),id,request.reason());}
+    @PostMapping("/seasons/{id}/close") public List<Map<String,Object>> close(@PathVariable long id,@RequestBody AdminSeasonService.Close request,@RequestHeader(value="Authorization",required=false) String auth){return seasons.close(access.require(auth,"SEASONS"),id,request);}
+    @PostMapping("/seasons/{id}/reset") public void reset(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){seasons.reset(access.root(auth),id,request.reason());}
+    @ExceptionHandler({IllegalArgumentException.class,ArithmeticException.class}) ResponseEntity<Map<String,String>> invalid(RuntimeException error){return ResponseEntity.badRequest().body(Map.of("message",error.getMessage()==null?"입력값을 확인해 주세요.":error.getMessage()));}
+}

@@ -21,6 +21,9 @@ public class TradingProtectionService {
     private static final long CB_HALT_SECONDS = 1200;
     private static final long CB_AUCTION_SECONDS = 600;
     private final JdbcTemplate jdbc;
+    private AdminRuntimeControl adminRuntime;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void configureAdminRuntime(AdminRuntimeControl runtime){this.adminRuntime=runtime;}
     // Wall clock in production; replaceable with a synchronized Java/SQL clock in soak tests.
     private Clock clock = Clock.systemUTC();
 
@@ -160,6 +163,8 @@ public class TradingProtectionService {
 
     public MarketStatus marketStatus() {
         MarketState state = marketState();
+        if(adminRuntime!=null&&adminRuntime.settings().marketPaused())
+            return new MarketStatus(false,"ADMIN_HALT","Asia/Seoul","운영 점검 중",adminRuntime.restriction(""),indexValue(),state.day().toString());
         TradingRestriction restriction = marketRestriction(state);
         boolean open = "NORMAL".equals(state.phase()) || "AUCTION".equals(state.phase());
         return new MarketStatus(open, "NORMAL".equals(state.phase()) ? "24H" : "CB_" + state.phase(),
@@ -168,6 +173,7 @@ public class TradingProtectionService {
     }
 
     public TradingRestriction restriction(String code) {
+        if(adminRuntime!=null){var manual=adminRuntime.restriction(code);if(manual!=null)return manual;}
         TradingRestriction market = marketRestriction(marketState());
         if (market != null) return market;
         List<TradingRestriction> rows = jdbc.query("""

@@ -1,6 +1,7 @@
 package com.gamestock.backend.auth;
 
 import com.gamestock.backend.market.OrderService;
+import com.gamestock.backend.market.AdminSupport;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -12,21 +13,21 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
-    private final AuthService auth;
     private final AdminService admin;
     private final JdbcTemplate jdbc;
     private final OrderService orders;
+    private final AdminSupport access;
 
-    public AdminController(AuthService auth, AdminService admin, JdbcTemplate jdbc, OrderService orders) {
-        this.auth = auth;
+    public AdminController(AdminService admin, JdbcTemplate jdbc, OrderService orders, AdminSupport access) {
         this.admin = admin;
         this.jdbc = jdbc;
         this.orders = orders;
+        this.access = access;
     }
 
     @GetMapping("/health")
     public Map<String, Object> health(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        auth.requireAdmin(authorization);
+        access.require(authorization,"READ");
         return Map.of(
                 "status", "ok",
                 "users", count("users"),
@@ -37,14 +38,14 @@ public class AdminController {
     @GetMapping("/users")
     public List<AdminService.AdminUser> users(@RequestParam(value = "q", required = false) String query,
                                               @RequestHeader(value = "Authorization", required = false) String authorization) {
-        auth.requireAdmin(authorization);
+        access.require(authorization,"READ");
         return admin.users(query);
     }
 
     @PutMapping("/users/{userId}/trade-ban")
     public AdminService.AdminUser banTrading(@PathVariable long userId, @RequestBody AdminService.TradeBan request,
                                              @RequestHeader(value = "Authorization", required = false) String authorization) {
-        admin.banTrading(auth.requireAdmin(authorization).id(), userId, request);
+        admin.banTrading(access.require(authorization,"USERS"), userId, request);
         // 정지된 계정의 미체결 주문이 정지 중에 체결되지 않도록 모두 취소한다. 정지
         // 트랜잭션이 사용자 행을 잠근 채로 취소를 기다리면 교착되므로 커밋 뒤에 낸다.
         for (long orderId : jdbc.queryForList("SELECT id FROM orders WHERE user_id = ? AND status = 'OPEN'", Long.class, userId)) {
@@ -60,13 +61,13 @@ public class AdminController {
     @DeleteMapping("/users/{userId}/trade-ban")
     public AdminService.AdminUser liftTradeBan(@PathVariable long userId,
                                                @RequestHeader(value = "Authorization", required = false) String authorization) {
-        return admin.liftTradeBan(auth.requireAdmin(authorization).id(), userId);
+        return admin.liftTradeBan(access.require(authorization,"USERS"), userId);
     }
 
     @PutMapping("/users/{userId}/nickname")
     public AdminService.AdminUser forceNickname(@PathVariable long userId, @RequestBody AdminService.NicknameChange request,
                                                 @RequestHeader(value = "Authorization", required = false) String authorization) {
-        return admin.forceNickname(auth.requireAdmin(authorization).id(), userId, request);
+        return admin.forceNickname(access.require(authorization,"USERS"), userId, request);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

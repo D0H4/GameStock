@@ -21,6 +21,9 @@ public class AdminService {
     private final JdbcTemplate jdbc;
     private final AuthService auth;
     private final Clock clock;
+    private com.gamestock.backend.market.AdminSupport audit;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void configureAudit(com.gamestock.backend.market.AdminSupport audit){this.audit=audit;}
 
     @org.springframework.beans.factory.annotation.Autowired
     public AdminService(JdbcTemplate jdbc, AuthService auth) { this(jdbc, auth, Clock.systemUTC()); }
@@ -56,15 +59,19 @@ public class AdminService {
         jdbc.update("UPDATE users SET trade_banned_until = ?, trade_ban_reason = ? WHERE id = ?",
                 Timestamp.from(until), reason.isEmpty() ? null : reason, userId);
         log(adminId, userId, "TRADE_BAN", days + "일" + (reason.isEmpty() ? "" : " · " + reason));
-        return lockUser(userId);
+        AdminUser after=lockUser(userId);
+        if(audit!=null)audit.audit(adminId,"TRADE_BAN",userId,reason.isEmpty()?"관리자 이용 제한":reason,target,after);
+        return after;
     }
 
     @Transactional
     public AdminUser liftTradeBan(long adminId, long userId) {
-        lockUser(userId);
+        AdminUser before=lockUser(userId);
         jdbc.update("UPDATE users SET trade_banned_until = NULL, trade_ban_reason = NULL WHERE id = ?", userId);
         log(adminId, userId, "TRADE_BAN_LIFT", "");
-        return lockUser(userId);
+        AdminUser after=lockUser(userId);
+        if(audit!=null)audit.audit(adminId,"TRADE_BAN_LIFT",userId,"관리자 이용 제한 해제",before,after);
+        return after;
     }
 
     /**
@@ -85,7 +92,9 @@ public class AdminService {
             throw new IllegalArgumentException("이미 사용 중인 닉네임입니다.");
         }
         log(adminId, userId, "NICKNAME_FORCE", target.nickname() + " → " + nickname);
-        return lockUser(userId);
+        AdminUser after=lockUser(userId);
+        if(audit!=null)audit.audit(adminId,"NICKNAME_FORCE",userId,"닉네임 강제 변경",target,after);
+        return after;
     }
 
     public AdminUser user(long userId) {
