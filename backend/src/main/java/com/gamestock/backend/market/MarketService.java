@@ -63,6 +63,7 @@ public class MarketService {
     private static final int LP_INITIAL_INVENTORY = 100;
     private static final String TRADER_BOT_PASSWORD = "TRADER";
     private static final long TRADER_BOT_STARTING_CASH = 1_000_000L;
+    private static final String SCHEMA_MIGRATION_LOCK = "gamestock:schema-migration";
     private static final double NEWS_SPECIAL_IMPACT_THRESHOLD = 6.0;
     private static final double NEWS_MAJOR_INCIDENT_IMPACT_THRESHOLD = -8.0;
     private List<BotProfile> traderProfiles = List.of();
@@ -108,6 +109,8 @@ public class MarketService {
     private final TradingProtectionService protection;
     @Value("${market.seed:${gamestock.simulation.seed:}}")
     private String configuredSeed;
+    @Value("${gamestock.schema.migration-lock-timeout-seconds:60}")
+    private int schemaMigrationLockTimeoutSeconds = 60;
     private long simulationSeed;
     private long simulationStartedAt;
     @Value("${market.batch.enabled:true}")
@@ -228,7 +231,7 @@ public class MarketService {
             demoUserId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,DEMO_USERNAME);
             simulationInitialized=true;return;
         }
-        new MarketSchema(jdbc).migrate(userFeatures, protection, priceMetrics, titles);
+        migrateSchemaWithLock();
 
         jdbc.update("""
                 INSERT IGNORE INTO users (username, password_hash, nickname, cash)
@@ -266,6 +269,45 @@ public class MarketService {
         startupTransaction().executeWithoutResult(status -> settleDuePayments());
         if(batchEnabled)initializeActivityEngine();
         simulationInitialized=true;
+    }
+
+    /**
+     * Keep schema changes exclusive across accidental overlapping starts. The
+     * lock is held on a dedicated JDBC connection while the migration uses its
+     * normal pool connections, and is released even when a DDL step fails.
+     */
+    private void migrateSchemaWithLock() {
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            boolean locked = false;
+            int timeout = Math.max(0, schemaMigrationLockTimeoutSeconds);
+            log.info("Waiting for database schema migration lock (timeout={}s)", timeout);
+            try (var statement = connection.prepareStatement("SELECT GET_LOCK(?, ?)")) {
+                statement.setString(1, SCHEMA_MIGRATION_LOCK);
+                statement.setInt(2, timeout);
+                try (var result = statement.executeQuery()) {
+                    if (!result.next() || result.getInt(1) != 1) {
+                        throw new IllegalStateException("Could not acquire database schema migration lock within " + timeout + " seconds");
+                    }
+                }
+            }
+            locked = true;
+            long started = System.nanoTime();
+            try {
+                new MarketSchema(jdbc).migrate(userFeatures, protection, priceMetrics, titles);
+                log.info("Database schema migration completed in {} ms",
+                        java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                return null;
+            } finally {
+                if (locked) {
+                    try (var release = connection.prepareStatement("SELECT RELEASE_LOCK(?)")) {
+                        release.setString(1, SCHEMA_MIGRATION_LOCK);
+                        release.execute();
+                    } catch (SQLException releaseError) {
+                        log.warn("Could not release database schema migration lock", releaseError);
+                    }
+                }
+            }
+        });
     }
 
     private void initializeActivityEngine() {
