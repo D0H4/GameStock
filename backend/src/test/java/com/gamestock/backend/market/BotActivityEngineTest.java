@@ -89,6 +89,42 @@ class BotActivityEngineTest {
         assertEquals(300_000_000,accounts.values().stream().mapToLong(a->a.cash).sum()+reserved);
     }
 
+    @Test void pausedTradersLeaveLiquidityQuotesAndARampOnlyLetsAShareOfTradersAct() {
+        int[] orders=new int[3];double[] shares={0,.1,1};
+        for(int run=0;run<3;run++) {
+            var accounts=new HashMap<Long,Account>();
+            var participants=new ArrayList<BotActivityEngine.Participant>();
+            accounts.put(1000L,new Account(1000,5_000_000,true,true));
+            for(long id=1;id<=300;id++) {
+                accounts.put(id,new Account(id,1_000_000,false,true));
+                participants.add(new BotActivityEngine.Participant(id,
+                        BotProfile.create("bot_"+id,BotProfile.Strategy.AGGRESSIVE_VALUE,new Random(id)),1));
+            }
+            var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,"A",10000,10000,10000,10000,true));
+            var holdings=new HashMap<PositionKey,Holding>();holdings.put(new PositionKey(1000,1),new Holding(1000,1000,10000,0));
+            var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,10000);
+            book.lpCashBudgets.put(1L,5_000_000L);
+            var base=observation();
+            var strongValue=new BotActivityEngine.Observation(base.metrics(),base.environment(),20000,0,.65);
+            var engine=new BotActivityEngine(participants,1,300);engine.traderShare(shares[run]);
+            engine.act(book,Map.of(1L,strongValue),Map.of(),10000,500,Map.of(1L,new MarketMakerEngine.RiskBook(0,1000,1000,2000,20_000_000)),1000);
+            orders[run]=(int)book.accepted.stream().filter(o->o.user!=1000).count();
+            assertTrue(book.working(1000,1).stream().anyMatch(o->o.side.equals("BUY")),"LP keeps quoting at share "+shares[run]);
+            assertTrue(book.working(1000,1).stream().anyMatch(o->o.side.equals("SELL")),"LP keeps quoting at share "+shares[run]);
+        }
+        assertEquals(0,orders[0],"Paused traders must not place orders");
+        assertTrue(orders[1]>0&&orders[1]<orders[2]/3,"Ramp must thin trader orders: "+Arrays.toString(orders));
+    }
+
+    @Test void traderRampGrowsLinearlyFromASmallStartToFullActivity() {
+        assertEquals(1,AdminRuntimeControl.traderShare(null,0L));
+        assertEquals(1,AdminRuntimeControl.traderShare(0,0L));
+        assertEquals(1,AdminRuntimeControl.traderShare(300,null));
+        assertEquals(AdminRuntimeControl.RAMP_START_SHARE,AdminRuntimeControl.traderShare(300,0L));
+        assertEquals(.5,AdminRuntimeControl.traderShare(300,150_000L),1e-9);
+        assertEquals(1,AdminRuntimeControl.traderShare(300,400_000L));
+    }
+
     @Test void humanDrainedQuotesRefillOnTheNextBatchWithoutWaitingForTheRefreshDeadlineForEverySymbol() {
         for(String code:List.of("UMA","BA","GOV","ZZZ","GI","SR","AK","WH","CRK","VR","ES","KRP","OW","PW","TR")) {
             var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,BotProfile.defaults(1).get(2),1)),1,300);

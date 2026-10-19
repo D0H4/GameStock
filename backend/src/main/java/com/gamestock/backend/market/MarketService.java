@@ -312,7 +312,10 @@ public class MarketService {
         long started=System.nanoTime();
         BatchMarketRepository repository=new BatchMarketRepository(jdbc,compactLedger?botJournal:null);
         BatchOrderBook book=bookCacheEnabled?lane.cache.borrow(repository,now,lane.stocks,lane.users):repository.load(now,lane.stocks,lane.users);
-        if(adminRuntime!=null){var controls=adminRuntime.settings();if(controls.botsPaused()||controls.marketPaused())return List.of();adminRuntime.apply(book);}
+        if(adminRuntime!=null){
+            var controls=adminRuntime.settings();if(controls.botsPaused()||controls.marketPaused())return List.of();
+            lane.engine.traderShare(controls.traderShare());adminRuntime.apply(book);
+        }
         if(inlineMarketMaker)for(var stock:book.stocks.values()) {
             book.restoreLiquidityInventory(activityLpId,stock.id,
                     StockMarketProfile.initialLiquidityInventory(stock.code,LP_INITIAL_INVENTORY),stock.last);
@@ -1318,7 +1321,10 @@ public class MarketService {
     @Transactional
     public synchronized void participantBotAction(String username) {
         prepareBotAction(null);
-        if(adminRuntime!=null&&adminRuntime.botsPaused())return;
+        if(adminRuntime!=null) {
+            double share=adminRuntime.settings().traderShare();
+            if(share<=0 || share<1 && java.util.concurrent.ThreadLocalRandom.current().nextDouble()>=share)return;
+        }
         if (!protection.marketStatus().open()) return;
         BotProfile profile = traderProfiles.stream().filter(p -> p.username().equals(username)).findFirst().orElseThrow();
         List<String> codes = botStockCodes();

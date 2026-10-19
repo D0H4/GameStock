@@ -8,9 +8,28 @@ import static com.gamestock.backend.market.MarketModels.TradingRestriction;
 @Service
 public class AdminRuntimeControl {
     private final JdbcTemplate db;
-    public record Settings(boolean botsPaused,boolean marketPaused,Integer cadenceMs,Integer targetPerSymbol) { }
+    /** The first ramp step lets a few traders observe the market at once instead of all of them. */
+    static final double RAMP_START_SHARE=.05;
+    /**
+     * botsPaused stops every bot including the liquidity provider; tradersPaused stops only
+     * participant traders so humans keep trading against LP quotes. traderShare is the
+     * fraction of trader activity currently allowed while a resume ramp is running.
+     */
+    public record Settings(boolean botsPaused,boolean tradersPaused,boolean marketPaused,Integer cadenceMs,Integer targetPerSymbol,
+                           Integer traderRampSeconds,double traderShare) {
+        public boolean tradersStopped(){return botsPaused||tradersPaused;}
+    }
     public AdminRuntimeControl(JdbcTemplate db){this.db=db;}
-    public Settings settings(){return db.queryForObject("SELECT * FROM admin_runtime WHERE id=1",(rs,n)->new Settings(rs.getBoolean("bots_paused"),rs.getBoolean("market_paused"),(Integer)rs.getObject("cadence_ms"),(Integer)rs.getObject("target_per_symbol")));}
+    public Settings settings(){return db.queryForObject("SELECT r.*,TIMESTAMPDIFF(MICROSECOND,r.traders_resumed_at,CURRENT_TIMESTAMP(3)) AS resumed_us FROM admin_runtime r WHERE id=1",(rs,n)->{
+        boolean bots=rs.getBoolean("bots_paused"),traders=rs.getBoolean("traders_paused");
+        Integer ramp=(Integer)rs.getObject("trader_ramp_seconds");Number resumed=(Number)rs.getObject("resumed_us");
+        return new Settings(bots,traders,rs.getBoolean("market_paused"),(Integer)rs.getObject("cadence_ms"),(Integer)rs.getObject("target_per_symbol"),
+                ramp,bots||traders?0:traderShare(ramp,resumed==null?null:resumed.longValue()/1000));
+    });}
+    static double traderShare(Integer rampSeconds,Long elapsedMillis){
+        if(rampSeconds==null||rampSeconds<=0||elapsedMillis==null)return 1;
+        return Math.max(RAMP_START_SHARE,Math.min(1,Math.max(0,elapsedMillis)/(rampSeconds*1000.0)));
+    }
     public boolean botsPaused(){return settings().botsPaused();}
     public TradingRestriction restriction(String code) {
         if(settings().marketPaused())return new TradingRestriction("ADMIN_HALT","운영 점검","HALT",0,"관리자가 시장을 일시 정지했습니다.","신규 주문과 체결이 중단됩니다. 주문 취소는 가능합니다.",null,null,false,false);

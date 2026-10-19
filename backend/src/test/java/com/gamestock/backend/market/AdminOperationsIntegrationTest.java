@@ -48,7 +48,7 @@ class AdminOperationsIntegrationTest {
     @BeforeEach void reset(){
         tx(()->{
             for(String table:List.of("admin_season_entries","admin_seasons","user_reports","admin_content","admin_mission_config","admin_cash_epochs","admin_cash_adjustments","admin_permissions","admin_audit","settlements","trades","orders","portfolios","mission_rewards","attendance_rewards"))db.update("DELETE FROM "+table);
-            db.update("DELETE FROM admin_stock_state");db.update("UPDATE admin_runtime SET bots_paused=FALSE,market_paused=FALSE,cadence_ms=NULL,target_per_symbol=NULL");
+            db.update("DELETE FROM admin_stock_state");db.update("UPDATE admin_runtime SET bots_paused=FALSE,traders_paused=FALSE,market_paused=FALSE,cadence_ms=NULL,target_per_symbol=NULL,trader_ramp_seconds=NULL,traders_resumed_at=NULL");
             db.update("UPDATE users SET cash=1000000,loan_balance=0,account_reset_at=NULL WHERE id IN (?,?)",buyer,seller);
             db.update("UPDATE stocks SET current_price=10000,previous_price=10000 WHERE id=?",stock);
             new TradingProtectionService(db).refreshDay();
@@ -60,7 +60,7 @@ class AdminOperationsIntegrationTest {
     private long id(String name){return db.queryForObject("SELECT id FROM users WHERE username=?",Long.class,name);}
     private <T>T tx(Supplier<T> task){return transaction.execute(status->task.get());}
     private long cash(long id){return db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,id);}
-    private void pause(){tx(()->operations.runtime(admin,new RuntimeChange(true,true,500,20,"복구 점검")));}
+    private void pause(){tx(()->operations.runtime(admin,new RuntimeChange(true,false,true,500,20,null,"복구 점검")));}
 
     @Test void cashAdjustmentIsIdempotentAndCannotOverdraw(){
         var request=new CashChange("incident-1",50000,"장애 보상");
@@ -151,9 +151,22 @@ class AdminOperationsIntegrationTest {
         long bot=db.queryForObject("SELECT id FROM users WHERE password_hash='BOT' ORDER BY id LIMIT 1",Long.class);
         db.update("UPDATE users SET cash=990000 WHERE id=?",bot);
         db.update("INSERT INTO orders(user_id,stock_id,side,order_type,price,quantity,remaining_quantity,reserved_cash,reserved_quantity,status) VALUES(?,?,'BUY','LIMIT',10000,1,1,10000,0,'OPEN')",bot,stock);
-        tx(()->operations.runtime(admin,new RuntimeChange(true,false,1000,10,"봇만 정지")));
+        tx(()->operations.runtime(admin,new RuntimeChange(true,false,false,1000,10,null,"봇만 정지")));
         assertEquals(1000000,cash(bot));assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,bot));
         assertEquals("OPEN",tx(()->market.order(new OrderRequest("UMA","BUY",1,"LIMIT",9900L),buyer)).status());
+    }
+    @Test void traderOnlyPauseKeepsLiquidityQuotesAndResumeRampsTradersBackIn(){
+        long lp=db.queryForObject("SELECT id FROM users WHERE password_hash='BOT' ORDER BY id LIMIT 1",Long.class);
+        long trader=db.queryForObject("SELECT id FROM users WHERE password_hash='TRADER' ORDER BY id LIMIT 1",Long.class);
+        for(long owner:List.of(lp,trader))db.update("INSERT INTO orders(user_id,stock_id,side,order_type,price,quantity,remaining_quantity,reserved_cash,reserved_quantity,status) VALUES(?,?,'BUY','LIMIT',10000,1,1,0,0,'OPEN')",owner,stock);
+        var paused=tx(()->operations.runtime(admin,new RuntimeChange(false,true,false,null,null,300,"트레이더만 정지")));
+        assertTrue(paused.tradersStopped());assertFalse(paused.botsPaused());assertEquals(0,paused.traderShare());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,lp));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,trader));
+        var resumed=tx(()->operations.runtime(admin,new RuntimeChange(false,false,false,null,null,300,"트레이더 재가동")));
+        assertTrue(resumed.traderShare()>0&&resumed.traderShare()<.1,"ramp starts small: "+resumed.traderShare());
+        db.update("UPDATE admin_runtime SET traders_resumed_at=CURRENT_TIMESTAMP(3)-INTERVAL 301 SECOND");
+        assertEquals(1,runtime.settings().traderShare());
     }
     @Test void bulkRewardsAndAbsoluteHoldingRecoveryAreAuditedAndCannotRepeat(){
         tx(()->operations.rewardAll(admin,new CashChange("all-test",100,"전체 보상")));assertEquals(1000100,cash(buyer));assertEquals(1000100,cash(seller));assertEquals(1000000,cash(admin));

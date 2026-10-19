@@ -31,8 +31,17 @@ final class BotActivityEngine {
         for(var group:bySymbol.values())Collections.shuffle(group,random);
     }
 
+    private double traderShare=1;
+
     /** A wake/pulse starts fresh pacing; elapsed idle time never creates a backlog of orders. */
     void resume() {credits.clear();due.clear();nextQuote.clear();recovery.reset();}
+
+    /**
+     * Fraction of participant traders allowed to act (0 = traders paused, LP still quotes).
+     * During a resume ramp only a sampled share decides each pass and the fill budget shrinks
+     * with it, so hundreds of traders do not all react to the same stale gap at once.
+     */
+    void traderShare(double share) {traderShare=Math.max(0,Math.min(1,share));}
 
     /** Match at most 200 distinct orders per pass, then persist both passes in one 100 ms transaction.
      * The second pass consumes remaining pacing credit; it does not advance simulated time.
@@ -97,13 +106,16 @@ final class BotActivityEngine {
             double credit=Math.min(180,credits.getOrDefault(stock,0.0)+symbolTarget*(elapsed<=0?0:Math.min(500,Math.max(20,elapsed)))/1000.0);
             int budget=Math.max(0,Math.min(150,Math.min((int)credit,symbolTarget+10-recent)));
             if(recent<30 && !StockMarketProfile.isLargeCap(symbol.code))budget=Math.min(90,Math.max(budget,15));
+            if(traderShare<1)budget=(int)Math.ceil(budget*traderShare);
             int orderBudget=200/bySymbol.size();
             int cursor=cursors.getOrDefault(stock,0),examined=0;
-            while(examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<orderBudget && symbol.continuous) {
+            while(traderShare>0 && examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<orderBudget && symbol.continuous) {
                 Participant participant=group.get(cursor++%group.size());examined++;
                 if(due.getOrDefault(participant.id(),0L)>now)continue;
                 BotProfile p=participant.profile();
                 due.put(participant.id(),now+Math.max(10,(long)(p.decisionInterval()*StockMarketProfile.decisionIntervalWeight(symbol.code)*(.65+random.nextDouble()*.7)))+p.reactionLatency());
+                // A skipped trader waits a normal decision interval, so the ramp thins activity instead of queueing it.
+                if(traderShare<1 && random.nextDouble()>=traderShare)continue;
                 Account account=book.accounts.get(participant.id());
                 if(account==null)continue;
                 Holding held=book.holding(participant.id(),stock);

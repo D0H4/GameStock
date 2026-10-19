@@ -51,6 +51,11 @@
     flex: 1 1 260px; min-width: 0; height: 40px; padding: 0 var(--space-3);
     border: 1px solid var(--ink-muted); border-radius: var(--radius); background: var(--paper); font: inherit; color: var(--ink);
   }
+  .runtime-form select {
+    justify-self: start; max-width: 100%; height: 40px; padding: 0 var(--space-3);
+    border: 1px solid var(--ink-muted); border-radius: var(--radius); background: var(--paper); font: inherit; color: var(--ink);
+  }
+  .runtime-hint { font-size: var(--step--1); color: inherit; }
   .runtime-bar.is-alarm .text-button { color: var(--board-label); }
   .runtime-message { color: inherit; }
   .runtime-bar:not(.is-alarm) .runtime-message { color: var(--ink); }
