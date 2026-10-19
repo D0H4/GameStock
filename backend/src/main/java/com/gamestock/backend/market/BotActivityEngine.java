@@ -131,10 +131,13 @@ final class BotActivityEngine {
                 int quantity=Math.min(BotProfile.MAX_ORDER_SIZE,decision.quantity());
                 if(quantity<=0)continue;
                 long price=decision.side().equals("BUY")?floorToTick(Math.round(decision.limitPrice())):ceilToTick(Math.round(decision.limitPrice()));
-                price=quoteBand(symbol.code,symbol.reference,observation.news()).clamp(price);
+                var band=quoteBand(symbol.code,symbol.reference,observation.news());
+                // Clamping an offer above the ceiling (or a bid below the floor) would trade at a
+                // price the participant rejected and stack every such order into one band wall.
+                if(!decision.market() && (decision.side().equals("SELL")?price>band.upperPrice():price<band.lowerPrice()))continue;
+                price=band.clamp(price);
                 if(stalled && !decision.market()) {
-                    price=recovery.dispersedPrice(book,stock,decision.side(),price,quantity,
-                            quoteBand(symbol.code,symbol.reference,observation.news()));
+                    price=recovery.dispersedPrice(book,stock,decision.side(),price,quantity,band);
                     if(price==0)continue;
                 }
                 book.submit(participant.id(),stock,decision.side(),decision.market()?"MARKET":"LIMIT",quantity,price,now,Math.min(30_000,Math.max(50,decision.ttlMillis())));
