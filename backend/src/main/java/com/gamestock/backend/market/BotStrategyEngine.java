@@ -132,11 +132,12 @@ public final class BotStrategyEngine {
     public Decision decide(BotProfile p,PriceMetricService.Metrics m,MarketEnvironment e,Position position,
                            double estimatedValue,double perceivedNews,double tick,double marketScale,String symbol,long dayReference) {
         if(dayReference>0 && StockMarketProfile.isSpeculative(symbol)) {
-            // The news fundamental can reach 4x the listing anchor, far above today's +20% bot band.
-            // An unreachable value floors every offer above the ceiling, so holders stack one wall
-            // there while the fade removes buyers. Research is only actionable up to the band itself.
-            // The floor side already has bounded dip demand and must stay free to fall.
-            estimatedValue=Math.min(estimatedValue,dayReference*(1+PriceLimitPolicy.BOT_DAILY_LIMIT_RATE));
+            // The news fundamental ranges from 0.5x to 4x the listing anchor, often outside today's
+            // +/-20% bot band. An unreachable value puts every offer above the ceiling (or every bid
+            // below the floor), so one side stacks a wall there while the fade removes the other.
+            // Research is only actionable up to the band itself.
+            estimatedValue=clamp(estimatedValue,dayReference*(1-PriceLimitPolicy.BOT_DAILY_LIMIT_RATE),
+                    dayReference*(1+PriceLimitPolicy.BOT_DAILY_LIMIT_RATE));
         }
         double score=score(p,m,e,position,estimatedValue,perceivedNews,random.nextGaussian());
         boolean flow=hasInventoryDemand(p);

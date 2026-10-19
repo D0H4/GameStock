@@ -12,8 +12,15 @@ public final class MarketMakerEngine {
     private static final int EMERGENCY_QUOTE_SIZE = 12;
     public record RiskBook(long cashBudget,int inventory,int targetInventory,int maxInventory,long riskLimit) {}
     public record Quote(String side,double price,int quantity) {}
-    /** External best quotes exclude this LP's orders being replaced; zero means no quote. */
-    public record QuoteConstraints(long lowerPrice,long upperPrice,long bestExternalBid,long bestExternalAsk) {}
+    /**
+     * External best quotes exclude this LP's orders being replaced; zero means no quote.
+     * inventoryAskPremium lifts the first ask by up to that fraction as inventory falls below target.
+     */
+    public record QuoteConstraints(long lowerPrice,long upperPrice,long bestExternalBid,long bestExternalAsk,double inventoryAskPremium) {
+        public QuoteConstraints(long lowerPrice,long upperPrice,long bestExternalBid,long bestExternalAsk) {
+            this(lowerPrice,upperPrice,bestExternalBid,bestExternalAsk,0);
+        }
+    }
 
     /** Cash needed to keep the four-level emergency bid ladder alive at a conservative price. */
     static long emergencyCashRequirement(long maxQuotePrice) {
@@ -103,6 +110,10 @@ public final class MarketMakerEngine {
         long askFloor=constraints.bestExternalBid()>0?Math.max(lower,nextTickPrice(constraints.bestExternalBid())):lower;
         long bid=Math.min(floorToTick(reference-spread),bidCeiling);
         long ask=Math.max(ceilToTick(reference+spread),askFloor);
+        // Offer the remaining shares progressively higher instead of selling the last lots at the touch.
+        double shortfall=clamp((risk.targetInventory()-risk.inventory())/(double)Math.max(1,risk.targetInventory()),0,1);
+        if(shortfall>0 && constraints.inventoryAskPremium()>0)
+            ask=Math.max(ask,Math.min(upper,ceilToTick(reference+spread+reference*constraints.inventoryAskPremium()*shortfall)));
         // Backstop competitive external interest instead of repeatedly stepping in front of it.
         // The bounded tolerance prevents a remote/stale quote from dragging our ladder away from trades.
         double tolerance=Math.max(tick,Math.min(spread*.5,m.midPrice()*.0015));

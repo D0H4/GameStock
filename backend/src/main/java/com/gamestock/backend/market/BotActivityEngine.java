@@ -7,6 +7,7 @@ import static com.gamestock.backend.market.PriceLimitPolicy.*;
 /** Paces independently funded participant decisions from actual fills, never manufactures a trade. */
 final class BotActivityEngine {
     private static final long LIQUIDITY_QUOTE_TTL=10_000L;
+    private static final double FLOOR_ZONE=.15,FLOOR_INVENTORY_ASK_PREMIUM=.012;
     record Observation(PriceMetricService.Metrics metrics,MarketEnvironment environment,double fundamental,double news,double scale) { }
     record Participant(long id,BotProfile profile,long stock) { }
     record Activity(long stock,String code,int fills,int orders,boolean continuous) { }
@@ -181,8 +182,12 @@ final class BotActivityEngine {
         book.working(lp,stock).forEach(book::cancel);
         double[] external=book.depth(stock,lp);
         var band=quoteBand(symbol.code,symbol.reference,observation.news());
+        // Near a small cap's floor, dip demand is one-sided and cash is plentiful while shares are not.
+        // Selling the last LP lots at the touch would leave 1-share asks and nobody to refill them.
+        boolean floorZone=!StockMarketProfile.isLargeCap(symbol.code) && symbol.last<symbol.reference*(1-FLOOR_ZONE);
         var limits=new MarketMakerEngine.QuoteConstraints(band.lowerPrice(),band.upperPrice(),
-                external[2]>0?Math.round(external[0]):0,external[3]>0?Math.round(external[1]):0);
+                external[2]>0?Math.round(external[0]):0,external[3]>0?Math.round(external[1]):0,
+                floorZone?FLOOR_INVENTORY_ASK_PREMIUM:0);
         var availableRisk=new MarketMakerEngine.RiskBook(Math.max(0,Math.min(account.cash,book.lpCashBudgets.get(stock))),
                 book.holding(lp,stock).quantity(),risk.targetInventory(),risk.maxInventory(),risk.riskLimit());
         double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
