@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import type { PointerEvent } from "react";
 import { apiFetch } from "../lib/api";
 import { indexValue, serverTimestamp, won } from "../market/format";
@@ -30,12 +30,11 @@ export function SeriesChart({ code, tone }: { code: string; tone?: "up" | "down"
   const snapshot = useMarket();
   const quote = snapshot.quotes[code];
   const [mode, setMode] = useState<ChartMode>("line");
-  const [range, setRange] = useState<ChartRange>("realtime");
+  const [range, setRange] = useState<ChartRange>("1d");
   const [data, setData] = useState<{ key: string; samples: Sample[] }>({ key: "", samples: [] });
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [hoveredAt, setHoveredAt] = useState<number | null>(null);
-  const gradientId = useId().replace(/:/g, "");
   const dataKey = `${code}:${mode}:${range}`;
 
   useEffect(() => {
@@ -170,10 +169,9 @@ export function SeriesChart({ code, tone }: { code: string; tone?: "up" | "down"
             event.preventDefault(); setHoveredAt(samples[next].at);
           }}>
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`${code} ${mode === "line" ? "선형" : "캔들"} 차트. ${rangeLabel} 기준 마지막 기록 ${won(currentValue)}`} focusable="false">
-            <defs><linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity="0.12" /><stop offset="100%" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
             {prevY >= 0 && prevY <= 100 && <line className="chart-prevclose" x1="0" x2="100" y1={prevY} y2={prevY} vectorEffect="non-scaling-stroke" />}
             {mode === "line" ? <>
-              {area && <path d={area} fill={`url(#${gradientId})`} />}
+              {area && <path d={area} fill="currentColor" fillOpacity={0.07} />}
               <path className="chart-line" d={path} vectorEffect="non-scaling-stroke" />
             </> : samples.map((sample) => {
               const candle = sample.candle;

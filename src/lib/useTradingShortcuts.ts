@@ -12,7 +12,7 @@ export type TradingShortcutHandlers = {
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.matches("input, textarea, select, [contenteditable=\"true\"]");
+  return target.isContentEditable || target.matches("input, textarea, select, summary, [contenteditable=\"true\"]");
 }
 
 /** 포커스가 주문창 안에 있을 때만 활성화한다. 입력창의 기본 키 동작은 보존한다. */

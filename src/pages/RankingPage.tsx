@@ -291,7 +291,7 @@ export function RankingPage() {
   };
 
   return (
-    <div className="page-stack is-compact">
+    <div className="page-stack is-compact ranking-page">
       <h1 className="page-title">랭킹</h1>
 
       <div className="ranking-tabs" role="tablist" aria-label="랭킹 종류">

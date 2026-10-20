@@ -47,7 +47,7 @@ export function MarketPage({ ticker }: { ticker: string | null }) {
   };
 
   return (
-    <div className="page-stack">
+    <div className="page-stack market-page">
       <h1 className="page-title">시장</h1>
 
       <div className="controls">
@@ -101,6 +101,7 @@ export function MarketPage({ ticker }: { ticker: string | null }) {
               selected={ticker}
               onSelect={(code) => navigate(`/market/${code}`)}
               watchable
+              extended
               sort={sort}
               onSort={changeSort}
             />
