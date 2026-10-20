@@ -833,10 +833,11 @@
     text-underline-offset: 3px;
   }
 
+  /* 누를 수 있는 아이콘이므로 배경 대비 3:1 이상인 --ink-muted를 쓴다(--ink-faint는 2.9:1). */
   .watch-button {
     font-size: var(--step-2);
     line-height: 1;
-    color: var(--ink-faint);
+    color: var(--ink-muted);
   }
 
   .watch-button:hover {

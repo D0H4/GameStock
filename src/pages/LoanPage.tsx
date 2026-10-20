@@ -98,6 +98,12 @@ export function LoanPage() {
   const repayError = repayAmount === "" ? "" : repayValue < 1 ? "갚을 금액을 입력해 주세요."
     : repayValue > repayMax ? `지금은 최대 ${won(repayMax)}까지 갚을 수 있습니다.` : "";
 
+  // 빌릴 수 있는 금액이 0이면 왜 그런지 말한다. 서버는 경고 구간, 남은 한도 부족, 관리자·시스템 계정에서 막는다.
+  // 경고 구간은 위의 담보비율 알림이 이미 설명하므로 여기서는 나머지 두 경우만 다룬다.
+  const blockedReason = !loan || !loan.borrowBlocked || loan.warning ? ""
+    : loan.limit - loan.balance < loan.minAmount ? `남은 한도가 최소 대출 금액 ${won(loan.minAmount)}보다 적어 지금은 빌릴 수 없습니다.`
+    : "관리자 계정은 대출을 이용할 수 없습니다.";
+
   const ratio = loan?.collateralRatio ?? null;
   const tone = ratio === null ? "" : loan && ratio < loan.liquidationRatio ? " is-danger" : loan && ratio < loan.warningRatio ? " is-warning" : " is-safe";
 
@@ -127,6 +133,7 @@ export function LoanPage() {
               <div><dt>지금 빌릴 수 있는 금액</dt><dd className="num">{won(loan.available)}</dd></div>
               <div><dt>순자산</dt><dd className="num">{won(loan.netAsset)}</dd></div>
             </dl>
+            {blockedReason && <p className="loan-blocked" role="status">{blockedReason}</p>}
             <div className={`loan-gauge${tone}`}>
               <div className="loan-gauge-head">
                 <span>담보비율 <small>총 자산 ÷ 대출 잔액</small></span>

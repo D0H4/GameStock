@@ -1439,7 +1439,7 @@
     height: 32px;
     font-size: var(--step-3);
     line-height: 1;
-    color: var(--ink-faint);
+    color: var(--ink-muted);
   }
 
   .integration-tools .watch-button:hover {
