@@ -4,14 +4,16 @@
   .admin-table { min-width: 800px; }
   /* 번호는 한 덩어리로 읽혀야 한다. 좁은 폭에서 "36744 / 0"처럼 꺾이지 않게 한다. */
   .admin-table td:first-child { white-space: nowrap; }
+  [aria-labelledby="admin-users"] .admin-table td:nth-child(2) { white-space: nowrap; }
   /* 주문 번호도 표 왼쪽 끝에서 시작해 제목과 같은 선에 선다. 오른쪽 정렬이면 왼쪽이 비어 보인다. */
   .admin-orders-table :is(th, td):first-child { text-align: left; }
-  /* 마지막 "관리" 칸은 머리글의 인원 수와 같은 오른쪽 선에 둔다. */
-  [aria-labelledby="admin-users"] .admin-table td:last-child { text-align: right; }
+  /* 맨 앞 "관리" 칸은 제목과 같은 왼쪽 선에서 시작한다. */
+  [aria-labelledby="admin-users"] .admin-table td:first-child { text-align: left; }
   .admin-table tr.is-selected td { background: var(--sunken); }
   .admin-email { display: block; }
   .admin-uid { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--step--1); color: var(--ink-muted); }
-  .admin-badge { margin-left: 6px; padding: 1px 6px; border: 1px solid var(--rule); border-radius: var(--radius); font-size: var(--step--1); color: var(--ink-muted); }
+  /* 배지는 한 덩어리. 칸이 좁아도 "관리 / 자"로 꺾이지 않고 통째로 다음 줄로 내려간다. */
+  .admin-badge { display: inline-block; white-space: nowrap; margin-left: 6px; padding: 1px 6px; border: 1px solid var(--rule); border-radius: var(--radius); font-size: var(--step--1); color: var(--ink-muted); }
   .admin-banned { color: var(--up-deep); font-weight: 600; white-space: nowrap; }
   .admin-ok { color: var(--ink-muted); }
   .admin-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-7); }

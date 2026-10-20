@@ -97,6 +97,14 @@ export function AccountSettings() {
     }
   };
 
+  // 고른 것이 캐릭터인지, 아직 로그인 계정 사진(Google 등)을 쓰는 중인지 구분해서 알린다.
+  const chosenAvatar = PROFILE_AVATARS.find((avatar) => avatar.src === selectedAvatar);
+  const avatarSaved = selectedAvatar !== "" && selectedAvatar === (profile?.profileImageUrl ?? "");
+  const avatarStatus = chosenAvatar
+    ? avatarSaved ? `${chosenAvatar.name} 사용 중` : `${chosenAvatar.name} 선택됨. 저장하면 바뀝니다.`
+    : selectedAvatar ? "지금은 로그인 계정 사진을 쓰고 있습니다. 바꾸려면 캐릭터를 골라 주세요."
+    : "캐릭터를 하나 골라 주세요.";
+
   const resetAccount = async () => {
     if (!window.confirm("현금과 보유 주식, 거래 내역, 투자 미션을 초기 상태로 되돌릴까요?")) return;
     setResetting(true);
@@ -176,7 +184,7 @@ export function AccountSettings() {
             </div>
             <div className="account-avatar-footer">
               <span className="account-hint">
-                {selectedAvatar ? `${PROFILE_AVATARS.find((avatar) => avatar.src === selectedAvatar)?.name ?? "선택한 캐릭터"} 선택됨` : "캐릭터를 하나 골라 주세요."}
+                {avatarStatus}
               </span>
               <button
                 type="button"

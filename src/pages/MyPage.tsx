@@ -11,6 +11,13 @@ import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate, totals } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
 
+/** 큰 금액은 쉼표 자리에서만 줄을 바꾼다. "₩1,000,0 / 00"처럼 숫자 묶음 중간이 끊기지 않게 한다. */
+function GroupedWon({ value }: { value: number }) {
+  return won(value).split(",").map((group, index) => (
+    <span key={index}>{index > 0 && <>,<wbr /></>}{group}</span>
+  ));
+}
+
 type ActiveOrder = {
   id: number;
   stockCode: string;
@@ -77,7 +84,7 @@ export function MyPage() {
       <section className="head" aria-label="계좌 요약">
         <div>
           <p className="head-label">{money.loan > 0 ? "순자산" : "총 자산"}</p>
-          <p className="head-value">{won(money.net)}</p>
+          <p className="head-value"><GroupedWon value={money.net} /></p>
           <p className="head-sub">
             <Delta change={money.pnl} ratio={money.pnlRate} />
           </p>

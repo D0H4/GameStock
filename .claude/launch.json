@@ -12,6 +12,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--host", "127.0.0.1", "--port", "5182", "--strictPort"],
       "port": 5182
+    },
+    {
+      "name": "frontend-prod-api",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--host", "127.0.0.1", "--port", "5183", "--strictPort"],
+      "env": { "VITE_API_BASE_URL": "https://gamestock-api.161-33-33-45.sslip.io" },
+      "port": 5183
     }
   ]
 }

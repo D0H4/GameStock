@@ -34,7 +34,7 @@ function TitleRow({ title, pending, onToggle }: RowProps) {
       <span className="title-dot" aria-hidden="true" />
       <span className="title-copy">
         <span className="title-name">
-          <span className="title-name-text" style={{ color: titleColor(title.name) }}>{title.name}</span>
+          <span className="title-name-text" style={title.owned ? { color: titleColor(title.name) } : undefined}>{title.name}</span>
           {title.weekly && title.owned && <span className="title-crown num">{title.count}관왕</span>}
           {title.equipped && <span className="title-equipped">장착됨</span>}
         </span>

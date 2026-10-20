@@ -22,7 +22,8 @@
     flex: none;
     padding: 0 var(--space-5);
     border-radius: var(--radius);
-    background: var(--brand);
+    /* 흰 글자를 올리므로 밝은 --brand(3.0:1)가 아니라 --brand-deep(4.65:1)을 쓴다. */
+    background: var(--brand-deep);
     color: var(--paper);
     font-weight: 700;
     text-decoration: none;
@@ -30,7 +31,7 @@
   }
 
   .detail-trade-button:hover {
-    background: var(--brand-deep);
+    background: var(--brand-wine);
     color: var(--paper);
   }
 

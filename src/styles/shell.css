@@ -619,4 +619,92 @@
       display: none;
     }
   }
+
+  /* 계좌 총액은 쉼표 뒤(<wbr>)에서만 줄을 바꾼다. 기본값 overflow-wrap: anywhere 는 숫자 묶음 중간을 자른다. */
+  .account-page .head-value {
+    overflow-wrap: normal;
+  }
+
+  /*
+   * 손가락 누름 영역. 폰 폭에서는 누를 수 있는 것을 모두 44×44px 이상으로 맞춘다.
+   * 탭·글자 버튼은 상자를 키우고, 표 머리 정렬 버튼은 음수 여백으로 누름 영역만 넓혀 열 정렬을 지킨다.
+   */
+  @media (max-width: 720px) {
+    .profile-trigger {
+      width: 44px;
+      height: 44px;
+    }
+
+    .filter-button,
+    .ranking-tab,
+    .admin-nav-link,
+    .runtime-toggle,
+    .text-button,
+    .member-more,
+    .charge-page .mission-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .account-button,
+    .account-button.loan-chip,
+    .account-orders-table .account-button,
+    .account-form input:not([type="checkbox"]):not([type="radio"]),
+    .account-form select,
+    .runtime-form input {
+      min-height: 44px;
+    }
+
+    .account-form input:not([type="checkbox"]):not([type="radio"]),
+    .runtime-form input {
+      height: 44px;
+    }
+
+    .quote-table .cell-watch,
+    .quote-table .watch-button {
+      width: 44px;
+      min-width: 44px;
+    }
+
+    .watch-button,
+    .integration-tools .watch-button {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .sort-button {
+      min-height: 44px;
+      padding-inline: 11px;
+      margin-inline: -11px;
+    }
+
+    .name-link {
+      min-height: 44px;
+    }
+
+    /* 속보 행은 제목 링크가 행 전체를 덮어 어디를 눌러도 기사로 간다. */
+    .news-item {
+      position: relative;
+    }
+
+    .news-title a::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+    }
+
+    .notice-check,
+    .trade-page .terminal-filter {
+      min-height: 44px;
+    }
+
+    .account-form .notice-check input,
+    .trade-page .terminal-filter input {
+      width: 20px;
+      height: 20px;
+    }
+  }
 }
