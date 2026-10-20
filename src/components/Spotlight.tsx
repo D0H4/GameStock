@@ -1,6 +1,7 @@
 import { Delta } from "./Delta";
 import { GameIcon } from "./GameIcon";
 import { Link } from "./Link";
+import { PriceCell } from "./PriceCell";
 import { useMarket } from "../market/MarketProvider";
 import { movers, sessionRate } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -24,9 +25,14 @@ export function Spotlight() {
           return (
             <li key={code}>
               <Link className="spot-item" to={`/market/${code}`}>
-                <GameIcon code={code} size="xl" />
-                <span className="spot-name">{LISTING_BY_CODE[code]?.name ?? code}</span>
-                <Delta change={ratio} ratio={ratio} showAmount={false} />
+                <GameIcon code={code} size="large" />
+                <span className="spot-copy">
+                  <span className="spot-name">{LISTING_BY_CODE[code]?.name ?? code}</span>
+                  <span className="spot-meta">
+                    <PriceCell className="num" value={snapshot.quotes[code].price} />
+                    <Delta change={ratio} ratio={ratio} showAmount={false} />
+                  </span>
+                </span>
               </Link>
             </li>
           );

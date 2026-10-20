@@ -70,8 +70,9 @@ export function MyPage() {
   };
 
   return (
-    <div className="page-stack">
+    <div className="page-stack account-page">
       <h1 className="page-title">내 계좌</h1>
+      {snapshot.portfolioError && <p role="status" className="empty">{snapshot.portfolioError}</p>}
 
       <section className="head" aria-label="계좌 요약">
         <div>
@@ -101,7 +102,9 @@ export function MyPage() {
 
       {message && <p className="account-message" role="status">{message}</p>}
 
-      <Panel id="mypage-holdings" title="보유 종목" action={{ label: "종목 찾기", to: "/market" }}>
+      <div className="account-layout">
+        <div className="account-column">
+          <Panel id="mypage-holdings" title="보유 종목" action={{ label: "종목 찾기", to: "/market" }}>
         {holdingCount > 0 ? (
           <HoldingsTable caption="내 보유 종목과 평가 손익" />
         ) : (
@@ -151,7 +154,9 @@ export function MyPage() {
           </div>
         )}
       </Panel>
+        </div>
 
+        <div className="account-column">
       <Panel id="mypage-fills" title="체결 내역">
         {fills.length > 0 ? (
           <div className="table-scroll">
@@ -224,6 +229,8 @@ export function MyPage() {
           </ul>
         )}
       </Panel>
+        </div>
+      </div>
     </div>
   );
 }

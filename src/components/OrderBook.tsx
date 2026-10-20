@@ -121,7 +121,7 @@ export function OrderBook({ code, onPriceSelect }: Props) {
         {Array.from({ length: Math.max(0, 5 - bidRows.length) }, (_, index) => placeholderRow(`bid-empty-${index}`))}
       </div>
       <p className="book-spread num">
-        최우선 호가 간격 {spread > 0 ? won(spread) : "-"} · 가격을 누르면 지정가 주문에 반영됩니다.
+        최우선 호가 간격 {spread > 0 ? won(spread) : "-"}
       </p>
     </div>
   );

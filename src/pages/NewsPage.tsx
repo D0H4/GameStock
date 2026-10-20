@@ -45,7 +45,7 @@ export function NewsPage({ id }: { id: number | null }) {
   }, [id]);
 
   return (
-    <div className="page-stack is-compact">
+    <div className="page-stack is-compact news-page">
       <h1 className="page-title">속보</h1>
       <div className={`news-split${id !== null ? " has-detail" : ""}`}>
         <div className="news-split-list" ref={list}>

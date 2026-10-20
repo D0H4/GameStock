@@ -1,0 +1,575 @@
+/*
+ * 전면 레이아웃. 1080px 중앙 단을 걷어내고 브라우저의 폭과 높이를 그대로 쓴다.
+ * 색·서체·괘선·표면 규칙은 기존 종이 거래소 언어를 유지한다.
+ * 기존 파일은 layer component/layout/responsive 에 있으므로 마지막 layer 에서만 덮어쓴다.
+ */
+@layer utility {
+  :root {
+    --gutter: clamp(14px, 1.5vw, 28px);
+    --shell-gap: clamp(20px, 2.2vw, 36px);
+    --page: 1280px;
+  }
+
+  .app {
+    overflow-x: clip;
+  }
+
+  /* ---------------------------------------------------------------- 틀 */
+
+  .topbar {
+    border-bottom: var(--rule-width) solid var(--rule);
+  }
+
+  .topbar-inner {
+    max-width: var(--page);
+    gap: clamp(24px, 3vw, 56px);
+    padding-inline: var(--gutter);
+  }
+
+  .nav {
+    gap: clamp(20px, 2.4vw, 44px);
+  }
+
+  .content {
+    max-width: var(--page);
+    margin-inline: auto;
+    padding: var(--shell-gap) var(--gutter);
+  }
+
+  .page-stack {
+    width: 100%;
+    gap: var(--shell-gap);
+  }
+
+  .statusbar {
+    max-width: var(--page);
+    margin-inline: auto;
+    padding: var(--space-3) var(--gutter);
+    border-top: var(--rule-width) solid var(--rule);
+    justify-content: flex-end;
+  }
+
+  .table {
+    width: 100%;
+  }
+
+  .quote-table .cell-name {
+    width: 100%;
+  }
+
+  /* ---------------------------------------------------------------- 홈 */
+
+  .home-page {
+    gap: var(--space-4);
+  }
+
+  .home-page .head {
+    padding-bottom: var(--space-3);
+    border-bottom: var(--rule-heavy);
+  }
+
+  .home-page .head-me.is-guest {
+    gap: var(--space-1);
+  }
+
+  .home-page .head-guest {
+    line-height: 1.4;
+  }
+
+  .home-page .head-value {
+    font-size: var(--step-6);
+  }
+
+  .home-page .head-value.is-small {
+    font-size: var(--step-5);
+  }
+
+  /* 오른 게임은 화면 폭을 가로로 쓰는 띠로 만든다. 아트워크는 줄이고 이름·등락을 바로 읽는다. */
+  .home-page .spot {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: var(--space-2);
+  }
+
+  .home-page .spot-item {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas: "icon copy";
+    align-items: center;
+    column-gap: var(--space-3);
+    min-width: 0;
+    padding: 6px;
+    border: var(--rule-width) solid var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .home-page .spot-item .game-icon {
+    grid-area: icon;
+    width: 48px;
+    height: 48px;
+  }
+
+  .home-page .spot-copy {
+    grid-area: copy;
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .home-page .spot-name {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: var(--step-0);
+    font-weight: 600;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .home-page .spot-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0 var(--space-3);
+    min-width: 0;
+    font-size: var(--step--1);
+  }
+
+  .home-page .spot-meta .delta {
+    font-size: var(--step--1);
+  }
+
+  .home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+    gap: clamp(16px, 1.4vw, 24px);
+    align-items: start;
+  }
+
+  .home-grid > .panel {
+    min-width: 0;
+  }
+
+  .home-page .quote-table tbody tr {
+    height: 46px;
+  }
+
+  .home-page .quote-table tbody th,
+  .home-page .quote-table tbody td {
+    padding-block: 4px;
+  }
+
+  /* 이름·가격·등락을 한데 모으고 남는 폭은 등락 칸이 가져가게 해 행 hover 폭은 그대로 둔다.
+     한 단으로 접히는 폭에서는 표가 패널을 채우도록 기본 배치를 쓴다. */
+  @media (min-width: 981px) {
+    .home-page .quote-table .cell-name {
+      width: 1%;
+      white-space: nowrap;
+    }
+
+    .home-page .quote-table .cell-num {
+      width: 1%;
+    }
+
+    .home-page .quote-table .cell-num:last-child {
+      width: auto;
+      text-align: left;
+    }
+  }
+
+  .home-grid .news-list {
+    gap: 0;
+  }
+
+  .home-grid .news-item {
+    padding: 5px var(--space-2);
+    border-bottom: var(--rule-width) solid var(--rule);
+  }
+
+  .home-grid .news-item:first-child {
+    padding-top: 0;
+  }
+
+  .home-grid .news-item:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  /* 한 줄로 잘라 제목이 끝나는 열을 맞추고, 등락 칸 폭을 고정해 그 열도 흔들리지 않게 한다. */
+  .home-grid .news-title a {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .home-grid .news-item > .delta {
+    flex: none;
+    justify-content: flex-end;
+    width: 84px;
+  }
+
+  /* ---------------------------------------------------------------- 시장 */
+
+  .market-page .controls {
+    padding-block: var(--space-2);
+    border-block: var(--rule-width) solid var(--rule);
+  }
+
+  .market-page .market-layout.has-detail {
+    grid-template-columns: minmax(0, 1.7fr) minmax(420px, 1fr);
+    gap: clamp(24px, 3vw, 56px);
+  }
+
+  .market-page .market-detail {
+    top: calc(var(--bar) + var(--space-5));
+    max-height: calc(100dvh - var(--bar) - var(--space-6));
+    overflow-y: auto;
+    padding-right: var(--space-2);
+    scrollbar-gutter: stable;
+  }
+
+  .market-page .quote-table tbody tr {
+    height: 54px;
+  }
+
+  .market-page .quote-table tbody th,
+  .market-page .quote-table tbody td {
+    padding-block: 10px;
+  }
+
+  .market-page .quote-table .cell-volume {
+    color: var(--ink-muted);
+  }
+
+  .market-page .quote-table .cell-turnover,
+  .market-page .quote-table .cell-marketcap {
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  /* 넓은 화면에서는 이름 칸이 남는 폭을 독차지하지 않게 열 비율을 고정한다. */
+  @media (min-width: 721px) {
+    .market-page .quote-table {
+      table-layout: fixed;
+    }
+
+    .market-page .quote-table .cell-watch {
+      width: 48px;
+    }
+
+    .market-page .quote-table .cell-name {
+      width: 34%;
+    }
+
+    .market-page .quote-table .cell-num {
+      width: 13.2%;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 1100px) {
+    .market-page .quote-table .cell-name {
+      width: 55%;
+    }
+
+    .market-page .quote-table .cell-num {
+      width: 15%;
+    }
+  }
+
+  /* ---------------------------------------------------------------- 속보 */
+  .news-page {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .news-page .news-split {
+    flex: 1 1 auto;
+  }
+
+  /* 본문을 고르지 않았을 때는 넓은 종이를 두 단으로 나눠 쓴다. */
+  .news-page .news-split:not(.has-detail) .news-split-list {
+    columns: 2;
+    column-gap: clamp(32px, 4vw, 72px);
+  }
+
+  .news-page .news-split:not(.has-detail) .news-list {
+    display: block;
+  }
+
+  .news-page .news-split:not(.has-detail) .news-item {
+    break-inside: avoid;
+    padding-block: var(--space-4);
+    border-bottom: var(--rule-width) solid var(--rule);
+  }
+
+  .news-page .news-split:not(.has-detail) .news-item:first-child {
+    padding-top: 0;
+  }
+
+  .news-page .news-split.has-detail {
+    grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+    gap: clamp(24px, 3vw, 56px);
+  }
+
+  .news-page .news-split.has-detail .news-split-list,
+  .news-page .news-split-detail {
+    max-height: calc(100dvh - var(--bar) - 190px);
+  }
+
+  /* ---------------------------------------------------------------- 랭킹 */
+
+  .ranking-page .integration-ranking {
+    width: 100%;
+  }
+
+  @media (min-width: 641px) {
+    .ranking-page .integration-ranking col.ranking-col-rank {
+      width: 96px;
+    }
+
+    .ranking-page .integration-ranking col.ranking-col-change {
+      width: clamp(140px, 14vw, 220px);
+    }
+
+    .ranking-page .integration-ranking col.ranking-col-asset {
+      width: clamp(180px, 18vw, 300px);
+    }
+  }
+
+  .ranking-page .integration-ranking tbody tr {
+    height: 56px;
+  }
+
+  .ranking-page .integration-ranking th,
+  .ranking-page .integration-ranking td {
+    padding-block: 10px;
+  }
+
+  /* ---------------------------------------------------------------- 내 계좌 */
+
+  .account-page .account-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+    gap: var(--shell-gap);
+    align-items: start;
+  }
+
+  .account-page .account-column {
+    display: grid;
+    align-content: start;
+    gap: var(--shell-gap);
+    min-width: 0;
+  }
+
+  /* ---------------------------------------------------------------- 설정 */
+
+  .account-settings:has(#settings-nickname) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    align-items: start;
+  }
+
+  .account-settings:has(#settings-nickname) > [aria-labelledby="settings-nickname"] {
+    grid-column: 1;
+  }
+
+  .account-settings:has(#settings-nickname) > [aria-labelledby="settings-avatar"] {
+    grid-column: 2;
+  }
+
+  .account-settings:has(#settings-nickname) > .account-message,
+  .account-settings:has(#settings-nickname) > .account-reset,
+  .account-settings:has(#settings-nickname) > .empty {
+    grid-column: 1 / -1;
+  }
+
+  /* ---------------------------------------------------------------- 충전 */
+
+  .charge-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+    align-content: start;
+    gap: var(--shell-gap) clamp(24px, 3vw, 56px);
+  }
+
+  .charge-page > h1,
+  .charge-page > .charge-intro {
+    grid-column: 1 / -1;
+  }
+
+  .charge-page > [aria-labelledby="mission-board"] {
+    grid-column: 1;
+  }
+
+  .charge-page > [aria-labelledby="promo-code"] {
+    grid-column: 2;
+  }
+
+  /* ---------------------------------------------------------------- 칭호 */
+
+  .titles-page {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--shell-gap);
+  }
+
+  .titles-page > h1,
+  .titles-page > .title-progress,
+  .titles-page > .empty {
+    grid-column: 1 / -1;
+  }
+
+  .titles-page > .panel {
+    min-width: 0;
+  }
+
+  /* ---------------------------------------------------------------- 관리자 */
+
+  .account-settings.admin-page {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .account-settings.admin-page > [aria-labelledby="admin-users"] {
+    grid-column: 1 / -1;
+  }
+
+  .account-settings.admin-page:has(#admin-user-actions) > [aria-labelledby="admin-users"] {
+    grid-column: 1;
+  }
+
+  .account-settings.admin-page:has(#admin-user-actions) > [aria-labelledby="admin-user-actions"] {
+    grid-column: 2;
+  }
+
+  /* ---------------------------------------------------------------- 로그인 */
+
+  .login-page {
+    min-height: calc(100dvh - var(--bar) - 90px);
+    padding: var(--space-6) var(--gutter);
+  }
+
+  /* ---------------------------------------------------------------- 반응형 */
+
+  @media (max-width: 1100px) {
+    .market-page .market-layout.has-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .market-page .market-detail {
+      position: static;
+      order: -1;
+      max-height: none;
+      overflow: visible;
+      padding-right: 0;
+    }
+
+    .market-page .quote-table .cell-turnover,
+    .market-page .quote-table .cell-marketcap {
+      display: none;
+    }
+
+    .news-page .news-split.has-detail {
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    }
+
+    .account-page .account-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .account-settings:has(#settings-nickname) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .account-settings:has(#settings-nickname) > * {
+      grid-column: 1;
+    }
+
+    .charge-page {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .charge-page > * {
+      grid-column: 1;
+    }
+
+    .titles-page {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .account-settings.admin-page,
+    .account-settings.admin-page:has(#admin-user-actions) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .account-settings.admin-page > [aria-labelledby="admin-users"],
+    .account-settings.admin-page:has(#admin-user-actions) > [aria-labelledby="admin-users"],
+    .account-settings.admin-page:has(#admin-user-actions) > [aria-labelledby="admin-user-actions"] {
+      grid-column: 1;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .home-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .home-page .spot {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 900px) {
+    .news-page .news-split,
+    .news-page .news-split.has-detail {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+
+    .news-page .news-split.has-detail .news-split-list {
+      display: none;
+    }
+
+    .news-page .news-split-detail {
+      max-height: none;
+      overflow: visible;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .content {
+      padding-inline: var(--space-4);
+    }
+
+    .topbar-inner {
+      padding-inline: var(--space-4);
+    }
+
+    .statusbar {
+      justify-content: center;
+      padding-inline: var(--space-4);
+    }
+
+    .home-page .spot {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .home-page .spot-name {
+      -webkit-line-clamp: 2;
+    }
+
+    .news-page .news-split:not(.has-detail) .news-split-list {
+      columns: 1;
+    }
+
+    .market-page .controls {
+      padding-block: 0;
+      border: 0;
+    }
+
+    .login-page {
+      padding: var(--space-5) var(--space-4);
+    }
+  }
+}

@@ -152,6 +152,8 @@ export interface Position {
   code: string;
   qty: number;
   avgCost: number;
+  availableQty?: number;
+  marketValue?: number;
 }
 
 export interface Fill {
@@ -165,6 +167,8 @@ export interface Fill {
 
 export interface Portfolio {
   cash: number;
+  assetValue?: number;
+  totalAsset?: number;
   positions: Record<string, Position>;
   fills: Fill[];
   /** 실현 손익. 매도 체결에서만 갱신된다. */
@@ -178,6 +182,7 @@ export interface Portfolio {
 }
 
 export interface MarketSnapshot {
+  portfolioError?: string;
   marketRestriction?: TradingRestriction | null;
   quotes: Record<string, Quote>;
   index: MarketIndex;

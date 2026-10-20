@@ -14,12 +14,12 @@ export function HomePage() {
   const rows = holdings(snapshot, totals(snapshot).total);
 
   return (
-    <div className="page-stack">
+    <div className="page-stack home-page">
       <h1 className="vh">슈엔증권 홈</h1>
       <MarketHead />
       <Spotlight />
 
-      <div className="split">
+      <div className="home-grid">
         <Panel id="home-market" title="인기 종목" action={{ label: "전체 보기", to: "/market" }}>
           <QuoteTable codes={top} caption="거래량 상위 8개 종목" onSelect={(code) => navigate(`/market/${code}`)} />
         </Panel>
