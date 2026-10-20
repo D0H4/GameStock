@@ -620,12 +620,15 @@
     justify-items: end;
     align-content: start;
     gap: var(--space-2);
-    max-width: 260px;
+    max-width: 340px;
   }
 
+  /* 두 줄로 넘어갈 때 마지막 줄에 한 단어만 남지 않게 줄 길이를 고른다. */
   .head-guest {
     font-size: var(--step-1);
     color: var(--ink-muted);
+    text-wrap: balance;
+    word-break: keep-all;
   }
 
   .head-me.is-guest .account-button {

@@ -291,7 +291,8 @@ export function AdvancedOrderTicket({ code, initialSide = "buy", selectedLimitPr
         </div>
         <p id={`${quantityId}-hint`} className={`terminal-field-hint${quantityError ? " is-error" : ""}`} aria-live="polite">{quantityError}</p>
         <div className="terminal-presets" aria-label="주문 수량 비율">
-          {RATIOS.map((item) => <button key={item.label} type="button" onClick={() => setQuantityRatio(item.ratio)} disabled={maxQty === 0}>{item.label}</button>)}
+          {/* "최대"는 수량 칸 옆 버튼과 겹치므로 비율 줄에서는 뺀다. 단축키는 RATIOS 전체를 그대로 쓴다. */}
+          {RATIOS.filter((item) => item.ratio < 1).map((item) => <button key={item.label} type="button" onClick={() => setQuantityRatio(item.ratio)} disabled={maxQty === 0}>{item.label}</button>)}
         </div>
         <div className="terminal-field">
           <label htmlFor={priceId}>단가</label>

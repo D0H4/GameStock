@@ -47,8 +47,8 @@ export function TradePage({ ticker }: { ticker: string | null }) {
       {snapshot.portfolioError && <p role="status" className="empty">{snapshot.portfolioError}</p>}
 
       <header className="trade-head" aria-labelledby="trade-name">
+        <Link className="trade-back" to={MARKET_PATH(code)}>← 종목 상세</Link>
         <div className="trade-head-row">
-          <Link className="trade-back" to={MARKET_PATH(code)}>← 종목 상세</Link>
           <GameIcon code={code} name={listing.name} size="large" />
           <div className="trade-head-copy">
             <h1 id="trade-name" className="trade-head-title">

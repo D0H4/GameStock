@@ -55,7 +55,7 @@
   .stock-series-chart.is-down { color: var(--down); }
   .stock-series-chart.is-flat { color: var(--ink-muted); }
   .stock-series-chart .chart-line { stroke-width: 2.3; }
-  .chart-extreme { position: absolute; left: 8px; color: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
+  .chart-extreme { position: absolute; left: 0;color: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
   .chart-extreme.is-high { transform: translateY(calc(-100% - 7px)); }
   .chart-extreme.is-low { transform: translateY(7px); }
   .chart-last-dot,

@@ -56,7 +56,7 @@ export function QuoteTable({ codes, caption, selected, onSelect, watchable = fal
             {header("name", "게임", "cell-name")}
             {header("price", "현재가", "cell-num")}
             {header("rate", "등락", "cell-num")}
-            {extended && header("volume", "거래량", "cell-num")}
+            {extended && header("volume", "거래량", "cell-num cell-volume")}
             {extended && <th scope="col" className="cell-num cell-turnover">거래대금</th>}
             {extended && <th scope="col" className="cell-num cell-marketcap">시가총액</th>}
           </tr>

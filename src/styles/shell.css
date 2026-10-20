@@ -20,8 +20,8 @@
     border-bottom: var(--rule-width) solid var(--rule);
   }
 
+  /* 상단 바는 창 양끝까지 편다. 폭을 막으면 로고는 왼쪽 끝, 프로필은 1280px 지점에 떠 좌우가 어긋난다. */
   .topbar-inner {
-    max-width: var(--page);
     gap: clamp(24px, 3vw, 56px);
     padding-inline: var(--gutter);
   }
@@ -41,10 +41,12 @@
     gap: var(--shell-gap);
   }
 
+  /* 괘선이 본문 단과 같은 폭에서 끝나도록 안쪽 여백 대신 폭을 줄인다. */
   .statusbar {
-    max-width: var(--page);
+    width: calc(100% - 2 * var(--gutter));
+    max-width: calc(var(--page) - 2 * var(--gutter));
     margin-inline: auto;
-    padding: var(--space-3) var(--gutter);
+    padding: var(--space-3) 0;
     border-top: var(--rule-width) solid var(--rule);
     justify-content: flex-end;
   }
@@ -85,9 +87,14 @@
   }
 
   /* 오른 게임은 화면 폭을 가로로 쓰는 띠로 만든다. 아트워크는 줄이고 이름·등락을 바로 읽는다. */
+  /* 최대 6개가 한 줄 6칸 또는 3칸 두 줄로 떨어지게 칸 수를 정한다. auto-fit 은 5+1 로 한 장만 남기기도 한다. */
   .home-page .spot {
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: var(--space-2);
+  }
+
+  .home-page .spot > * {
+    display: grid;
   }
 
   .home-page .spot-item {
@@ -159,22 +166,13 @@
     padding-block: 4px;
   }
 
-  /* 이름·가격·등락을 한데 모으고 남는 폭은 등락 칸이 가져가게 해 행 hover 폭은 그대로 둔다.
-     한 단으로 접히는 폭에서는 표가 패널을 채우도록 기본 배치를 쓴다. */
-  @media (min-width: 981px) {
-    .home-page .quote-table .cell-name {
-      width: 1%;
-      white-space: nowrap;
-    }
+  /* 표의 양끝을 패널 제목과 "전체 보기"의 양끝에 맞춘다. 남는 폭은 이름 칸이 가져간다. */
+  .home-page .quote-table :is(th, td):first-child {
+    padding-left: 0;
+  }
 
-    .home-page .quote-table .cell-num {
-      width: 1%;
-    }
-
-    .home-page .quote-table .cell-num:last-child {
-      width: auto;
-      text-align: left;
-    }
+  .home-page .quote-table :is(th, td):last-child {
+    padding-right: 0;
   }
 
   .home-grid .news-list {
@@ -182,7 +180,7 @@
   }
 
   .home-grid .news-item {
-    padding: 5px var(--space-2);
+    padding: 5px 0;
     border-bottom: var(--rule-width) solid var(--rule);
   }
 
@@ -211,9 +209,10 @@
 
   /* ---------------------------------------------------------------- 시장 */
 
+  /* 랭킹 탭과 같은 모양: 탭 줄 아래에만 괘선을 긋는다. */
   .market-page .controls {
     padding-block: var(--space-2);
-    border-block: var(--rule-width) solid var(--rule);
+    border-bottom: var(--rule-width) solid var(--rule);
   }
 
   .market-page .market-layout.has-detail {
@@ -287,23 +286,20 @@
     flex: 1 1 auto;
   }
 
-  /* 본문을 고르지 않았을 때는 넓은 종이를 두 단으로 나눠 쓴다. */
-  .news-page .news-split:not(.has-detail) .news-split-list {
-    columns: 2;
+  /* 본문을 고르지 않았을 때는 넓은 종이를 두 단으로 나눠 쓴다.
+     다단(columns) 대신 격자로 놓아 두 단의 첫 기사와 행 괘선이 같은 높이에 오게 한다. */
+  .news-page .news-split:not(.has-detail) .news-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: clamp(32px, 4vw, 72px);
   }
 
-  .news-page .news-split:not(.has-detail) .news-list {
-    display: block;
-  }
-
   .news-page .news-split:not(.has-detail) .news-item {
-    break-inside: avoid;
     padding-block: var(--space-4);
     border-bottom: var(--rule-width) solid var(--rule);
   }
 
-  .news-page .news-split:not(.has-detail) .news-item:first-child {
+  .news-page .news-split:not(.has-detail) .news-item:nth-child(-n + 2) {
     padding-top: 0;
   }
 
@@ -445,8 +441,9 @@
 
   /* ---------------------------------------------------------------- 로그인 */
 
+  /* 본문 위아래 여백과 하단 안내 줄까지 빼서 첫 화면 안에 하단 안내가 다 들어오게 한다. */
   .login-page {
-    min-height: calc(100dvh - var(--bar) - 90px);
+    min-height: calc(100dvh - var(--bar) - 2 * var(--shell-gap) - 48px);
     padding: var(--space-6) var(--gutter);
   }
 
@@ -510,13 +507,15 @@
     }
   }
 
+  @media (max-width: 1180px) {
+    .home-page .spot {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 980px) {
     .home-grid {
       grid-template-columns: minmax(0, 1fr);
-    }
-
-    .home-page .spot {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
@@ -542,13 +541,20 @@
       padding-inline: var(--space-4);
     }
 
+    /* 메뉴마다 44px 누름 영역이 있으니 간격을 줄여 "로그인"까지 화면 안에 들어오게 한다. */
     .topbar-inner {
+      gap: var(--space-2);
       padding-inline: var(--space-4);
+    }
+
+    .nav {
+      gap: 0;
     }
 
     .statusbar {
       justify-content: center;
-      padding-inline: var(--space-4);
+      width: calc(100% - 2 * var(--space-4));
+      padding-inline: 0;
     }
 
     .home-page .spot {
@@ -559,8 +565,12 @@
       -webkit-line-clamp: 2;
     }
 
-    .news-page .news-split:not(.has-detail) .news-split-list {
-      columns: 1;
+    .news-page .news-split:not(.has-detail) .news-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .news-page .news-split:not(.has-detail) .news-item:nth-child(2) {
+      padding-top: var(--space-4);
     }
 
     .market-page .controls {
@@ -570,6 +580,13 @@
 
     .login-page {
       padding: var(--space-5) var(--space-4);
+    }
+  }
+
+  /* 폰 폭에서는 거래량 칸을 접어 게임 이름이 두세 글자로 잘리지 않게 한다. */
+  @media (max-width: 480px) {
+    .market-page .quote-table .cell-volume {
+      display: none;
     }
   }
 }

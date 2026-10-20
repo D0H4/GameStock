@@ -29,10 +29,11 @@
 
   .login-panel :focus-visible { outline-color: var(--login-accent); }
 
+  /* 브랜드 줄(카드 안쪽 34px에서 시작하는 24px 줄)과 세로 중심을 맞춘다. */
   .login-close {
     position: absolute;
-    top: 14px;
-    right: 14px;
+    top: 28px;
+    right: 22px;
     display: grid;
     place-items: center;
     width: 36px;
@@ -183,6 +184,7 @@
 
   @media (max-width: 560px) {
     .login-panel { padding: 26px 20px; border-radius: 16px; }
+    .login-close { top: 20px; right: 10px; }
     .login-header h1 { font-size: var(--step-4); }
   }
 

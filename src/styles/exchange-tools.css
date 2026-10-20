@@ -487,8 +487,9 @@
     min-width: 0;
   }
 
+  /* 좌우 여백을 두면 머리글 칸이 호가 행 칸보다 좁아져 열이 어긋난다. */
   .integration-tools .book-header {
-    padding: 0 4px 5px;
+    padding: 0 0 5px;
     color: var(--ink-muted);
     font-size: var(--step--1);
     text-align: center;
@@ -498,6 +499,17 @@
   .integration-tools .book-header > * {
     overflow-wrap: anywhere;
     white-space: normal;
+  }
+
+  /* 잔량 숫자는 가격 쪽으로 붙어 있으므로 머리글도 같은 쪽 끝에 맞춘다. */
+  .integration-tools .book-header > :nth-child(2) {
+    padding-right: 6px;
+    text-align: right;
+  }
+
+  .integration-tools .book-header > :nth-child(4) {
+    padding-left: 6px;
+    text-align: left;
   }
 
   .integration-tools .book-ladder {
@@ -630,9 +642,10 @@
     font-weight: 400;
   }
 
+  /* 호가 행은 좌우 대칭이라 가운데 칸이 가격 열과 겹친다. 현재가 숫자를 가격 열 위에 세운다. */
   .integration-tools .book-current-row {
     display: grid;
-    grid-template-columns: auto auto auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     gap: 8px;
     min-height: 34px;
@@ -642,6 +655,7 @@
   }
 
   .integration-tools .book-current-label {
+    justify-self: end;
     color: var(--ink-muted);
     font-size: var(--step--1);
     white-space: nowrap;
@@ -654,6 +668,7 @@
   }
 
   .integration-tools .book-current-row .delta {
+    justify-self: start;
     white-space: nowrap;
   }
 
@@ -1071,7 +1086,7 @@
   .integration-tools .stock-series-chart.is-down { color: var(--down); }
   .integration-tools .stock-series-chart.is-flat { color: var(--ink-muted); }
   .integration-tools .stock-series-chart .chart-line { stroke-width: 2.3; }
-  .integration-tools .chart-extreme { position: absolute; left: 8px; color: var(--ink-muted); font-size: var(--step--1); font-variant-numeric: tabular-nums; pointer-events: none; }
+  .integration-tools .chart-extreme { position: absolute; left: 0;color: var(--ink-muted); font-size: var(--step--1); font-variant-numeric: tabular-nums; pointer-events: none; }
   .integration-tools .chart-extreme.is-high { transform: translateY(calc(-100% - 7px)); }
   .integration-tools .chart-extreme.is-low { transform: translateY(7px); }
   .integration-tools .chart-last-dot,
