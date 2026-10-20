@@ -169,13 +169,15 @@
   /* 표의 양끝을 패널 제목과 머리글 오른쪽 글자의 양끝에 맞춘다. 남는 폭은 이름 칸이 가져간다. */
   .home-page .quote-table :is(th, td):first-child,
   .account-page .table :is(th, td):first-child,
-  .loan-page .table :is(th, td):first-child {
+  .loan-page .table :is(th, td):first-child,
+  .admin-page .admin-table :is(th, td):first-child {
     padding-left: 0;
   }
 
   .home-page .quote-table :is(th, td):last-child,
   .account-page .table :is(th, td):last-child,
-  .loan-page .table :is(th, td):last-child {
+  .loan-page .table :is(th, td):last-child,
+  .admin-page .admin-table :is(th, td):last-child {
     padding-right: 0;
   }
 

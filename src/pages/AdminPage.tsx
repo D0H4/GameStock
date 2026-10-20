@@ -108,7 +108,7 @@ function AdminUsers() {
                 <th scope="col">로그인 계정</th>
                 <th scope="col">닉네임</th>
                 <th scope="col">가입</th>
-                <th scope="col" className="num">현금</th>
+                <th scope="col" className="cell-num">현금</th>
                 <th scope="col">이용</th>
                 <th scope="col"><span className="vh">관리</span></th>
               </tr>
@@ -126,7 +126,7 @@ function AdminUsers() {
                     {user.role === "ADMIN" && <span className="admin-badge">관리자</span>}
                   </td>
                   <td className="num">{formatTime(user.createdAt)}</td>
-                  <td className="num admin-cash">{won(user.cash)}</td>
+                  <td className="cell-num num admin-cash">{won(user.cash)}</td>
                   <td>
                     {user.tradeBannedUntil
                       ? <span className="admin-banned" title={user.tradeBanReason ?? ""}>~{formatTime(user.tradeBannedUntil)}</span>
