@@ -7,6 +7,7 @@ import static com.gamestock.backend.market.PriceLimitPolicy.*;
 /** Paces independently funded participant decisions from actual fills, never manufactures a trade. */
 final class BotActivityEngine {
     private static final long LIQUIDITY_QUOTE_TTL=10_000L;
+    private static final double FLOOR_ZONE=.15,FLOOR_INVENTORY_ASK_PREMIUM=.012;
     record Observation(PriceMetricService.Metrics metrics,MarketEnvironment environment,double fundamental,double news,double scale) { }
     record Participant(long id,BotProfile profile,long stock) { }
     record Activity(long stock,String code,int fills,int orders,boolean continuous) { }
@@ -22,6 +23,7 @@ final class BotActivityEngine {
     private final Map<Long,Long> lastRebalance=new HashMap<>();
     private final Map<Long,Long> nextQuote=new HashMap<>();
     private final MarketMakerEngine maker=new MarketMakerEngine();
+    private final LiquidityRecoveryPolicy recovery=new LiquidityRecoveryPolicy();
 
     BotActivityEngine(List<Participant> participants,long seed,int target) {
         this.participants=List.copyOf(participants);this.strategies=new BotStrategyEngine(seed^37);this.random=new Random(seed^71);this.target=target;
@@ -29,8 +31,17 @@ final class BotActivityEngine {
         for(var group:bySymbol.values())Collections.shuffle(group,random);
     }
 
+    private double traderShare=1;
+
     /** A wake/pulse starts fresh pacing; elapsed idle time never creates a backlog of orders. */
-    void resume() {credits.clear();due.clear();nextQuote.clear();}
+    void resume() {credits.clear();due.clear();nextQuote.clear();recovery.reset();}
+
+    /**
+     * Fraction of participant traders allowed to act (0 = traders paused, LP still quotes).
+     * During a resume ramp only a sampled share decides each pass and the fill budget shrinks
+     * with it, so hundreds of traders do not all react to the same stale gap at once.
+     */
+    void traderShare(double share) {traderShare=Math.max(0,Math.min(1,share));}
 
     /** Match at most 200 distinct orders per pass, then persist both passes in one 100 ms transaction.
      * The second pass consumes remaining pacing credit; it does not advance simulated time.
@@ -64,22 +75,14 @@ final class BotActivityEngine {
             var group=entry.getValue();int startFills=book.fills.size(),startOrders=book.accepted.size();
             int recent=recentFills.getOrDefault(stock,0);
             var risk=risks.get(stock);
-            var marketMetrics=withBook(observation.metrics(),symbol.last,book.depth(stock));
-            if(risk!=null && book.lpCashBudgets.containsKey(stock) && now>=nextQuote.getOrDefault(stock,0L)) {
-                book.working(lp,stock).forEach(book::cancel);
-                double[] external=book.depth(stock,lp);var band=quoteBand(symbol.code,symbol.reference,observation.news());
-                var limits=new MarketMakerEngine.QuoteConstraints(band.lowerPrice(),band.upperPrice(),external[2]>0?Math.round(external[0]):0,external[3]>0?Math.round(external[1]):0);
-                var availableRisk=new MarketMakerEngine.RiskBook(Math.max(0,Math.min(book.accounts.get(lp).cash,book.lpCashBudgets.get(stock))),book.holding(lp,stock).quantity(),risk.targetInventory(),risk.maxInventory(),risk.riskLimit());
-                double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
-                for(var quote:maker.quotes(marketMetrics,observation.environment(),availableRisk,tickSize(symbol.last),observation.scale(),limits,anchor)) {
-                    long price=quote.side().equals("BUY")?floorToTick(Math.round(quote.price())):ceilToTick(Math.round(quote.price()));
-                    int quantity=quote.quantity();
-                    if(quote.side().equals("BUY"))quantity=(int)Math.min(quantity,Math.max(0,book.lpCashBudgets.get(stock))/Math.max(1,price+BatchOrderBook.fee(price)));
-                    else quantity=Math.min(quantity,book.available(lp,stock));
-                    book.submit(lp,stock,quote.side(),"LIMIT",quantity,price,now,LIQUIDITY_QUOTE_TTL);
-                }
-                nextQuote.put(stock,now+(StockMarketProfile.isLargeCap(symbol.code)?500:1200)+random.nextInt(600));
+            boolean stalled=recovery.stalled(symbol,now);
+            if(stalled && !symbol.adminHalted && risk!=null && book.accounts.containsKey(lp)) {
+                recovery.trimBotWalls(book,stock);
+                if(recovery.absorbWall(book,symbol,risk,lp,maker.fairValue(observation.metrics(),observation.fundamental()),now))
+                    nextQuote.remove(stock);
             }
+            var marketMetrics=withBook(observation.metrics(),symbol.last,book.depth(stock));
+            refreshLiquidity(book,symbol,observation,risk,lp,now,true);
             if(risk!=null && now-lastRebalance.getOrDefault(stock,0L)>=500) {
                 // Gradually distribute an over-target LP position through funded external bids.
                 // No transfer, refill, paired counterorder or price change happens outside matching.
@@ -103,12 +106,16 @@ final class BotActivityEngine {
             double credit=Math.min(180,credits.getOrDefault(stock,0.0)+symbolTarget*(elapsed<=0?0:Math.min(500,Math.max(20,elapsed)))/1000.0);
             int budget=Math.max(0,Math.min(150,Math.min((int)credit,symbolTarget+10-recent)));
             if(recent<30 && !StockMarketProfile.isLargeCap(symbol.code))budget=Math.min(90,Math.max(budget,15));
+            if(traderShare<1)budget=(int)Math.ceil(budget*traderShare);
+            int orderBudget=200/bySymbol.size();
             int cursor=cursors.getOrDefault(stock,0),examined=0;
-            while(examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<Math.max(1,200/bySymbol.size()) && symbol.continuous) {
+            while(traderShare>0 && examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<orderBudget && symbol.continuous) {
                 Participant participant=group.get(cursor++%group.size());examined++;
                 if(due.getOrDefault(participant.id(),0L)>now)continue;
                 BotProfile p=participant.profile();
                 due.put(participant.id(),now+Math.max(10,(long)(p.decisionInterval()*StockMarketProfile.decisionIntervalWeight(symbol.code)*(.65+random.nextDouble()*.7)))+p.reactionLatency());
+                // A skipped trader waits a normal decision interval, so the ramp thins activity instead of queueing it.
+                if(traderShare<1 && random.nextDouble()>=traderShare)continue;
                 Account account=book.accounts.get(participant.id());
                 if(account==null)continue;
                 Holding held=book.holding(participant.id(),stock);
@@ -117,6 +124,7 @@ final class BotActivityEngine {
                 List<Order> working=book.working(participant.id(),stock);
                 long refundable=working.stream().mapToLong(o->o.reservedCash).sum();
                 double[] depth=book.depth(stock);
+                if(book.accepted.size()-startOrders+liquidityRepairReserve(book,symbol,risk,lp,book.nearbyDepth(stock))>=orderBudget)break;
                 PriceMetricService.Metrics m=withBook(observation.metrics(),symbol.last,depth);
                 long equity=account.cash+refundable+Math.round(held.quantity()*m.markPrice());
                 double targetQuantity=strategies.targetQuantity(p,symbol.code,now,equity,1,m.markPrice());
@@ -126,27 +134,94 @@ final class BotActivityEngine {
                 double estimate=strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise));
                 double news=observation.news()*(1+p.valueError()*8+random.nextGaussian()*.25);
                 var decision=strategies.decide(p,m,observation.environment(),position,estimate,news,tickSize(symbol.last),observation.scale(),symbol.code,symbol.reference);
-                boolean replace=working.size()>1 || working.stream().anyMatch(o->o.remaining>2 || now-o.createdAt>=30_000
+                boolean replace=working.size()>1 || working.stream().anyMatch(o->o.remaining>BotProfile.MAX_ORDER_SIZE || now-o.createdAt>=30_000
                         || policy.shouldReplace(p,new BotOrderPolicy.RestingOrder(o.id,o.side,o.price,o.reservedCash,o.createdAt),decision,now,tickSize(o.price),o.side.equals("BUY")?m.bestBid():m.bestAsk(),o.side.equals("BUY")?m.bestAsk():m.bestBid()));
                 if(!working.isEmpty()&&!replace)continue;
-                if(replace)working.forEach(book::cancel);
-                int quantity=Math.min(BotStrategyEngine.hasInventoryDemand(p)?1:2,decision.quantity()); // Micro lots keep a human order economically meaningful.
+                if(replace) {
+                    working.forEach(book::cancel);
+                    if(book.accepted.size()-startOrders+liquidityRepairReserve(book,symbol,risk,lp,book.nearbyDepth(stock))>=orderBudget)break;
+                }
+                int quantity=Math.min(BotProfile.MAX_ORDER_SIZE,decision.quantity());
                 if(quantity<=0)continue;
                 long price=decision.side().equals("BUY")?floorToTick(Math.round(decision.limitPrice())):ceilToTick(Math.round(decision.limitPrice()));
-                price=quoteBand(symbol.code,symbol.reference,observation.news()).clamp(price);
+                var band=quoteBand(symbol.code,symbol.reference,observation.news());
+                // Clamping an offer above the ceiling (or a bid below the floor) would trade at a
+                // price the participant rejected and stack every such order into one band wall.
+                if(!decision.market() && (decision.side().equals("SELL")?price>band.upperPrice():price<band.lowerPrice()))continue;
+                price=band.clamp(price);
+                if(stalled && !decision.market()) {
+                    price=recovery.dispersedPrice(book,stock,decision.side(),price,quantity,band);
+                    if(price==0)continue;
+                }
                 book.submit(participant.id(),stock,decision.side(),decision.market()?"MARKET":"LIMIT",quantity,price,now,Math.min(30_000,Math.max(50,decision.ttlMillis())));
             }
             cursors.put(stock,cursor%group.size());
             credits.put(stock,Math.max(0,credit-(book.fills.size()-startFills)));
+            // Repair consumed liquidity before this batch is persisted and broadcast, even at its pacing limit.
+            refreshLiquidity(book,symbol,observation,risk,lp,now,false);
             activity.add(new Activity(stock,symbol.code,book.fills.size()-startFills,book.accepted.size()-startOrders,symbol.continuous));
         }
         return activity;
     }
 
-    private static PriceMetricService.Metrics withBook(PriceMetricService.Metrics m,long last,double[] d) {
+    /** Keep room for replenishment only when one participant order could drain a recoverable side. */
+    private int liquidityRepairReserve(BatchOrderBook book,Stock symbol,MarketMakerEngine.RiskBook risk,long lp,double[] depth) {
+        Account account=book.accounts.get(lp);
+        if(risk==null || account==null || !symbol.continuous || symbol.adminHalted || !book.lpCashBudgets.containsKey(symbol.id))return 0;
+        int threshold=MarketMakerEngine.MIN_USABLE_DEPTH;
+        if(depth[2]>threshold && depth[3]>threshold)return 0;
+        // Include encumbered assets: consuming an LP bid creates sellable inventory,
+        // and consuming an LP ask creates cash for new bids within this same batch.
+        long reserved=book.working(lp,symbol.id).stream().mapToLong(o->o.reservedCash).sum();
+        int inventory=book.holding(lp,symbol.id).quantity();
+        boolean resources=inventory>0 || (Math.min(account.cash+reserved,book.lpCashBudgets.get(symbol.id)+reserved)>symbol.last
+                && inventory<Math.min(risk.maxInventory(),risk.riskLimit()/Math.max(1,symbol.last)));
+        return resources?MarketMakerEngine.MAX_QUOTE_ORDERS:0;
+    }
+
+    private void refreshLiquidity(BatchOrderBook book,Stock symbol,Observation observation,
+                                  MarketMakerEngine.RiskBook risk,long lp,long now,boolean scheduled) {
+        long stock=symbol.id;
+        Account account=book.accounts.get(lp);
+        if(risk==null || account==null || !symbol.continuous || symbol.adminHalted || !book.lpCashBudgets.containsKey(stock))return;
+        double[] depth=book.nearbyDepth(stock);
+        // Refill before one ordinary lot drains the near-price book, even if remote walls remain.
+        boolean asksRecoverable=depth[3]<=MarketMakerEngine.MIN_USABLE_DEPTH && book.available(lp,stock)>0;
+        boolean bidsRecoverable=depth[2]<=MarketMakerEngine.MIN_USABLE_DEPTH && Math.min(account.cash,book.lpCashBudgets.get(stock))>symbol.last
+                && book.holding(lp,stock).quantity()<Math.min(risk.maxInventory(),risk.riskLimit()/Math.max(1,symbol.last));
+        if(!(scheduled && now>=nextQuote.getOrDefault(stock,0L)) && !asksRecoverable && !bidsRecoverable)return;
+        var metrics=withBook(observation.metrics(),symbol.last,depth);
+        book.working(lp,stock).forEach(book::cancel);
+        double[] external=book.depth(stock,lp);
+        var band=quoteBand(symbol.code,symbol.reference,observation.news());
+        // Near a small cap's floor, dip demand is one-sided and cash is plentiful while shares are not.
+        // Selling the last LP lots at the touch would leave 1-share asks and nobody to refill them.
+        boolean floorZone=!StockMarketProfile.isLargeCap(symbol.code) && symbol.last<symbol.reference*(1-FLOOR_ZONE);
+        var limits=new MarketMakerEngine.QuoteConstraints(band.lowerPrice(),band.upperPrice(),
+                external[2]>0?Math.round(external[0]):0,external[3]>0?Math.round(external[1]):0,
+                floorZone?FLOOR_INVENTORY_ASK_PREMIUM:0);
+        var availableRisk=new MarketMakerEngine.RiskBook(Math.max(0,Math.min(account.cash,book.lpCashBudgets.get(stock))),
+                book.holding(lp,stock).quantity(),risk.targetInventory(),risk.maxInventory(),risk.riskLimit());
+        double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
+        for(var quote:maker.quotes(metrics,observation.environment(),availableRisk,tickSize(symbol.last),observation.scale(),limits,anchor,
+                book.liquidityPressure(stock,lp))) {
+            long price=quote.side().equals("BUY")?floorToTick(Math.round(quote.price())):ceilToTick(Math.round(quote.price()));
+            int quantity=quote.side().equals("BUY")
+                    ?(int)Math.min(quote.quantity(),Math.max(0,book.lpCashBudgets.get(stock))/Math.max(1,price+BatchOrderBook.fee(price)))
+                    :Math.min(quote.quantity(),book.available(lp,stock));
+            book.submit(lp,stock,quote.side(),"LIMIT",quantity,price,now,LIQUIDITY_QUOTE_TTL);
+        }
+        // An early top-up must not postpone the normal refresh or consume participant randomness.
+        if(now>=nextQuote.getOrDefault(stock,0L))
+            nextQuote.put(stock,now+(StockMarketProfile.isLargeCap(symbol.code)?500:1200)+random.nextInt(600));
+    }
+
+    static PriceMetricService.Metrics withBook(PriceMetricService.Metrics m,long last,double[] d) {
         double mid=d[2]>0&&d[3]>0?(d[0]+d[1])/2:last;
         double micro=d[2]>0&&d[3]>0?(d[1]*d[2]+d[0]*d[3])/(d[2]+d[3]):mid;
-        return stabilizeQuietBook(new PriceMetricService.Metrics(last,mid,micro,m.vwap(),m.markPrice(),d[0],d[1],(long)d[2],(long)d[3],(d[2]-d[3])/Math.max(1,d[2]+d[3]),m.return5s(),m.return20s(),m.emaSlope(),m.recentHigh(),m.recentLow(),m.volumeTrend(),m.acceleration(),m.rsi(),m.zscore(),m.volatility(),m.volume(),m.return60s(),m.return300s(),m.referenceVwap(),m.recentVolume()));
+        // An absent side is not a zero-priced executable quote, even immediately after a trade.
+        double bid=d[2]>0?d[0]:previousTickPrice(last),ask=d[3]>0?d[1]:nextTickPrice(last);
+        return stabilizeQuietBook(new PriceMetricService.Metrics(last,mid,micro,m.vwap(),m.markPrice(),bid,ask,(long)d[2],(long)d[3],(d[2]-d[3])/Math.max(1,d[2]+d[3]),m.return5s(),m.return20s(),m.emaSlope(),m.recentHigh(),m.recentLow(),m.volumeTrend(),m.acceleration(),m.rsi(),m.zscore(),m.volatility(),m.volume(),m.return60s(),m.return300s(),m.referenceVwap(),m.recentVolume()));
     }
 
     /** Bot decisions must not chase a resting book after executions have gone quiet. */

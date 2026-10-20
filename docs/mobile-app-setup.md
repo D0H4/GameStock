@@ -4,7 +4,7 @@
 cd mobile
 npm install
 # 배포 백엔드를 사용할 때는 위 환경변수 생략 가능
-$env:EXPO_PUBLIC_API_BASE_URL = "https://gamestock-production.up.railway.app"
+$env:EXPO_PUBLIC_API_BASE_URL = "https://gamestock-api.161-33-33-45.sslip.io"
 npx expo start
 ```
 

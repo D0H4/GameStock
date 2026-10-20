@@ -38,7 +38,7 @@
 | POST `/stocks` | MARKET | `{code,name,developer,genre,initialPrice,reason}`. 종목과 가격·보호·캐시 기반 데이터 생성 |
 | PUT `/stocks/{code}` | MARKET | `{name,developer,genre,reason}`. 가격·종목 코드는 변경하지 않음. 재시작 후에도 편집 정보 보존 |
 | PUT `/stocks/{code}/state` | MARKET | `{state,reason}`. ACTIVE/HALTED/DELISTED. 정지·폐지 시 해당 종목 미체결 전부 취소 |
-| PUT `/runtime` | MARKET | `{botsPaused,marketPaused,cadenceMs,targetPerSymbol,reason}`. 전체 설정 교체 |
+| PUT `/runtime` | MARKET | `{botsPaused,tradersPaused,marketPaused,cadenceMs,targetPerSymbol,traderRampSeconds,reason}`. 전체 설정 교체 |
 | POST `/users/{id}/cash-adjustments` | REWARDS | `{requestKey,amount,reason}`. 0 제외 ±10억원. 가용 현금을 넘는 차감 거부 |
 | POST `/users/{id}/mission-rewards` | REWARDS | `{missionId,rewardedOn:"2026-10-18",amount,reason}`. 오늘 또는 과거의 누락 미션 보상 복구. 금액1~100만원. 회원·미션·날짜 수령 기록이 있으면 재지급하지 않음 |
 | POST `/rewards/all` | 최고 관리자 | 동일 형식. 양수만, 일반 회원 최대 1만명. 일괄 키는 최대 48자. 완료된 키 재실행은 400 |
@@ -49,14 +49,21 @@
 | GET `/audit/legacy` | READ | `userId`, `before`, `limit` |
 | GET `/suspicious-trades` | READ | `hours` 1~168(기본24), `minimum` 2~10000(기본10). 회원 쌍별 반복 체결·자전 거래 후보 최대100개 |
 
-`cadenceMs`는 50~10000ms, `targetPerSymbol`은 1~1000이다. `null`은 기존 서버 설정으로 복귀한다. 시장 정지는 신규 주문과 체결을 막고 주문 취소는 허용한다. 봇 정지는 기존 봇 호가도 철회하여, 남은 호가가 사람 주문과 체결되는 것을 막는다. 기존 만료 처리·정산·보호장치 유지 작업은 계속된다.
+`cadenceMs`는 50~10000ms, `targetPerSymbol`은 1~1000이다. `null`은 기존 서버 설정으로 복귀한다. 시장 정지는 신규 주문과 체결을 막고 주문 취소는 허용한다. 봇 정지는 두 단계다.
+
+- `tradersPaused`: 트레이더 봇만 멈추고 트레이더 미체결 호가를 철회한다. 유동성 봇은 계속 호가를 내므로 회원은 그 호가와 거래할 수 있다.
+- `botsPaused`: 유동성 봇을 포함한 모든 봇을 멈추고 봇 호가를 전부 철회한다. 호가창이 비어 회원끼리만 체결된다. 체결 취소·시즌 초기화는 이 상태와 시장 정지가 모두 필요하다.
+
+`traderRampSeconds`(0~3600, `null`·0은 즉시)는 트레이더 봇이 다시 켜질 때의 재가동 시간이다. 트레이더가 정지 상태에서 운영 상태로 바뀌는 순간부터 거래 참여 비율이 5%에서 시작해 이 시간 동안 100%까지 선형으로 늘어난다. 운영 중에 값만 바꾸면 램프를 다시 시작하지 않는다. 응답의 `traderShare`는 현재 참여 비율(정지 시 0)이다. 기존 만료 처리·정산·보호장치 유지 작업은 계속된다.
 
 ```json
 {
   "botsPaused": true,
+  "tradersPaused": false,
   "marketPaused": true,
   "cadenceMs": null,
   "targetPerSymbol": null,
+  "traderRampSeconds": 300,
   "reason": "장애 조사 및 복구"
 }
 ```

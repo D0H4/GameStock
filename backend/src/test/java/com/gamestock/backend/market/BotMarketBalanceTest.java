@@ -98,10 +98,10 @@ class BotMarketBalanceTest {
                 long open=0;
                 for(long id:accounts.keySet()) {
                     List<Order> working=book.working(id,1);
-                    if(id!=lp)assertTrue(working.size()<=1,"A participant has at most one working micro order");
+                    if(id!=lp)assertTrue(working.size()<=1,"A participant has at most one working order");
                     for(Order order:working) {
                         open+=order.remaining;
-                        if(id!=lp)assertTrue(order.remaining<=2);
+                        if(id!=lp)assertTrue(order.remaining<=10);
                     }
                 }
                 maxOpen=Math.max(maxOpen,open);

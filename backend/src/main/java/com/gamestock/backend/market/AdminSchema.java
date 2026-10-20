@@ -26,6 +26,9 @@ final class AdminSchema {
               cadence_ms INT NULL, target_per_symbol INT NULL)
             """);
         db.update("INSERT IGNORE INTO admin_runtime(id) VALUES(1)");
+        addRuntimeColumn(db,"traders_paused","BOOLEAN NOT NULL DEFAULT FALSE AFTER bots_paused");
+        addRuntimeColumn(db,"trader_ramp_seconds","INT NULL");
+        addRuntimeColumn(db,"traders_resumed_at","TIMESTAMP(3) NULL");
         db.execute("""
             CREATE TABLE IF NOT EXISTS admin_stock_state (
               stock_id BIGINT PRIMARY KEY, state VARCHAR(16) NOT NULL,
@@ -88,6 +91,10 @@ final class AdminSchema {
               reward_cash BIGINT NOT NULL DEFAULT 0, PRIMARY KEY(season_id,user_id),
               FOREIGN KEY(season_id) REFERENCES admin_seasons(id), FOREIGN KEY(user_id) REFERENCES users(id))
             """);
+    }
+    private static void addRuntimeColumn(JdbcTemplate db,String column,String definition){
+        Integer count=db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='admin_runtime' AND column_name=?",Integer.class,column);
+        if(count!=null&&count==0)db.execute("ALTER TABLE admin_runtime ADD COLUMN "+column+" "+definition);
     }
     static void restoreStockMetadata(JdbcTemplate db){
         db.update("UPDATE games g JOIN stocks s ON s.game_id=g.id JOIN admin_stock_metadata a ON a.stock_id=s.id SET g.name=a.name,g.developer=a.developer,g.genre=a.genre");

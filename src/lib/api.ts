@@ -1,7 +1,7 @@
 import { firebaseAuth } from "./firebase";
 
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
-const productionApiBase = "https://gamestock-production-bcd2.up.railway.app";
+const productionApiBase = "https://gamestock-api.161-33-33-45.sslip.io";
 const localApiBase = "http://localhost:8081";
 
 // A full market simulation can briefly hold a quote request while bots trade.

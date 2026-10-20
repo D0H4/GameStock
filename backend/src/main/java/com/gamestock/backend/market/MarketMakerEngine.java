@@ -7,17 +7,27 @@ import static com.gamestock.backend.market.PriceLimitPolicy.*;
 /** RiskBook is reconstructed from persistent allocations and actual fills. */
 public final class MarketMakerEngine {
     private static final int QUOTE_LEVELS = 4;
-    private static final int EMERGENCY_QUOTE_SIZE = 8;
+    static final int MAX_QUOTE_ORDERS = QUOTE_LEVELS*2;
+    static final int MIN_USABLE_DEPTH = BotProfile.MAX_ORDER_SIZE+QUOTE_LEVELS;
+    private static final int EMERGENCY_QUOTE_SIZE = 12;
     public record RiskBook(long cashBudget,int inventory,int targetInventory,int maxInventory,long riskLimit) {}
     public record Quote(String side,double price,int quantity) {}
-    /** External best quotes exclude this LP's orders being replaced; zero means no quote. */
-    public record QuoteConstraints(long lowerPrice,long upperPrice,long bestExternalBid,long bestExternalAsk) {}
+    /**
+     * External best quotes exclude this LP's orders being replaced; zero means no quote.
+     * inventoryAskPremium lifts the first ask by up to that fraction as inventory falls below target.
+     */
+    public record QuoteConstraints(long lowerPrice,long upperPrice,long bestExternalBid,long bestExternalAsk,double inventoryAskPremium) {
+        public QuoteConstraints(long lowerPrice,long upperPrice,long bestExternalBid,long bestExternalAsk) {
+            this(lowerPrice,upperPrice,bestExternalBid,bestExternalAsk,0);
+        }
+    }
 
     /** Cash needed to keep the four-level emergency bid ladder alive at a conservative price. */
     static long emergencyCashRequirement(long maxQuotePrice) {
         long gross=Math.multiplyExact(Math.max(1,maxQuotePrice),(long)EMERGENCY_QUOTE_SIZE);
         return Math.multiplyExact(QUOTE_LEVELS,gross+BatchOrderBook.fee(gross));
     }
+    static int emergencyInventoryRequirement() {return QUOTE_LEVELS*EMERGENCY_QUOTE_SIZE;}
 
     private static double positive(double value,double fallback) {
         return Double.isFinite(value)&&value>0?value:fallback;
@@ -79,8 +89,14 @@ public final class MarketMakerEngine {
 
     public List<Quote> quotes(PriceMetricService.Metrics m,MarketEnvironment e,RiskBook risk,double tick,double scale,
                               QuoteConstraints constraints,double fundamental) {
+        return quotes(m,e,risk,tick,scale,constraints,fundamental,m.imbalance());
+    }
+
+    /** Positive pressure is buying demand: supply more asks, rather than add to the bids. */
+    public List<Quote> quotes(PriceMetricService.Metrics m,MarketEnvironment e,RiskBook risk,double tick,double scale,
+                              QuoteConstraints constraints,double fundamental,double pressure) {
         double reference=reservationPrice(m,risk,tick,fundamental),spread=halfSpread(m,e,risk,tick);
-        boolean emergency=m.bidDepth()<4 || m.askDepth()<4;
+        boolean emergency=m.bidDepth()<=4 || m.askDepth()<=4;
         if(emergency) spread=Math.min(spread*1.4,Math.max(tick,m.lastPrice()*.005));
         double step=Math.max(tick,spread*.5);
         long lower=ceilToTick(constraints.lowerPrice()),upper=floorToTick(constraints.upperPrice());
@@ -94,6 +110,10 @@ public final class MarketMakerEngine {
         long askFloor=constraints.bestExternalBid()>0?Math.max(lower,nextTickPrice(constraints.bestExternalBid())):lower;
         long bid=Math.min(floorToTick(reference-spread),bidCeiling);
         long ask=Math.max(ceilToTick(reference+spread),askFloor);
+        // Offer the remaining shares progressively higher instead of selling the last lots at the touch.
+        double shortfall=clamp((risk.targetInventory()-risk.inventory())/(double)Math.max(1,risk.targetInventory()),0,1);
+        if(shortfall>0 && constraints.inventoryAskPremium()>0)
+            ask=Math.max(ask,Math.min(upper,ceilToTick(reference+spread+reference*constraints.inventoryAskPremium()*shortfall)));
         // Backstop competitive external interest instead of repeatedly stepping in front of it.
         // The bounded tolerance prevents a remote/stale quote from dragging our ladder away from trades.
         double tolerance=Math.max(tick,Math.min(spread*.5,m.midPrice()*.0015));
@@ -106,12 +126,18 @@ public final class MarketMakerEngine {
         int buyCapacity=Math.max(0,Math.min(risk.maxInventory()-inventory,(int)(risk.riskLimit()/Math.max(1,m.markPrice()))-inventory));
         for(int level=0;level<QUOTE_LEVELS;level++) {
             double riskSize=1/(1+m.volatility()*100+Math.max(0,e.volatilityMultiplier()-1)*.15);
-            int size=emergency?Math.max(2,(int)Math.ceil(EMERGENCY_QUOTE_SIZE*scale))
-                    :Math.max(1,(int)(18*scale*e.liquidityMultiplier()*riskSize/(1+level*.5)));
+            int size=emergency?Math.max(EMERGENCY_QUOTE_SIZE,(int)Math.ceil(EMERGENCY_QUOTE_SIZE*scale))
+                    :Math.max(EMERGENCY_QUOTE_SIZE,(int)(18*scale*e.liquidityMultiplier()*riskSize/(1+level*.5)));
             size=Math.min(32,size);
-            int b=bid>=lower&&bid<=upper?Math.min(size,Math.min(buyCapacity,(int)Math.min(Integer.MAX_VALUE,cash/(bid*1.001)))):0;
-            int a=ask>=lower&&ask<=upper?Math.min(size,inventory):0;
-            if(b>0) {quotes.add(new Quote("BUY",bid,b)); cash-=Math.ceil(bid*b*1.001); buyCapacity-=b;}
+            double flow=Double.isFinite(pressure)?clamp(pressure,-1,1):0;
+            int bidSize=Math.min(32,(int)Math.ceil(size*(1+Math.max(0,-flow)*1.5)));
+            int askSize=Math.min(32,(int)Math.ceil(size*(1+Math.max(0,flow)*1.5)));
+            // Keep a fillable lot near the market while reserving one share for each deeper level.
+            int levelsLeft=QUOTE_LEVELS-level;
+            long affordable=Math.min(buyCapacity,(long)(cash/(Math.max(1,bid)*1.001)));
+            int b=bid>=lower&&bid<=upper && affordable>0?Math.min(bidSize,(int)Math.max(1,affordable-levelsLeft+1)):0;
+            int a=ask>=lower&&ask<=upper && inventory>0?Math.min(askSize,Math.max(1,inventory-levelsLeft+1)):0;
+            if(b>0) {quotes.add(new Quote("BUY",bid,b)); long gross=bid*b;cash-=gross+BatchOrderBook.fee(gross); buyCapacity-=b;}
             if(a>0) {quotes.add(new Quote("SELL",ask,a)); inventory-=a;}
             bid=stepDown(bid,step); ask=stepUp(ask,step);
         }

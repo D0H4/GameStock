@@ -39,9 +39,16 @@ class StockMarketProfileTest {
         assertTrue(large.spreadMultiplier() < base.spreadMultiplier());
         assertTrue(large.meanReversionStrength() > small.meanReversionStrength());
         assertEquals(.03, StockMarketProfile.normalDailyMove("GI"));
-        assertTrue(StockMarketProfile.activityTarget("GI",300)<StockMarketProfile.activityTarget("TR",300));
+        assertEquals(StockMarketProfile.activityTarget("GI",300),StockMarketProfile.activityTarget("TR",300));
         assertEquals(10000, StockMarketProfile.valuationAnchor("GI",10000,16000,0));
         assertEquals(11000, StockMarketProfile.valuationAnchor("GI",10000,16000,.1),1e-9);
+    }
+
+    @Test void allSymbolsUseTheFullDecisionCadenceAndActivityTarget() {
+        for(String code:java.util.List.of("UMA","BA","GOV","ZZZ","GI","SR","AK","WH","CRK","VR","ES","KRP","OW","PW","TR")) {
+            assertEquals(1,StockMarketProfile.decisionIntervalWeight(code),code);
+            assertEquals(300,StockMarketProfile.activityTarget(code,300),code);
+        }
     }
 
     @Test

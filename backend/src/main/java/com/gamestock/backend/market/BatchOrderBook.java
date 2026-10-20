@@ -103,14 +103,17 @@ final class BatchOrderBook {
     void restoreLiquidityInventory(long user,long stock,int quantity,long average) {
         PositionKey key=new PositionKey(user,stock);
         Holding current=holdings.get(key);
-        if(current!=null && current.quantity()>0)return;
+        if(current!=null && current.quantity()>4)return;
         Stock symbol=stocks.get(stock);
         long nearbyAsks=side(stock,"SELL").stream().filter(o->o.user!=user && !o.market() && o.price<=symbol.last*1.02)
                 .mapToLong(o->o.remaining).sum();
         if(nearbyAsks>=4)return;
         int refill=(int)Math.min(32,Math.max(0,Math.max(512L,quantity*4L)-symbol.circulatingShares));
         if(refill==0)return;
-        holdings.put(key,new Holding(refill,refill,average,current==null?0:current.realized()));
+        int oldQuantity=current==null?0:current.quantity(),oldSettled=current==null?0:current.settled();
+        long oldCost=current==null?0:current.average()*(long)oldQuantity;
+        holdings.put(key,new Holding(oldQuantity+refill,oldSettled+refill,
+                Math.round((oldCost+average*(double)refill)/(oldQuantity+refill)),current==null?0:current.realized()));
         symbol.circulatingShares+=refill;
         changedHoldings.add(key);
     }
@@ -187,12 +190,24 @@ final class BatchOrderBook {
             Order taker=maker==buy?sell:buy;
             long price=buy.market()&&sell.market()?stock.last:maker.price;
             boolean buyBot=accounts.get(buy.user).bot,sellBot=accounts.get(sell.user).bot;
+            int quantity=Math.min(buy.remaining,sell.remaining);
+            // Keep the final share at each LP level available for a human order between refreshes.
+            // Bot orders still match all ordinary counterparties using the usual price-time priority.
+            if(accounts.get(sell.user).liquidityProvider && buyBot && sell.remaining<=1) {
+                cancel(buy);continue;
+            }
+            if(accounts.get(sell.user).liquidityProvider && buyBot)quantity=Math.min(quantity,sell.remaining-1);
             if(accounts.get(buy.user).liquidityProvider && sellBot) {
+                if(buy.remaining<=1){cancel(sell);continue;}
+                quantity=Math.min(quantity,buy.remaining-1);
                 // Absorb ordinary selling on both sides while retaining a funded human reserve.
                 long available=Math.min(accounts.get(buy.user).cash,lpCashBudgets.getOrDefault(stock.id,accounts.get(buy.user).cash));
-                long gross=price*Math.min(buy.remaining,sell.remaining);
+                // Resting bids have already deducted their cash from both balances. Count that
+                // symbol's funded bids once; otherwise reserving a quote falsely blocks inventory recovery.
+                available+=working(buy.user,stock.id).stream().mapToLong(o->o.reservedCash).sum();
+                long gross=price*quantity;
                 long reserve=MarketMakerEngine.emergencyCashRequirement(botBand(stock.code,stock.reference).upperPrice());
-                if(available-gross-fee(gross)<reserve){cancel(sell);continue;}
+                if(available-gross<reserve){cancel(sell);continue;}
             }
             PriceBand marketBand=buyBot&&sellBot?dailyBand(stock.code,stock.reference):marketExecutionBand(stock.last);
             if((buy.market()||sell.market())&&!marketBand.contains(price)) {
@@ -204,7 +219,6 @@ final class BatchOrderBook {
                 if(buyBot)cancel(buy);if(sellBot)cancel(sell);continue;
             }
             if(!dailyBand(stock.code,stock.reference).contains(price))return;
-            int quantity=Math.min(buy.remaining,sell.remaining);
             if(buy.reservedCash==0)quantity=affordable(accounts.get(buy.user).cash,price,quantity);
             if(quantity<=0){if(buy.market())return;cancel(buy);continue;}
             // Internal simulation turnover must not drain all purchasing power over time.
@@ -299,11 +313,42 @@ final class BatchOrderBook {
         return depth(stock,-1);
     }
     double[] depth(long stock,long excludedUser) {
+        return depth(stock,excludedUser,false);
+    }
+    /** Remote walls cannot replace executable liquidity near the last paid price. */
+    double[] nearbyDepth(long stock) {
+        return depth(stock,-1,true);
+    }
+    double[] nearbyDepth(long stock,long excludedUser) {
+        return depth(stock,excludedUser,true);
+    }
+    List<Order> resting(long stock,String direction) {
+        return List.copyOf(side(stock,direction));
+    }
+    /** Count participant bots only; humans and the LP retain their own independent orders. */
+    long participantQuantityAt(long stock,String direction,long price) {
+        return side(stock,direction).stream().filter(o->!o.market() && o.price==price
+                && accounts.get(o.user).bot && !accounts.get(o.user).liquidityProvider)
+                .mapToLong(o->o.remaining).sum();
+    }
+    double liquidityPressure(long stock,long lp) {
+        double[] external=nearbyDepth(stock,lp);
+        double resting=(external[2]-external[3])/Math.max(1,external[2]+external[3]);
+        long buys=0,sells=0;
+        for(Fill fill:fills)if(fill.buy().stock==stock && fill.taker().user!=lp) {
+            if(fill.taker().side.equals("BUY"))buys+=fill.quantity();else sells+=fill.quantity();
+        }
+        return buys+sells==0?resting:.7*(buys-sells)/(double)(buys+sells)+.3*resting;
+    }
+    private double[] depth(long stock,long excludedUser,boolean nearbyOnly) {
         double[] out={stocks.get(stock).last,stocks.get(stock).last,0,0};
+        long last=stocks.get(stock).last;
+        double distance=Math.max(last*.01,tickSize(last)*4.0);
         for(int i=0;i<2;i++) {
             var book=side(stock,i==0?"BUY":"SELL");int levels=0;long previous=-1;
             for(Order o:book) {
                 if(o.market() || o.user==excludedUser)continue;
+                if(nearbyOnly && (i==0?o.price<last-distance:o.price>last+distance))break;
                 if(previous!=o.price){if(++levels>5)break;previous=o.price;}
                 if(levels==1)out[i]=o.price;
                 out[i+2]+=o.remaining;

@@ -63,6 +63,7 @@ public class MarketService {
     private static final int LP_INITIAL_INVENTORY = 100;
     private static final String TRADER_BOT_PASSWORD = "TRADER";
     private static final long TRADER_BOT_STARTING_CASH = 1_000_000L;
+    private static final String SCHEMA_MIGRATION_LOCK = "gamestock:schema-migration";
     private static final double NEWS_SPECIAL_IMPACT_THRESHOLD = 6.0;
     private static final double NEWS_MAJOR_INCIDENT_IMPACT_THRESHOLD = -8.0;
     private List<BotProfile> traderProfiles = List.of();
@@ -108,6 +109,8 @@ public class MarketService {
     private final TradingProtectionService protection;
     @Value("${market.seed:${gamestock.simulation.seed:}}")
     private String configuredSeed;
+    @Value("${gamestock.schema.migration-lock-timeout-seconds:60}")
+    private int schemaMigrationLockTimeoutSeconds = 60;
     private long simulationSeed;
     private long simulationStartedAt;
     @Value("${market.batch.enabled:true}")
@@ -228,7 +231,7 @@ public class MarketService {
             demoUserId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,DEMO_USERNAME);
             simulationInitialized=true;return;
         }
-        new MarketSchema(jdbc).migrate(userFeatures, protection, priceMetrics, titles);
+        migrateSchemaWithLock();
 
         jdbc.update("""
                 INSERT IGNORE INTO users (username, password_hash, nickname, cash)
@@ -266,6 +269,45 @@ public class MarketService {
         startupTransaction().executeWithoutResult(status -> settleDuePayments());
         if(batchEnabled)initializeActivityEngine();
         simulationInitialized=true;
+    }
+
+    /**
+     * Keep schema changes exclusive across accidental overlapping starts. The
+     * lock is held on a dedicated JDBC connection while the migration uses its
+     * normal pool connections, and is released even when a DDL step fails.
+     */
+    private void migrateSchemaWithLock() {
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            boolean locked = false;
+            int timeout = Math.max(0, schemaMigrationLockTimeoutSeconds);
+            log.info("Waiting for database schema migration lock (timeout={}s)", timeout);
+            try (var statement = connection.prepareStatement("SELECT GET_LOCK(?, ?)")) {
+                statement.setString(1, SCHEMA_MIGRATION_LOCK);
+                statement.setInt(2, timeout);
+                try (var result = statement.executeQuery()) {
+                    if (!result.next() || result.getInt(1) != 1) {
+                        throw new IllegalStateException("Could not acquire database schema migration lock within " + timeout + " seconds");
+                    }
+                }
+            }
+            locked = true;
+            long started = System.nanoTime();
+            try {
+                new MarketSchema(jdbc).migrate(userFeatures, protection, priceMetrics, titles);
+                log.info("Database schema migration completed in {} ms",
+                        java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                return null;
+            } finally {
+                if (locked) {
+                    try (var release = connection.prepareStatement("SELECT RELEASE_LOCK(?)")) {
+                        release.setString(1, SCHEMA_MIGRATION_LOCK);
+                        release.execute();
+                    } catch (SQLException releaseError) {
+                        log.warn("Could not release database schema migration lock", releaseError);
+                    }
+                }
+            }
+        });
     }
 
     private void initializeActivityEngine() {
@@ -312,7 +354,10 @@ public class MarketService {
         long started=System.nanoTime();
         BatchMarketRepository repository=new BatchMarketRepository(jdbc,compactLedger?botJournal:null);
         BatchOrderBook book=bookCacheEnabled?lane.cache.borrow(repository,now,lane.stocks,lane.users):repository.load(now,lane.stocks,lane.users);
-        if(adminRuntime!=null){var controls=adminRuntime.settings();if(controls.botsPaused()||controls.marketPaused())return List.of();adminRuntime.apply(book);}
+        if(adminRuntime!=null){
+            var controls=adminRuntime.settings();if(controls.botsPaused()||controls.marketPaused())return List.of();
+            lane.engine.traderShare(controls.traderShare());adminRuntime.apply(book);
+        }
         if(inlineMarketMaker)for(var stock:book.stocks.values()) {
             book.restoreLiquidityInventory(activityLpId,stock.id,
                     StockMarketProfile.initialLiquidityInventory(stock.code,LP_INITIAL_INVENTORY),stock.last);
@@ -1322,8 +1367,12 @@ public class MarketService {
         MarketMakerEngine.RiskBook risk = liquidityRiskBook(code, lp);
         double fundamental=jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,stockId(code));
         fundamental=StockMarketProfile.valuationAnchor(code,reference,fundamental,news);
+        double nearbyRange=Math.max(metrics.lastPrice()*.01,tickSize(Math.round(metrics.lastPrice()))*4.0);
+        long externalBids=externalBook.bids().stream().filter(q->q.price()>=metrics.lastPrice()-nearbyRange).mapToLong(OrderBookLevel::quantity).sum();
+        long externalAsks=externalBook.asks().stream().filter(q->q.price()<=metrics.lastPrice()+nearbyRange).mapToLong(OrderBookLevel::quantity).sum();
+        double pressure=(externalBids-externalAsks)/(double)Math.max(1,externalBids+externalAsks);
         for (MarketMakerEngine.Quote quote : marketMaker.quotes(metrics, environment(code), risk,
-                tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints,fundamental)) {
+                tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints,fundamental,pressure)) {
             insertLiquidityQuote(code, lp, quote);
         }
         MatchSummary matched = matchOrders(code);
@@ -1334,7 +1383,10 @@ public class MarketService {
     @Transactional
     public synchronized void participantBotAction(String username) {
         prepareBotAction(null);
-        if(adminRuntime!=null&&adminRuntime.botsPaused())return;
+        if(adminRuntime!=null) {
+            double share=adminRuntime.settings().traderShare();
+            if(share<=0 || share<1 && java.util.concurrent.ThreadLocalRandom.current().nextDouble()>=share)return;
+        }
         if (!protection.marketStatus().open()) return;
         BotProfile profile = traderProfiles.stream().filter(p -> p.username().equals(username)).findFirst().orElseThrow();
         List<String> codes = botStockCodes();
@@ -1507,10 +1559,9 @@ public class MarketService {
     }
 
     /**
-     * Seed a new LP lot and restore only a fully depleted lot.
+     * Seed a new LP lot and top up a nearly depleted lot within the finite supply bound.
      *
-     * A non-zero holding remains persistent across restarts, but a zero holding
-     * must not permanently remove the sole public sell-side counterparty.
+     * The last few human-reserved shares must not block an otherwise eligible refill.
      */
     private void ensureLiquidityInventory(String code, long userId) {
         long id = stockId(code);
@@ -1528,17 +1579,21 @@ public class MarketService {
                     INSERT INTO portfolios (user_id, stock_id, quantity, settled_quantity, average_price, realized_profit_loss)
                     VALUES (?, ?, ?, ?, ?, 0)
                     """, userId, id, initialInventory, initialInventory, findStock(code).price());
-        } else if (holdings.get(0).quantity() <= 0) {
+        } else if (holdings.get(0).quantity() <= 4) {
             // The startup/legacy path obeys the same finite supply bound as inline quotes.
             long circulating=jdbc.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM portfolios WHERE stock_id=?",Long.class,id);
             long nearbyAsks=jdbc.queryForObject("SELECT COALESCE(SUM(remaining_quantity),0) FROM orders WHERE stock_id=? AND user_id<>? AND side='SELL' AND status='OPEN' AND (expires_at IS NULL OR expires_at>CURRENT_TIMESTAMP) AND price<=?",Long.class,id,userId,findStock(code).price()*1.02);
             int refill=(int)Math.min(32,Math.max(0,Math.max(512L,initialInventory*4L)-circulating));
             if(refill==0 || nearbyAsks>=4)return;
+            HoldingState current=holdings.get(0);
+            int nextQuantity=current.quantity()+refill;
+            long average=Math.round((current.averagePrice()*(double)current.quantity()
+                    +findStock(code).price()*(double)refill)/nextQuantity);
             jdbc.update("""
                     UPDATE portfolios
                     SET quantity = ?, settled_quantity = ?, average_price = ?
                     WHERE user_id = ? AND stock_id = ?
-                    """, refill, refill, findStock(code).price(), userId, id);
+                    """, nextQuantity, current.settledQuantity()+refill, average, userId, id);
         }
     }
 

@@ -61,11 +61,11 @@ public final class StockMarketProfile {
     }
 
     public static double decisionIntervalWeight(String code) {
-        return isLargeCap(code) ? Math.max(6, of(code).liquidityWeight()) : 1;
+        return 1;
     }
 
     public static int activityTarget(String code, int base) {
-        return isLargeCap(code) ? Math.max(2, (int)Math.round(base * .12)) : base;
+        return base;
     }
 
     /** Large-cap value estimates use today's reference plus actual news, not an old startup anchor. */

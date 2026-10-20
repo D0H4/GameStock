@@ -16,7 +16,8 @@ public class AdminOperationsService {
     private final ApplicationEventPublisher events;
     public AdminOperationsService(JdbcTemplate db,AdminSupport support,MarketService market,AdminRuntimeControl runtime,ApplicationEventPublisher events){this.db=db;this.support=support;this.market=market;this.runtime=runtime;this.events=events;}
 
-    public record RuntimeChange(boolean botsPaused,boolean marketPaused,Integer cadenceMs,Integer targetPerSymbol,String reason) { }
+    public record RuntimeChange(boolean botsPaused,boolean tradersPaused,boolean marketPaused,Integer cadenceMs,Integer targetPerSymbol,
+                                Integer traderRampSeconds,String reason) { }
     public record StockChange(String name,String developer,String genre,String reason) { }
     public record StockCreate(String code,String name,String developer,String genre,long initialPrice,String reason) { }
     public record StockState(String state,String reason) { }
@@ -120,10 +121,17 @@ public class AdminOperationsService {
         reason(request.reason());
         if(request.cadenceMs()!=null&&(request.cadenceMs()<50||request.cadenceMs()>10000))throw new IllegalArgumentException("봇 주기는 50~10000ms입니다.");
         if(request.targetPerSymbol()!=null&&(request.targetPerSymbol()<1||request.targetPerSymbol()>1000))throw new IllegalArgumentException("종목당 목표는 1~1000입니다.");
+        if(request.traderRampSeconds()!=null&&(request.traderRampSeconds()<0||request.traderRampSeconds()>3600))throw new IllegalArgumentException("트레이더 재가동 시간은 0~3600초입니다.");
         lock(db);var before=runtime.settings();
-        db.update("UPDATE admin_runtime SET bots_paused=?,market_paused=?,cadence_ms=?,target_per_symbol=? WHERE id=1",request.botsPaused(),request.marketPaused(),request.cadenceMs(),request.targetPerSymbol());
-        // Remove resting bot quotes too; a pause must not leave bots filling human orders.
-        if(request.botsPaused()&&!before.botsPaused())cancelWhere("u.password_hash IN ('BOT','TRADER')",null);
+        boolean tradersStopped=request.botsPaused()||request.tradersPaused();
+        db.update("UPDATE admin_runtime SET bots_paused=?,traders_paused=?,market_paused=?,cadence_ms=?,target_per_symbol=?,trader_ramp_seconds=? WHERE id=1",
+                request.botsPaused(),request.tradersPaused(),request.marketPaused(),request.cadenceMs(),request.targetPerSymbol(),request.traderRampSeconds());
+        // The ramp clock starts only when traders actually come back; a ramp edit while running does not restart it.
+        if(before.tradersStopped()&&!tradersStopped)db.update("UPDATE admin_runtime SET traders_resumed_at=CURRENT_TIMESTAMP(3) WHERE id=1");
+        // Remove resting quotes of whatever just stopped; a paused bot must not keep filling human orders.
+        // A trader-only pause keeps the liquidity provider's quotes so humans can still trade.
+        if(request.botsPaused()&&!before.botsPaused())cancelWhere("u.password_hash='BOT'",null);
+        if(tradersStopped&&!before.tradersStopped())cancelWhere("u.password_hash='TRADER'",null);
         changed();var after=runtime.settings();support.audit(actor,"RUNTIME",1,request.reason(),before,after);return after;
     }
     @Transactional
