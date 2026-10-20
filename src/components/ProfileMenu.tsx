@@ -85,6 +85,8 @@ export function ProfileMenu({ route }: { route: Route }) {
   if (!auth.ready) return <span className="profile-menu" aria-hidden="true" />;
 
   if (!auth.user) {
+    /* 홈은 지수 옆 내 자산 칸에 로그인 버튼이 이미 있어 상단 버튼은 뺀다. */
+    if (route.name === "home") return <span className="profile-menu" aria-hidden="true" />;
     return (
       <div className="profile-menu">
         <button type="button" className="nav-link profile-login" onClick={() => openLoginPrompt(window.location.pathname)}>

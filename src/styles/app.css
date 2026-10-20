@@ -64,9 +64,8 @@
     align-items: center;
     gap: var(--space-5);
     width: 100%;
-    max-width: var(--page);
-    margin: 0 auto;
-    padding: 0 var(--space-5);
+    /* 상단 바만 창 양끝까지 편다. 본문은 --page 폭 그대로다. */
+    padding: 0 clamp(var(--space-5), 2.5vw, 48px);
     height: var(--bar);
   }
 
@@ -731,9 +730,11 @@
     opacity: 0.88;
   }
 
+  /* 인기 종목·속보 목록의 이름(.name-text, .news-title)과 같은 크기·굵기로 맞춘다. */
   .spot-name {
-    font-size: var(--step-1);
-    font-weight: 600;
+    font-size: var(--step-2);
+    font-weight: 700;
+    letter-spacing: var(--tracking);
     line-height: 1.35;
   }
 
@@ -1370,6 +1371,12 @@
       font-size: var(--step-1);
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    /* 폰에서는 표 종목명이 14px로 줄어드니 카드 이름·속보 제목도 함께 줄인다. */
+    .spot-name,
+    .news-title {
+      font-size: var(--step-1);
     }
 
     .watch-button {
