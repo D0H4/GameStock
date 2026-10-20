@@ -206,6 +206,11 @@
   .loan-form { gap: var(--space-2); }
   .loan-form label small { margin-left: 4px; font-size: var(--step--1); }
   .loan-form > .account-button { margin-top: var(--space-2); }
+  /* 빌리기에만 비율 버튼 줄이 있어도 두 칸의 실행 버튼이 같은 높이에 오도록 버튼을 칸 바닥에 붙인다. */
+  .loan-forms > .panel { display: flex; flex-direction: column; }
+  .loan-forms .loan-form { display: flex; flex: 1; flex-direction: column; }
+  .loan-forms .loan-form > .account-price-input { flex: none; }
+  .loan-forms .loan-form > .account-button:last-child { margin-top: auto; }
   .loan-ratios { display: flex; gap: var(--space-1); }
   .loan-ratios .loan-chip { flex: 1; min-height: 32px; padding: 4px 8px; font-size: var(--step-0); font-weight: 600; }
   .head-me .loan-debt { color: var(--up-deep); }
@@ -217,5 +222,10 @@
     .loan-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .loan-figures dd { font-size: var(--step-3); }
     .loan-forms { grid-template-columns: minmax(0, 1fr); }
+    .loan-forms .loan-form > .account-button:last-child { margin-top: var(--space-2); }
+    /* 좁은 막대에서는 눈금 이름이 서로 겹치므로 반대매매 이름만 윗줄, 나머지는 아랫줄에 둔다. */
+    .loan-gauge-scale { height: 32px; }
+    .loan-gauge-scale span:first-child,
+    .loan-gauge-scale span:last-child { top: 16px; }
   }
 }

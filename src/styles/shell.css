@@ -166,13 +166,22 @@
     padding-block: 4px;
   }
 
-  /* 표의 양끝을 패널 제목과 "전체 보기"의 양끝에 맞춘다. 남는 폭은 이름 칸이 가져간다. */
-  .home-page .quote-table :is(th, td):first-child {
+  /* 표의 양끝을 패널 제목과 머리글 오른쪽 글자의 양끝에 맞춘다. 남는 폭은 이름 칸이 가져간다. */
+  .home-page .quote-table :is(th, td):first-child,
+  .account-page .table :is(th, td):first-child,
+  .loan-page .table :is(th, td):first-child {
     padding-left: 0;
   }
 
-  .home-page .quote-table :is(th, td):last-child {
+  .home-page .quote-table :is(th, td):last-child,
+  .account-page .table :is(th, td):last-child,
+  .loan-page .table :is(th, td):last-child {
     padding-right: 0;
+  }
+
+  /* 건수와 링크가 함께 있으면 둘 다 오른쪽에 모은다. space-between 만으로는 건수가 가운데에 뜬다. */
+  .panel-head > .panel-meta:has(+ .panel-action) {
+    margin-left: auto;
   }
 
   .home-grid .news-list {
@@ -351,11 +360,17 @@
     align-items: start;
   }
 
+  /* 칸 폭을 고정해 둬야 넓은 표가 패널을 밀어내지 않고 표 상자 안에서 가로로 넘긴다. */
   .account-page .account-column {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: var(--shell-gap);
     min-width: 0;
+  }
+
+  .account-page .table td:not(.cell-num) {
+    white-space: nowrap;
   }
 
   /* ---------------------------------------------------------------- 설정 */
@@ -365,12 +380,16 @@
     align-items: start;
   }
 
-  .account-settings:has(#settings-nickname) > [aria-labelledby="settings-nickname"] {
-    grid-column: 1;
-  }
+  /* 칸 지정은 두 칸일 때만 둔다. 속성 선택자가 좁은 화면의 "> *" 규칙보다 우선해
+     한 칸 격자에 2열을 새로 만들고 닉네임 칸을 한 글자 폭으로 눌러 버렸다. */
+  @media (min-width: 1101px) {
+    .account-settings:has(#settings-nickname) > [aria-labelledby="settings-nickname"] {
+      grid-column: 1;
+    }
 
-  .account-settings:has(#settings-nickname) > [aria-labelledby="settings-avatar"] {
-    grid-column: 2;
+    .account-settings:has(#settings-nickname) > [aria-labelledby="settings-avatar"] {
+      grid-column: 2;
+    }
   }
 
   .account-settings:has(#settings-nickname) > .account-message,
@@ -393,12 +412,15 @@
     grid-column: 1 / -1;
   }
 
-  .charge-page > [aria-labelledby="mission-board"] {
-    grid-column: 1;
-  }
+  /* 설정과 같은 이유로 칸 지정은 두 칸일 때만 둔다. */
+  @media (min-width: 1101px) {
+    .charge-page > [aria-labelledby="mission-board"] {
+      grid-column: 1;
+    }
 
-  .charge-page > [aria-labelledby="promo-code"] {
-    grid-column: 2;
+    .charge-page > [aria-labelledby="promo-code"] {
+      grid-column: 2;
+    }
   }
 
   /* ---------------------------------------------------------------- 칭호 */
@@ -580,6 +602,12 @@
 
     .login-page {
       padding: var(--space-5) var(--space-4);
+    }
+  }
+
+  @media (max-width: 720px) {
+    .account-page .table .cell-name {
+      min-width: 0;
     }
   }
 
