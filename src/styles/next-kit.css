@@ -24,7 +24,7 @@
   transition: background 120ms ease-out, border-color 120ms ease-out, opacity 120ms ease-out;
 }
 
-.nx-btn:hover:not(:disabled) { border-color: var(--ink-faint); background: var(--nx-raised); }
+.nx-btn:hover:not(:disabled) { border-color: var(--ink-faint); background: var(--nx-tint); }
 .nx-btn:disabled { color: var(--ink-faint); cursor: not-allowed; }
 .nx-btn.is-primary { border-color: var(--ink); background: var(--ink); color: var(--nx-stage); }
 .nx-btn.is-primary:hover:not(:disabled) { border-color: var(--ink); background: var(--ink); opacity: 0.88; }
@@ -191,7 +191,7 @@
 .nx-grid-table tbody th,
 .nx-grid-table tbody td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: right; white-space: nowrap; }
 .nx-grid-table tbody tr:last-child > * { border-bottom: 0; }
-.nx-grid-table tbody tr:hover > * { background: var(--nx-raised); }
+.nx-grid-table tbody tr:hover > * { background: var(--nx-tint); }
 .nx-grid-table a { color: var(--ink); text-decoration: none; }
 .nx-grid-table a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nx-grid-table .is-up { color: var(--up-deep); }

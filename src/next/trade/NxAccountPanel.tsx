@@ -16,7 +16,7 @@ type ActiveOrder = {
 
 const TABS = [["holdings", "보유 잔고"], ["fills", "체결 내역"], ["orders", "미체결"]] as const;
 
-/** 거래창 아래 줄. 조회·취소 규칙은 기존 TradeAccountPanel과 같고 표만 새로 그린다. */
+/** 거래창 아래 줄. 지금 보고 있는 종목의 잔고·체결·미체결만 보여준다. */
 export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
   code: string;
   tab: NxAccountTab;
@@ -25,7 +25,6 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
 }) {
   const snapshot = useMarket();
   const { user, ready } = useAuthUser();
-  const [onlyCurrent, setOnlyCurrent] = useState(false);
   const [orders, setOrders] = useState<ActiveOrder[]>([]);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -86,9 +85,9 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
     }
   };
 
-  const positions = user ? Object.values(snapshot.portfolio.positions).filter((position) => position.qty > 0 && (!onlyCurrent || position.code === code)) : [];
-  const fills = user ? snapshot.portfolio.fills.filter((fill) => !onlyCurrent || fill.code === code) : [];
-  const visibleOrders = user ? orders.filter((order) => !onlyCurrent || order.stockCode === code) : [];
+  const positions = user ? Object.values(snapshot.portfolio.positions).filter((position) => position.qty > 0 && position.code === code) : [];
+  const fills = user ? snapshot.portfolio.fills.filter((fill) => fill.code === code) : [];
+  const visibleOrders = user ? orders.filter((order) => order.stockCode === code) : [];
   const count = tab === "holdings" ? positions.length : tab === "fills" ? fills.length : visibleOrders.length;
   const signed = (amount: number) => `${amount > 0 ? "+" : ""}${won(amount)}`;
   const tone = (amount: number) => amount > 0 ? "is-up" : amount < 0 ? "is-down" : "";
@@ -98,9 +97,9 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
     : !user ? "로그인하면 잔고와 거래 내역을 볼 수 있어요."
     : tab === "orders" && loading ? "미체결 주문을 조회하고 있어요."
     : tab === "orders" && error ? "조회에 실패했어요. 아래 다시 시도를 눌러 주세요."
-    : tab === "holdings" ? "보유 중인 종목이 없어요."
-    : tab === "fills" ? "아직 체결된 주문이 없어요."
-    : "걸려 있는 미체결 주문이 없어요.";
+    : tab === "holdings" ? "이 종목을 아직 갖고 있지 않아요."
+    : tab === "fills" ? "이 종목에서 체결된 주문이 아직 없어요."
+    : "이 종목에 걸려 있는 미체결 주문이 없어요.";
 
   return (
     <div className="nx-acct" aria-label="내 잔고와 주문 내역">
@@ -108,14 +107,10 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
         <div className="nx-tabs" role="group" aria-label="계좌 내역 선택">
           {TABS.map(([value, label]) => (
             <button key={value} type="button" className={tab === value ? "is-active" : undefined} aria-pressed={tab === value} onClick={() => onTabChange(value)}>
-              {label}{user && value === "orders" && orders.length > 0 && <span className="nx-tab-count nx-num">{orders.length}</span>}
+              {label}{user && value === "orders" && visibleOrders.length > 0 && <span className="nx-tab-count nx-num">{visibleOrders.length}</span>}
             </button>
           ))}
         </div>
-        <label className="nx-check">
-          <input type="checkbox" checked={onlyCurrent} onChange={(event) => setOnlyCurrent(event.target.checked)} />
-          <span>이 종목만</span>
-        </label>
       </div>
 
       <div className="nx-acct-scroll" tabIndex={0} role="region" aria-label="계좌 내역 표" aria-busy={tab === "orders" && loading}>
@@ -124,13 +119,9 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
             <p>{emptyText}</p>
             {ready && (!user ? (
               <button type="button" className="nx-btn" onClick={() => openLoginPrompt()}>로그인</button>
-            ) : !(tab === "orders" && (loading || error)) && (onlyCurrent ? (
-              <button type="button" className="nx-btn" onClick={() => setOnlyCurrent(false)}>전체 종목 보기</button>
-            ) : tab === "holdings" ? (
-              <Link className="nx-btn" to="/market">종목 둘러보기</Link>
-            ) : (
+            ) : !(tab === "orders" && (loading || error)) && (
               <button type="button" className="nx-btn" onClick={onFocusTicket}>주문 입력하기</button>
-            )))}
+            ))}
           </div>
         ) : (
           <table className="nx-grid-table">

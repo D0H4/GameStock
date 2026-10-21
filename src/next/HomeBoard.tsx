@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { GameIcon } from "../components/GameIcon";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { Link } from "../components/Link";
@@ -128,14 +128,49 @@ function Heatmap() {
   );
 }
 
+const MOVERS_NARROW = 5;
+
+/**
+ * 넓은 화면에서는 목록 칸 높이를 왼쪽 열이 정한다(CSS contain: size).
+ * 그 높이에 온전히 들어가는 줄 수만큼 종목을 보여준다. 좁은 화면은 5개.
+ */
+function useMoverFit(list: RefObject<HTMLOListElement | null>, total: number): number {
+  const [fit, setFit] = useState(MOVERS_NARROW);
+  useLayoutEffect(() => {
+    const element = list.current;
+    if (!element) return undefined;
+    const wide = window.matchMedia("(min-width: 1081px)");
+    const measure = () => {
+      if (!wide.matches) return setFit(MOVERS_NARROW);
+      const rows = [...element.children] as HTMLElement[];
+      const first = rows[0];
+      if (!first) return;
+      const later = rows[1]?.offsetHeight ?? first.offsetHeight;
+      const room = element.clientHeight - first.offsetHeight;
+      setFit(Math.max(1, 1 + Math.floor(room / later)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    wide.addEventListener("change", measure);
+    return () => {
+      observer.disconnect();
+      wide.removeEventListener("change", measure);
+    };
+  }, [list, total]);
+  return fit;
+}
+
 function Movers() {
   const snapshot = useMarket();
-  const codes = [...snapshot.codes]
+  const list = useRef<HTMLOListElement>(null);
+  const ranked = [...snapshot.codes]
     .filter((code) => snapshot.quotes[code])
-    .sort((a, b) => Math.abs(sessionRate(snapshot.quotes[b])) - Math.abs(sessionRate(snapshot.quotes[a])))
-    .slice(0, 5);
+    .sort((a, b) => Math.abs(sessionRate(snapshot.quotes[b])) - Math.abs(sessionRate(snapshot.quotes[a])));
+  const fit = useMoverFit(list, ranked.length);
+  const codes = ranked.slice(0, fit);
   return (
-    <ol className="nx-movers">
+    <ol className="nx-movers" ref={list}>
       {codes.map((code) => {
         const quote = snapshot.quotes[code];
         const listing = LISTING_BY_CODE[code];
@@ -170,8 +205,6 @@ export function HomeBoard() {
   const change = value - prevClose;
   const sum = totals(snapshot);
   const held = holdings(snapshot, sum.total);
-  const ups = snapshot.codes.filter((code) => snapshot.quotes[code] && sessionRate(snapshot.quotes[code]) > 0).length;
-  const downs = snapshot.codes.filter((code) => snapshot.quotes[code] && sessionRate(snapshot.quotes[code]) < 0).length;
 
   return (
     <div className="nx-home">
@@ -184,15 +217,9 @@ export function HomeBoard() {
           <p className={`nx-num nx-hero-change ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>
             {signedNumber(change)} ({rate(prevClose ? change / prevClose : 0)})
           </p>
-          <p className="nx-hero-breadth">
-            상승 <span className="nx-num is-up">{ups}</span> · 하락 <span className="nx-num is-down">{downs}</span> · 전체 <span className="nx-num">{snapshot.codes.length}</span>
-          </p>
         </div>
         <figure className="nx-hero-chart">
           <IndexChart points={history.points} live={value} />
-          <figcaption className="nx-hero-caption">
-            {history.status === "loading" ? "오늘 흐름을 계산하는 중이에요." : history.status === "error" ? "오늘 흐름을 불러오지 못했어요." : "오늘 0시부터 10분 간격 · 점선은 기준 1,000"}
-          </figcaption>
         </figure>
       </section>
 
@@ -200,7 +227,6 @@ export function HomeBoard() {
         <section className="nx-panel nx-home-heat" aria-labelledby="nx-heat-title">
           <header className="nx-panel-head">
             <h2 id="nx-heat-title" className="nx-panel-title">시장 지도</h2>
-            <Link to="/market" className="nx-more">전체 종목</Link>
           </header>
           <Heatmap />
         </section>

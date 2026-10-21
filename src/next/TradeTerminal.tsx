@@ -8,11 +8,11 @@ import { ProfileMenu } from "../components/ProfileMenu";
 import { RestrictionBadge } from "../components/RestrictionBadge";
 import { SeriesChart } from "../components/SeriesChart";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
-import { clock, compactWon, indexValue, rate, shares, since, won } from "../market/format";
+import { compactWon, indexValue, rate, shares, since, won } from "../market/format";
 import { newsEffect, sessionRate, strengthRatio } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
-import { NEWS_PATH, TRADE_PATH, type Route } from "../router";
+import { MARKET_PATH, NEWS_PATH, TRADE_PATH, type Route } from "../router";
 import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
@@ -40,11 +40,50 @@ export function useNxRoot(): void {
   }, [theme]);
 }
 
-export function NxTopbar({ route }: { route: Route }) {
+const TICKER_MS = 4000;
+
+/** 상단 바 시세 자리. 게임주 지수에서 시작해 종목 시세를 하나씩 돌아가며 보여준다. */
+function TopTicker() {
   const snapshot = useMarket();
+  const [step, setStep] = useState(0);
+  const codes = snapshot.codes.filter((code) => snapshot.quotes[code] && LISTING_BY_CODE[code]);
+  const slots = codes.length + 1;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setStep((current) => current + 1), TICKER_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const slot = step % slots;
+  if (slot === 0) {
+    const { value, prevClose } = snapshot.index;
+    const change = value - prevClose;
+    return (
+      <p className="nx-index">
+        <span className="nx-index-item" key="index">
+          <span className="nx-index-label">게임주 지수</span>
+          <span className="nx-num nx-index-value">{indexValue(value)}</span>
+          <span className={`nx-num ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>{rate(prevClose > 0 ? change / prevClose : 0)}</span>
+        </span>
+      </p>
+    );
+  }
+  const code = codes[slot - 1];
+  const quote = snapshot.quotes[code];
+  const ratio = sessionRate(quote);
+  return (
+    <Link className="nx-index" to={MARKET_PATH(code)}>
+      <span className="nx-index-item" key={code}>
+        <span className="nx-index-label">{LISTING_BY_CODE[code].name}</span>
+        <span className="nx-num nx-index-value">{won(quote.price)}</span>
+        <span className={`nx-num ${ratio > 0 ? "is-up" : ratio < 0 ? "is-down" : ""}`}>{rate(ratio)}</span>
+      </span>
+    </Link>
+  );
+}
+
+export function NxTopbar({ route }: { route: Route }) {
   const theme = useNxTheme();
-  const { value, prevClose } = snapshot.index;
-  const change = value - prevClose;
   return (
     <header className="nx-top">
       <Link className="nx-brand" to="/" aria-label="슈엔증권 홈">
@@ -61,11 +100,6 @@ export function NxTopbar({ route }: { route: Route }) {
           );
         })}
       </nav>
-      <p className="nx-index">
-        <span className="nx-index-label">게임주 지수</span>
-        <span className="nx-num nx-index-value">{indexValue(value)}</span>
-        <span className={`nx-num ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>{rate(prevClose > 0 ? change / prevClose : 0)}</span>
-      </p>
       <button type="button" className="nx-icon-button" onClick={toggleNxTheme} aria-label={theme === "dark" ? "밝은 화면으로 바꾸기" : "어두운 화면으로 바꾸기"}>
         {theme === "dark" ? (
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" /></svg>
@@ -73,16 +107,9 @@ export function NxTopbar({ route }: { route: Route }) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" /></svg>
         )}
       </button>
+      <TopTicker />
       <ProfileMenu route={route} />
     </header>
-  );
-}
-
-export function NxStatus() {
-  return (
-    <footer className="nx-status">
-      <p>모의 시세입니다. 실제 시장 데이터가 아닙니다.</p>
-    </footer>
   );
 }
 
@@ -272,7 +299,6 @@ function Book({ quote, onPriceSelect }: { quote: Quote; onPriceSelect: (price: n
               <span>연속 {streak.side === "buy" ? "매수" : "매도"}</span>
             </>
           ) : <span>{last ? `${last.side === "buy" ? "매수" : "매도"} 체결` : "체결 대기"}</span>}
-          {last && <span className="nx-combo-last nx-num">{clock(last.at)} · {last.qty.toLocaleString("ko-KR")}주</span>}
         </div>
         {Array.from({ length: 5 }, (_, index) => row("bid", bids[index], index + 7))}
       </div>
@@ -308,27 +334,31 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
     <div className="nx-terminal">
       {snapshot.portfolioError && <p role="status" className="nx-alert">{snapshot.portfolioError}</p>}
       <Watchlist current={code} />
-      <section className="nx-panel nx-center" aria-label={`${listing.name} 시세와 차트`}>
-        <StockHead code={code} quote={quote} />
-        <div className="nx-chart integration-tools">
-          <SeriesChart code={code} markers={markers} />
-        </div>
-        <NewsStrip code={code} quote={quote} />
-      </section>
-      <Book quote={quote} onPriceSelect={(price) => setSelected((previous) => ({ code, price, revision: (previous?.revision ?? 0) + 1 }))} />
-      <section className="nx-panel nx-account" aria-label="내 잔고와 주문 내역">
-        <NxAccountPanel code={code} tab={accountTab} onTabChange={setAccountTab}
-          onFocusTicket={() => { const ticket = document.querySelector<HTMLFormElement>(".nx-ticket"); ticket?.focus({ preventScroll: true }); ticket?.scrollIntoView({ block: "nearest" }); }} />
-      </section>
-      <aside className="nx-panel nx-order" aria-label={`${listing.name} 매수·매도 주문`}>
-        <NxOrderTicket
-          key={code}
-          code={code}
-          onShowOrders={() => { setAccountTab("orders"); document.querySelector(".nx-account")?.scrollIntoView({ block: "nearest" }); }}
-          selectedLimitPrice={selected?.code === code ? selected.price : null}
-          selectedLimitPriceRevision={selected?.code === code ? selected.revision : undefined}
-        />
-      </aside>
+      <div className="nx-main">
+        <section className="nx-panel nx-center" aria-label={`${listing.name} 시세와 차트`}>
+          <StockHead code={code} quote={quote} />
+          <div className="nx-chart integration-tools">
+            <SeriesChart code={code} markers={markers} />
+          </div>
+          <NewsStrip code={code} quote={quote} />
+        </section>
+        <section className="nx-panel nx-account" aria-label="내 잔고와 주문 내역">
+          <NxAccountPanel code={code} tab={accountTab} onTabChange={setAccountTab}
+            onFocusTicket={() => { const ticket = document.querySelector<HTMLFormElement>(".nx-ticket"); ticket?.focus({ preventScroll: true }); ticket?.scrollIntoView({ block: "nearest" }); }} />
+        </section>
+      </div>
+      <div className="nx-rail">
+        <Book quote={quote} onPriceSelect={(price) => setSelected((previous) => ({ code, price, revision: (previous?.revision ?? 0) + 1 }))} />
+        <aside className="nx-panel nx-order" aria-label={`${listing.name} 매수·매도 주문`}>
+          <NxOrderTicket
+            key={code}
+            code={code}
+            onShowOrders={() => { setAccountTab("orders"); document.querySelector(".nx-account")?.scrollIntoView({ block: "nearest" }); }}
+            selectedLimitPrice={selected?.code === code ? selected.price : null}
+            selectedLimitPriceRevision={selected?.code === code ? selected.revision : undefined}
+          />
+        </aside>
+      </div>
     </div>
   );
 }

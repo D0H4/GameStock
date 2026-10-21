@@ -42,7 +42,7 @@
   font-size: 13px;
   cursor: pointer;
 }
-.nx-ratios button:hover:not(:disabled) { background: var(--nx-raised); color: var(--ink); }
+.nx-ratios button:hover:not(:disabled) { background: var(--nx-tint); color: var(--ink); }
 .nx-ratios button:disabled { color: var(--ink-faint); cursor: not-allowed; }
 
 .nx-ticket-total { display: grid; gap: 4px; margin: 0; padding-top: 12px; border-top: 1px solid var(--nx-line); }
