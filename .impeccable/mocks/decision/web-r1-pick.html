@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>서브컬처 게임 로비</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0F1630;--p1:#18224A;--p2:#22305E;--line:#2C3A6E;--ink:#F4F6FF;--mute:#A7B0D6;--pink:#FD5886;--up:#FF4D5E;--dn:#6E95FF}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font:500 13px/1.4 "Noto Sans KR",sans-serif;font-variant-numeric:tabular-nums}
+.top{height:60px;display:flex;align-items:center;gap:6px;padding:0 24px}
+.logo{font-weight:900;font-size:18px;display:flex;align-items:center;gap:8px;margin-right:22px}.logo i{width:26px;height:26px;border-radius:7px;background:var(--pink)}
+.tab{padding:9px 22px;background:var(--p1);transform:skewX(-14deg);color:var(--mute);font-weight:700}.tab span{display:inline-block;transform:skewX(14deg)}
+.tab.on{background:#fff;color:var(--bg)}
+.res{margin-left:auto;display:flex;gap:8px}
+.res div{background:var(--p1);border-radius:20px;padding:6px 14px 6px 8px;display:flex;align-items:center;gap:8px}
+.res i{width:20px;height:20px;border-radius:50%;background:var(--pink)}.res i.g{background:#FFC83D}
+.res b{font-size:15px}
+.u{color:var(--up)}.d{color:var(--dn)}
+.hero{margin:10px 24px 0;height:150px;display:grid;grid-template-columns:1fr 360px;gap:16px}
+.panel{background:#fff;color:var(--bg);clip-path:polygon(0 0,100% 0,96% 100%,0 100%);display:flex;align-items:center;gap:22px;padding:0 60px 0 26px}
+.icon{width:96px;height:96px;border-radius:16px;background:#E9D6F3;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6A4A80}
+.panel small{color:#5B6385}.panel .nm{font-size:24px;font-weight:900}
+.panel .px{font-size:56px;font-weight:900;letter-spacing:-.02em;margin-left:auto;line-height:1}
+.panel .ch{font-size:22px;font-weight:900;color:#D7263D}
+.state{background:var(--p1);border-radius:10px;padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;align-content:center}
+.state span{color:var(--mute);font-size:12px}.state b{display:block;color:var(--ink);font-size:16px}
+.g{display:grid;grid-template-columns:220px 1fr 340px;gap:16px;margin:16px 24px 0;height:558px}
+.box{background:var(--p1);border-radius:10px;padding:14px 16px;overflow:hidden}
+h3{font-size:12px;color:var(--mute);font-weight:500;margin-bottom:10px}
+.wl div{display:flex;justify-content:space-between;padding:8px 10px;border-radius:6px}.wl div.on{background:var(--p2);box-shadow:inset 3px 0 var(--pink)}
+.tf span{padding:5px 12px;border-radius:14px;color:var(--mute)}.tf .on{background:var(--p2);color:var(--ink)}
+.news{margin-top:8px;background:var(--p2);border-radius:8px;padding:10px 14px;display:flex;gap:12px;align-items:center}.news b{background:var(--pink);border-radius:4px;padding:2px 8px;font-size:12px}
+.ob div{display:grid;grid-template-columns:1fr 1fr;padding:3px 0;position:relative}.ob i{position:absolute;right:0;top:2px;bottom:2px;opacity:.28;border-radius:2px}.ob span:last-child{text-align:right}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:14px 0 10px}.seg span{text-align:center;padding:9px;background:var(--p2);transform:skewX(-10deg)}.seg .on{background:var(--up);font-weight:900}
+.fld{display:flex;justify-content:space-between;background:var(--bg);border-radius:6px;padding:9px 12px;margin-bottom:8px}
+.go{background:var(--up);text-align:center;padding:12px;border-radius:8px;font-weight:900;font-size:15px}
+</style></head><body>
+<div class="top"><div class="logo"><i></i>슈엔증권</div>
+<div class="tab"><span>홈</span></div><div class="tab on"><span>거래</span></div><div class="tab"><span>속보</span></div><div class="tab"><span>랭킹</span></div>
+<div class="res"><div><i></i><span style="color:var(--mute)">모의 현금</span><b>₩1,000,000</b></div><div><i class="g"></i><span style="color:var(--mute)">게임주 지수</span><b>1,013.73</b><span class="u">+1.37%</span></div></div></div>
+<div class="hero"><div class="panel"><div class="icon">[게임 아이콘]</div><div><small>UMA · 사이게임즈 · 육성</small><div class="nm">우마무스메 프리티더비</div></div><div class="px">₩10,590</div><div class="ch">▲ 0.09%</div></div>
+<div class="state"><div><span>고가</span><b>10,840</b></div><div><span>저가</span><b>10,300</b></div><div><span>거래량</span><b>911.1만주</b></div><div><span>상한가</span><b>13,754</b></div></div></div>
+<div class="g"><section class="box wl"><h3>종목</h3>
+<div class="on"><span>우마무스메</span><span class="u">+0.09%</span></div><div><span>발로란트</span><span class="u">+17.09%</span></div><div><span>쿠키런: 킹덤</span><span class="u">+15.90%</span></div><div><span>에픽세븐</span><span class="u">+17.85%</span></div><div><span>팰월드</span><span class="u">+17.40%</span></div><div><span>붕괴: 스타레일</span><span class="u">+1.20%</span></div><div><span>블루 아카이브</span><span class="u">+0.09%</span></div><div><span>오버워치</span><span class="u">+1.64%</span></div><div><span>니케</span><span class="d">-1.19%</span></div><div><span>명조</span><span class="u">+0.19%</span></div></section>
+<section class="box"><div class="tf"><span>1시간</span><span class="on">1일</span><span>1주</span><span>1개월</span></div>
+<svg width="100%" height="410" viewBox="0 0 700 410" preserveAspectRatio="none"><polyline fill="none" stroke="#FF4D5E" stroke-width="2.5" points="0,80 40,70 80,170 120,190 160,180 200,330 240,320 280,304 320,290 360,272 400,254 440,232 480,210 520,190 560,170 600,152 700,130"/><circle cx="200" cy="330" r="7" fill="#fff" stroke="#0F1630" stroke-width="3"/><circle cx="480" cy="210" r="7" fill="#fff" stroke="#0F1630" stroke-width="3"/></svg>
+<div class="news"><b>뉴스</b><span>'우마무스메' 신규 육성 시나리오 공개, 사전 예약 개시</span><span class="u" style="margin-left:auto;font-weight:900">영향 +0.8</span></div></section>
+<section class="box ob"><h3>호가</h3>
+<div><i style="width:22%;background:var(--dn)"></i><span>10,620</span><span>740</span></div><div><i style="width:60%;background:var(--dn)"></i><span>10,610</span><span>3,412</span></div><div><i style="width:38%;background:var(--dn)"></i><span>10,600</span><span>2,105</span></div>
+<div style="font-size:20px;font-weight:900;padding:6px 0" class="u">10,590</div>
+<div><i style="width:54%;background:var(--up)"></i><span>10,580</span><span>3,020</span></div><div><i style="width:70%;background:var(--up)"></i><span>10,570</span><span>3,880</span></div><div><i style="width:32%;background:var(--up)"></i><span>10,560</span><span>1,760</span></div>
+<div class="seg"><span class="on">매수</span><span>매도</span></div><div class="fld"><span style="color:var(--mute)">가격</span><b>10,570 원</b></div><div class="fld"><span style="color:var(--mute)">수량</span><b>40 주</b></div><div class="go">매수 · ₩422,800</div></section></div>
+</body></html>

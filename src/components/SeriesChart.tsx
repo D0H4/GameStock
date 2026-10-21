@@ -26,7 +26,7 @@ const axisFormatter = new Intl.DateTimeFormat("ko-KR", {
 });
 
 /** Hover and touch read the server's recorded price/time pair, never an estimated tick time. */
-export function SeriesChart({ code, tone }: { code: string; tone?: "up" | "down" | "flat" }) {
+export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?: "up" | "down" | "flat"; markers?: Array<{ at: number; label: string }> }) {
   const snapshot = useMarket();
   const quote = snapshot.quotes[code];
   const [mode, setMode] = useState<ChartMode>("line");
@@ -97,6 +97,11 @@ export function SeriesChart({ code, tone }: { code: string; tone?: "up" | "down"
   const points = samples.map((sample) => ({ x: x(sample.at), y: y(sample.price) }));
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(3)} ${point.y.toFixed(3)}`).join(" ");
   const area = points.length > 1 ? `${path} L ${points.at(-1)!.x} 100 L ${points[0].x} 100 Z` : "";
+  /* 뉴스 시점은 그 시각에 가장 가까운 기록 위에 찍는다. 기간 밖의 뉴스는 그리지 않는다. */
+  const nearestSample = (at: number) => samples.reduce((best, sample) => (Math.abs(sample.at - at) < Math.abs(best.at - at) ? sample : best), samples[0]);
+  const markerDots = samples.length > 1
+    ? markers.filter((marker) => marker.at >= firstAt && marker.at <= lastAt).map((marker) => ({ ...marker, sample: nearestSample(marker.at) }))
+    : [];
   const hoveredIndex = samples.findIndex((sample) => sample.at === hoveredAt);
   const hovered = samples[hoveredIndex];
   // History is intentionally persisted at bucket boundaries. The live quote
@@ -188,6 +193,10 @@ export function SeriesChart({ code, tone }: { code: string; tone?: "up" | "down"
             <span className="chart-extreme is-high" style={{top:`${y(max)}%`}}>최고 {won(max)}</span>
             {max !== min && <span className="chart-extreme is-low" style={{top:`${y(min)}%`}}>최저 {won(min)}</span>}
             <span className="chart-last-dot" style={{left:`${x(lastAt)}%`,top:`${y(currentValue)}%`}} />
+            {markerDots.map((marker) => (
+              <span key={`${marker.at}-${marker.label}`} className="chart-news-dot" title={marker.label} aria-hidden="true"
+                style={{left:`${x(marker.sample.at)}%`,top:`${y(mode === "candle" && marker.sample.candle ? marker.sample.candle.closePrice : marker.sample.price)}%`}} />
+            ))}
           </>}
           {hovered && <>
             <span className="chart-crosshair" style={{left:`${x(hovered.at)}%`}} />

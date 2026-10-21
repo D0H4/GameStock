@@ -24,6 +24,19 @@ import { useProfile } from "./lib/profile";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { useRoute } from "./router";
+import { NxStatus, NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
+import { HomeBoard } from "./next/HomeBoard";
+import { MarketBoard } from "./next/MarketBoard";
+import { NxAdminPage } from "./next/pages/NxAdminPage";
+import { NxChargePage } from "./next/pages/NxChargePage";
+import { NxLoanPage } from "./next/pages/NxLoanPage";
+import { NxLoginPage } from "./next/pages/NxLoginPage";
+import { NxMyPage } from "./next/pages/NxMyPage";
+import { NxNewsPage } from "./next/pages/NxNewsPage";
+import { NxRankingPage } from "./next/pages/NxRankingPage";
+import { NxSettingsPage } from "./next/pages/NxSettingsPage";
+import { NxTitlesPage } from "./next/pages/NxTitlesPage";
+import { useNextUi } from "./next/uiMode";
 import type { Route } from "./router";
 
 const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge", "loan", "admin"]);
@@ -54,6 +67,13 @@ export default function App() {
   const auth = useAuthUser();
   const profile = useProfile();
   const suspendedUntil = useSuspendedUntil(auth.user ? profile : null);
+  const nextUi = useNextUi();
+  /*
+   * 새 화면: 종목 상세와 거래는 하나의 터미널로 합친다(해외 거래소처럼).
+   * 홈·시장 목록은 새로 짜고, 나머지 화면은 기존 화면을 새 색 체계로 감싼다.
+   */
+  const terminal = nextUi && (route.name === "trade" || (route.name === "market" && route.ticker !== null));
+  useNxRoot(nextUi);
   const main = useRef<HTMLElement>(null);
   const previous = useRef(route);
 
@@ -83,25 +103,25 @@ export default function App() {
         본문으로 건너뛰기
       </a>
       <AuthBridge />
-      <Topbar route={route} />
-      <main id="content" className="content" ref={main} tabIndex={-1}>
+      {nextUi ? <NxTopbar route={route} /> : <Topbar route={route} />}
+      <main id="content" className={nextUi ? `content nx-content${terminal ? "" : " nx-page"}` : "content"} ref={main} tabIndex={-1}>
         {suspendedUntil ? <SuspensionNotice until={suspendedUntil} reason={profile?.tradeBanReason} /> : <>
-        {route.name === "home" && <HomePage />}
-        {route.name === "market" && <MarketPage ticker={route.ticker} />}
-        {route.name === "trade" && <TradePage ticker={route.ticker} />}
-        {route.name === "news" && <NewsPage id={route.id} />}
-        {route.name === "ranking" && <RankingPage />}
+        {route.name === "home" && (nextUi ? <HomeBoard /> : <HomePage />)}
+        {route.name === "market" && (terminal ? <TradeTerminal ticker={route.ticker} /> : nextUi ? <MarketBoard /> : <MarketPage ticker={route.ticker} />)}
+        {route.name === "trade" && (terminal ? <TradeTerminal ticker={route.ticker} /> : <TradePage ticker={route.ticker} />)}
+        {route.name === "news" && (nextUi ? <NxNewsPage id={route.id} /> : <NewsPage id={route.id} />)}
+        {route.name === "ranking" && (nextUi ? <NxRankingPage /> : <RankingPage />)}
         {PRIVATE_ROUTES.has(route.name) && !auth.user && <p className="empty" role="status">로그인 상태를 확인하고 있어요.</p>}
-        {route.name === "mypage" && auth.user && <MyPage />}
-        {route.name === "settings" && auth.user && <SettingsPage />}
-        {route.name === "titles" && auth.user && <TitlesPage />}
-        {route.name === "charge" && auth.user && <ChargePage />}
-        {route.name === "loan" && auth.user && <LoanPage />}
-        {route.name === "admin" && auth.user && <AdminPage />}
-        {route.name === "login" && <LoginPage method={route.method} />}
+        {route.name === "mypage" && auth.user && (nextUi ? <NxMyPage /> : <MyPage />)}
+        {route.name === "settings" && auth.user && (nextUi ? <NxSettingsPage /> : <SettingsPage />)}
+        {route.name === "titles" && auth.user && (nextUi ? <NxTitlesPage /> : <TitlesPage />)}
+        {route.name === "charge" && auth.user && (nextUi ? <NxChargePage /> : <ChargePage />)}
+        {route.name === "loan" && auth.user && (nextUi ? <NxLoanPage /> : <LoanPage />)}
+        {route.name === "admin" && auth.user && (nextUi ? <NxAdminPage /> : <AdminPage />)}
+        {route.name === "login" && (nextUi ? <NxLoginPage method={route.method} /> : <LoginPage method={route.method} />)}
         </>}
       </main>
-      <StatusBar />
+      {nextUi ? <NxStatus /> : <StatusBar />}
       <MissionRewardToast />
       <TitleWatcher />
       <LoginModal />

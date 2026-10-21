@@ -1,0 +1,181 @@
+import { useEffect, useRef, useState } from "react";
+import { Link } from "../../components/Link";
+import { apiFetch } from "../../lib/api";
+import { openLoginPrompt, useAuthUser } from "../../lib/auth";
+import { clock, fillTime, won } from "../../market/format";
+import { useMarket } from "../../market/MarketProvider";
+import { LISTING_BY_CODE } from "../../market/universe";
+import { TRADE_PATH } from "../../router";
+
+export type NxAccountTab = "holdings" | "fills" | "orders";
+
+type ActiveOrder = {
+  id: number; stockCode: string; side: string; quantity: number;
+  remainingQuantity: number; price: number; status: string; orderType: string;
+};
+
+const TABS = [["holdings", "보유 잔고"], ["fills", "체결 내역"], ["orders", "미체결"]] as const;
+
+/** 거래창 아래 줄. 조회·취소 규칙은 기존 TradeAccountPanel과 같고 표만 새로 그린다. */
+export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
+  code: string;
+  tab: NxAccountTab;
+  onTabChange: (tab: NxAccountTab) => void;
+  onFocusTicket: () => void;
+}) {
+  const snapshot = useMarket();
+  const { user, ready } = useAuthUser();
+  const [onlyCurrent, setOnlyCurrent] = useState(false);
+  const [orders, setOrders] = useState<ActiveOrder[]>([]);
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [cancelling, setCancelling] = useState<number | null>(null);
+  const cancelInFlight = useRef(false);
+  const sessionRef = useRef(user?.uid);
+  sessionRef.current = user?.uid;
+
+  useEffect(() => {
+    setOrders([]);
+    setError("");
+    setMessage("");
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user || tab !== "orders") return;
+    const controller = new AbortController();
+    let pending = false;
+    const refresh = async (showLoading = false) => {
+      if (pending) return;
+      pending = true;
+      if (showLoading) setLoading(true);
+      try {
+        const result = await apiFetch<ActiveOrder[]>("/api/orders", { signal: controller.signal });
+        if (!controller.signal.aborted) { setOrders(result.filter((order) => order.status === "OPEN")); setError(""); }
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "미체결 주문을 불러오지 못했습니다.");
+      } finally {
+        pending = false;
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    void refresh(true);
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [user?.uid, tab, revision]);
+
+  const cancel = async (id: number) => {
+    if (cancelInFlight.current) return;
+    const uid = user?.uid;
+    cancelInFlight.current = true;
+    setCancelling(id);
+    setMessage("");
+    try {
+      await apiFetch(`/api/orders/${id}`, { method: "DELETE" });
+      if (sessionRef.current !== uid) return;
+      setOrders((current) => current.filter((order) => order.id !== id));
+      setMessage("미체결 주문을 취소했습니다.");
+      setError("");
+      setRevision((current) => current + 1);
+    } catch (cause) {
+      if (sessionRef.current === uid) setError(cause instanceof Error ? cause.message : "주문을 취소하지 못했습니다.");
+    } finally {
+      cancelInFlight.current = false;
+      setCancelling(null);
+    }
+  };
+
+  const positions = user ? Object.values(snapshot.portfolio.positions).filter((position) => position.qty > 0 && (!onlyCurrent || position.code === code)) : [];
+  const fills = user ? snapshot.portfolio.fills.filter((fill) => !onlyCurrent || fill.code === code) : [];
+  const visibleOrders = user ? orders.filter((order) => !onlyCurrent || order.stockCode === code) : [];
+  const count = tab === "holdings" ? positions.length : tab === "fills" ? fills.length : visibleOrders.length;
+  const signed = (amount: number) => `${amount > 0 ? "+" : ""}${won(amount)}`;
+  const tone = (amount: number) => amount > 0 ? "is-up" : amount < 0 ? "is-down" : "";
+  const name = (stock: string) => LISTING_BY_CODE[stock]?.name ?? stock;
+
+  const emptyText = !ready ? "계좌를 확인하고 있어요."
+    : !user ? "로그인하면 잔고와 거래 내역을 볼 수 있어요."
+    : tab === "orders" && loading ? "미체결 주문을 조회하고 있어요."
+    : tab === "orders" && error ? "조회에 실패했어요. 아래 다시 시도를 눌러 주세요."
+    : tab === "holdings" ? "보유 중인 종목이 없어요."
+    : tab === "fills" ? "아직 체결된 주문이 없어요."
+    : "걸려 있는 미체결 주문이 없어요.";
+
+  return (
+    <div className="nx-acct" aria-label="내 잔고와 주문 내역">
+      <div className="nx-acct-bar">
+        <div className="nx-tabs" role="group" aria-label="계좌 내역 선택">
+          {TABS.map(([value, label]) => (
+            <button key={value} type="button" className={tab === value ? "is-active" : undefined} aria-pressed={tab === value} onClick={() => onTabChange(value)}>
+              {label}{user && value === "orders" && orders.length > 0 && <span className="nx-tab-count nx-num">{orders.length}</span>}
+            </button>
+          ))}
+        </div>
+        <label className="nx-check">
+          <input type="checkbox" checked={onlyCurrent} onChange={(event) => setOnlyCurrent(event.target.checked)} />
+          <span>이 종목만</span>
+        </label>
+      </div>
+
+      <div className="nx-acct-scroll" tabIndex={0} role="region" aria-label="계좌 내역 표" aria-busy={tab === "orders" && loading}>
+        {count === 0 ? (
+          <div className="nx-acct-empty">
+            <p>{emptyText}</p>
+            {ready && (!user ? (
+              <button type="button" className="nx-btn" onClick={() => openLoginPrompt()}>로그인</button>
+            ) : !(tab === "orders" && (loading || error)) && (onlyCurrent ? (
+              <button type="button" className="nx-btn" onClick={() => setOnlyCurrent(false)}>전체 종목 보기</button>
+            ) : tab === "holdings" ? (
+              <Link className="nx-btn" to="/market">종목 둘러보기</Link>
+            ) : (
+              <button type="button" className="nx-btn" onClick={onFocusTicket}>주문 입력하기</button>
+            )))}
+          </div>
+        ) : (
+          <table className="nx-grid-table">
+            <caption className="vh">{tab === "holdings" ? "보유 잔고" : tab === "fills" ? "체결 내역" : "미체결 주문"}</caption>
+            <thead><tr>
+              {(tab === "holdings" ? ["종목", "수량", "평균단가", "현재가", "평가손익", "수익률"]
+                : tab === "fills" ? ["종목", "구분", "수량", "체결단가", "체결금액", "시각"]
+                : ["종목", "구분", "주문단가", "주문", "미체결", ""]).map((label, index) => <th key={`${label}${index}`} scope="col">{label}</th>)}
+            </tr></thead>
+            <tbody>
+              {tab === "holdings" && positions.map((position) => {
+                const price = snapshot.quotes[position.code]?.price ?? position.avgCost;
+                const pnl = (price - position.avgCost) * position.qty;
+                const ratio = position.avgCost > 0 ? ((price - position.avgCost) / position.avgCost) * 100 : 0;
+                return <tr key={position.code}>
+                  <th scope="row"><Link to={TRADE_PATH(position.code)}>{name(position.code)}</Link></th>
+                  <td className="nx-num">{position.qty.toLocaleString()}주</td><td className="nx-num">{won(position.avgCost)}</td><td className="nx-num">{won(price)}</td>
+                  <td className={`nx-num ${tone(pnl)}`}>{signed(pnl)}</td><td className={`nx-num ${tone(pnl)}`}>{ratio > 0 ? "+" : ""}{ratio.toFixed(2)}%</td>
+                </tr>;
+              })}
+              {tab === "fills" && fills.map((fill) => <tr key={fill.id}>
+                <th scope="row"><Link to={TRADE_PATH(fill.code)}>{name(fill.code)}</Link></th>
+                <td><span className={`nx-side is-${fill.side}`}>{fill.side === "buy" ? "매수" : "매도"}</span></td>
+                <td className="nx-num">{fill.qty.toLocaleString()}주</td><td className="nx-num">{won(fill.price)}</td><td className="nx-num">{won(fill.price * fill.qty)}</td><td className="nx-num">{fillTime(fill.at)}</td>
+              </tr>)}
+              {tab === "orders" && visibleOrders.map((order) => {
+                const buy = order.side.toLowerCase() === "buy";
+                return <tr key={order.id}>
+                  <th scope="row"><Link to={TRADE_PATH(order.stockCode)}>{name(order.stockCode)}</Link></th>
+                  <td><span className={`nx-side is-${buy ? "buy" : "sell"}`}>{buy ? "매수" : "매도"}</span></td>
+                  <td className="nx-num">{order.orderType === "MARKET" ? "시장가" : won(order.price)}</td>
+                  <td className="nx-num">{order.quantity.toLocaleString()}주</td>
+                  <td className="nx-num">{order.remainingQuantity.toLocaleString()}주</td>
+                  <td><button type="button" className="nx-btn is-small" disabled={cancelling !== null} onClick={() => void cancel(order.id)}>{cancelling === order.id ? "취소 중" : "취소"}</button></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className={`nx-acct-status${tab === "orders" && error ? " is-error" : ""}`} role="status" aria-live="polite">
+        <span>{tab === "orders" && error ? error : !user ? "로그인 후 이용할 수 있어요." : tab === "orders" && message ? message : tab === "orders" ? `미체결 ${count}건` : `${count}건 · ${clock(snapshot.updatedAt)} 기준`}</span>
+        {tab === "orders" && error && <button type="button" className="nx-link-button" onClick={() => setRevision((current) => current + 1)}>다시 시도</button>}
+      </div>
+    </div>
+  );
+}

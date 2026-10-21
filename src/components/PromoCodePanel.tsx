@@ -5,7 +5,8 @@ import { firebaseAuth } from "../lib/firebase";
 import { redeemPromoCode } from "../lib/titles";
 
 /** 프로모션 코드를 입력해 특별 칭호를 받는다. */
-export function PromoCodePanel() {
+/** 프로모션 코드 입력 상태와 제출. 기존 화면과 새 화면이 같이 쓴다. */
+export function usePromoCode() {
   const [user, setUser] = useState<User | null>(firebaseAuth.currentUser);
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
@@ -34,6 +35,11 @@ export function PromoCodePanel() {
     }
   };
 
+  return { user, code, setCode, pending, message, submit };
+}
+
+export function PromoCodePanel() {
+  const { user, code, setCode, pending, message, submit } = usePromoCode();
   return (
     <Panel id="promo-code" title="프로모션 코드">
       <form className="account-form promo-form" onSubmit={submit}>

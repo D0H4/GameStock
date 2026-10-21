@@ -24,7 +24,7 @@ type AdminUser = {
   tradeBanReason: string | null;
 };
 
-const SECTIONS: { section: AdminSection; label: string; to: string }[] = [
+export const ADMIN_SECTIONS: { section: AdminSection; label: string; to: string }[] = [
   { section: "users", label: "회원", to: "/admin" },
   { section: "orders", label: "주문", to: "/admin/orders" },
   { section: "notices", label: "공지", to: "/admin/notices" },
@@ -50,7 +50,7 @@ export function AdminPage() {
       <h1 className="page-title">관리자</h1>
       <AdminRuntime />
       <nav className="admin-nav" aria-label="관리 메뉴">
-        {SECTIONS.map((item) => (
+        {ADMIN_SECTIONS.map((item) => (
           <Link key={item.section} to={item.to} className={`admin-nav-link${item.section === section ? " is-active" : ""}`}
             aria-current={item.section === section ? "page" : undefined}>
             {item.label}
@@ -65,7 +65,7 @@ export function AdminPage() {
   );
 }
 
-function AdminUsers() {
+export function AdminUsers() {
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
