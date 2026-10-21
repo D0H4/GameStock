@@ -99,7 +99,8 @@
 
 /* ───────── 입력 ───────── */
 
-.nx-field { display: grid; gap: 6px; }
+/* 열을 minmax(0, 1fr)로 두어 숫자 입력칸의 기본 폭이 패널 밖으로 밀어내지 않게 한다. */
+.nx-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
 .nx-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nx-field-head label,
 .nx-field > label { color: var(--ink-muted); font-size: 13px; }
@@ -128,6 +129,7 @@
 .nx-stepper {
   display: flex;
   align-items: center;
+  min-width: 0;
   height: 48px;
   border: 1px solid var(--nx-line);
   border-radius: 8px;
@@ -137,6 +139,7 @@
 .nx-stepper.is-disabled { opacity: 0.6; }
 .nx-stepper input {
   flex: 1;
+  width: 0;
   min-width: 0;
   height: 100%;
   padding: 0 4px 0 12px;

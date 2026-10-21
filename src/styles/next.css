@@ -622,7 +622,7 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 
 /* 아래 줄: 잔고·주문 */
 .nx-account { grid-area: account; flex: 1; }
-.nx-order { flex: 1; }
+.nx-order { flex: 1; min-width: 0; }
 
 .nx-alert { grid-column: 1 / -1; margin: 0; padding: 10px 16px; background: var(--notice-bg); color: var(--notice-ink); }
 .nx-empty { padding: 48px 24px; color: var(--ink-muted); }

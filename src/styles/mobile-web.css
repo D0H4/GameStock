@@ -156,9 +156,6 @@ html[data-app-shell="web"] body {
     font-size: max(16px, 1em);
   }
 
-  /* 입력 묶음은 화면 폭을 넘지 않는다(주문서 단가 칸이 오른쪽으로 잘리던 문제). */
-  html[data-app-shell="web"][data-nx] .nx-field { grid-template-columns: minmax(0, 1fr); }
-
   /* ───────── 홈 ───────── */
 
   html[data-app-shell="web"][data-nx] .nx-hero-chart {
