@@ -20,7 +20,21 @@ public final class BotStrategyEngine {
     private final Map<String, Double> estimates=new HashMap<>();
     private final Random random;
     private final long seed;
-    public BotStrategyEngine(long seed){this.seed=seed; random=new Random(seed);}
+    private static final class Demand {double x;long at;Demand(double x,long at){this.x=x;this.at=at;}}
+    private final Map<String,Demand> demands=new HashMap<>();
+    private final Random demandRandom;
+    public BotStrategyEngine(long seed){this.seed=seed; random=new Random(seed);demandRandom=new Random(seed^0x5DEECE66DL);}
+
+    /** Mean-reverting unit noise remembered for memoryMillis; bounded to [-1,1]. */
+    private double demandShock(String key,long now,double memoryMillis,Random preference) {
+        Demand d=demands.computeIfAbsent(key,k->new Demand(preference.nextGaussian()*.6,now));
+        double dt=Math.max(0,now-d.at);d.at=now;
+        if(dt>0) {
+            double decay=Math.exp(-dt/memoryMillis);
+            d.x=d.x*decay+Math.sqrt(1-decay*decay)*.6*demandRandom.nextGaussian();
+        }
+        return clamp(d.x,-1,1);
+    }
     public static boolean hasInventoryDemand(BotProfile p) {
         return p.strategy().family()==Family.NOISE || p.strategy().family()==Family.AGGRESSIVE_LIQUIDITY_TAKER;
     }
@@ -29,24 +43,18 @@ public final class BotStrategyEngine {
         if(equity<=0) return 0;
         Random preference=new Random(seed^((long)(p.username()+":"+symbol).hashCode()*0x9E3779B97F4A7C15L));
         double weight=.75+preference.nextDouble()*.5;
-        double period=120_000+preference.nextDouble()*240_000;
-        double phase=preference.nextDouble()*Math.PI*2;
-        double demand=1+.4*Math.sin((now%((long)period))/period*Math.PI*2+phase);
+        String key=p.username()+":"+symbol;
+        // Allocation needs wander without a period. Fixed sine cycles made each trader buy and
+        // sell on the same cadence, which repeated the same price swing between the same levels.
         if(hasInventoryDemand(p) && p.holdingTimePreference()<5000) {
             // Fast flow participants have private short-lived allocation needs, not a common fair price.
             // The target is only an intent: every share must first be bought from a real counterparty.
-            period=StockMarketProfile.isLargeCap(symbol) ? 30_000+preference.nextDouble()*90_000
-                    : 5_000+preference.nextDouble()*15_000;
-            // A single short sine wave made the same flow bots revisit the same inventory
-            // phases too predictably. Two incommensurate waves keep the demand bounded while
-            // avoiding a clean buy/sell cycle at one fixed cadence.
-            long primaryPeriod=Math.max(1,(long)period);
-            long secondaryPeriod=Math.max(primaryPeriod+1,(long)(period*1.618));
-            double primary=Math.sin((now%primaryPeriod)/period*Math.PI*2+phase);
-            double secondary=Math.sin((now%secondaryPeriod)/(period*1.618)*Math.PI*2+phase*.37+.8);
-            double cycle=.65*primary+.35*secondary;
+            double memory=StockMarketProfile.isLargeCap(symbol) ? 8_000+preference.nextDouble()*22_000
+                    : 1_500+preference.nextDouble()*4_000;
+            double cycle=demandShock(key,now,memory,preference);
             return Math.min(equity/Math.max(1,price)*.1,Math.max(0,5+4*cycle)*weight);
         }
+        double demand=1+.4*demandShock(key,now,30_000+preference.nextDouble()*60_000,preference);
         // Even at maximum demand/weight, aggregate targets consume less than 75% of account equity.
         double budget=equity*(.2+.25*p.riskTolerance())/Math.max(1,symbols);
         return Math.min(budget/Math.max(1,price),p.positionLimit()*.35)*weight*demand;
@@ -159,7 +167,9 @@ public final class BotStrategyEngine {
         double score=score(p,m,e,position,estimatedValue,perceivedNews,random.nextGaussian());
         boolean flow=hasInventoryDemand(p);
         boolean large=StockMarketProfile.isLargeCap(symbol) && dayReference>0;
-        double dailyAnchor=large?StockMarketProfile.valuationAnchor(symbol,dayReference,estimatedValue,perceivedNews):estimatedValue;
+        // The estimate already carries the moving market consensus. Re-anchoring large caps to
+        // yesterday's close here held them in a fixed box around that close all day.
+        double dailyAnchor=estimatedValue;
         if(large && !flow) {
             // A stock cannot become a penny stock just because hundreds of accounts trade it.
             // This changes willingness to trade; only actual matched orders change the price.
@@ -171,10 +181,10 @@ public final class BotStrategyEngine {
                     +clamp(Math.log(Math.max(1,estimatedValue)/Math.max(1,m.markPrice()))/.05,-4,4);
         }
         if(dayReference>0 && StockMarketProfile.isSpeculative(symbol) && !flow) {
-            // Fade pursuit before the +/-20% bot safety wall. A stale common valuation must
-            // not leave every funded bid at the upper wall (or every offer at the lower wall).
+            // Fade pursuit only in the last two points before the +/-20% bot safety wall, so funded
+            // bids do not stack at the wall. Starting at 15% parked every hot symbol near +17%.
             double move=m.markPrice()/dayReference-1;
-            score-=Math.signum(move)*6*clamp((Math.abs(move)-.15)/.05,0,1);
+            score-=Math.signum(move)*6*clamp((Math.abs(move)-.18)/.02,0,1);
         }
         double dipStrength=dipStrength(m,symbol,dayReference);
         boolean capitulationFloor=dipStrength>0 && m.bidDepth()<=0;

@@ -37,11 +37,13 @@ final class BotActivityEngine {
     private final Map<ParticipantKey,ExecutionMemory> executionMemory=new HashMap<>();
     private final MarketMakerEngine maker=new MarketMakerEngine();
     private final LiquidityRecoveryPolicy recovery=new LiquidityRecoveryPolicy();
+    private final MarketConsensusValue consensus;
     private BatchOrderBook observedBook;
     private int observedFillCursor;
 
     BotActivityEngine(List<Participant> participants,long seed,int target) {
         this.participants=List.copyOf(participants);this.strategies=new BotStrategyEngine(seed^37);this.random=new Random(seed^71);this.target=target;
+        this.consensus=new MarketConsensusValue(seed^113);
         for(Participant p:participants){
             bySymbol.computeIfAbsent(p.stock(),k->new ArrayList<>()).add(p);
             executionMemory.put(new ParticipantKey(p.id(),p.stock()),new ExecutionMemory());
@@ -93,9 +95,12 @@ final class BotActivityEngine {
         List<Activity> activity=new ArrayList<>();
         for(var entry:bySymbol.entrySet()) {
             long stock=entry.getKey();Stock symbol=book.stocks.get(stock);
-            Observation observation=observations.get(stock);
-            if(symbol==null||observation==null)continue;
+            Observation observed=observations.get(stock);
+            if(symbol==null||observed==null)continue;
             if(!symbol.continuous){activity.add(new Activity(stock,symbol.code,0,0,false));continue;}
+            // Traders and the LP value the symbol at the moving consensus, not the raw news fundamental.
+            Observation observation=new Observation(observed.metrics(),observed.environment(),
+                    consensus.observe(symbol,observed.fundamental(),observed.news(),observed.environment(),now),observed.news(),observed.scale());
             var group=entry.getValue();int startFills=book.fills.size(),startOrders=book.accepted.size();
             int recent=recentFills.getOrDefault(stock,0);
             var risk=risks.get(stock);
@@ -154,7 +159,7 @@ final class BotActivityEngine {
                 long equity=account.cash+refundable+Math.round(held.quantity()*m.markPrice());
                 double targetQuantity=strategies.targetQuantity(p,symbol.code,now,equity,1,m.markPrice());
                 var position=new BotStrategyEngine.Position(held.quantity(),account.cash+refundable,held.average(),now-acquired.getOrDefault(participant.id(),now),targetQuantity);
-                double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
+                double anchor=observation.fundamental();
                 double researchNoise=.012*(StockMarketProfile.isLargeCap(symbol.code)?StockMarketProfile.of(symbol.code).movementWeight():1);
                 double estimate=strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise));
                 double news=observation.news()*(1+p.valueError()*8+random.nextGaussian()*.25);
@@ -241,7 +246,7 @@ final class BotActivityEngine {
         long postCancelBudget=Math.max(0,book.lpCashBudgets.get(stock)+reservedCash);
         var availableRisk=new MarketMakerEngine.RiskBook(Math.max(0,Math.min(postCancelCash,postCancelBudget)),
                 book.holding(lp,stock).quantity(),risk.targetInventory(),risk.maxInventory(),risk.riskLimit());
-        double anchor=StockMarketProfile.valuationAnchor(symbol.code,symbol.reference,observation.fundamental(),observation.news());
+        double anchor=observation.fundamental();
         var quotes=maker.quotes(metrics,observation.environment(),availableRisk,tickSize(symbol.last),observation.scale(),limits,anchor,
                 book.liquidityPressure(stock,lp));
         if(scheduledRefresh && !asksRecoverable && !bidsRecoverable
