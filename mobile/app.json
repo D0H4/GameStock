@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "씹덕주식",
+    "name": "슈엔증권",
     "slug": "gamestock-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -15,7 +15,9 @@
     },
     "plugins": [
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font",
+      "expo-status-bar"
     ]
   }
 }
