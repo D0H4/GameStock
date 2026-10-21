@@ -138,6 +138,9 @@ html[data-nx] :focus-visible {
   outline-offset: 2px;
 }
 
+/* 공지 창은 열릴 때 확인 버튼에 바로 초점이 가므로 링 대신 밝기로만 표시한다(protection.css). */
+html[data-nx] .circuit-notice-confirm:focus-visible { outline: none; }
+
 /* 숫자는 전부 같은 폭으로. 경기천년제목은 숫자 폭이 제각각이라 호가 열이 흔들린다. */
 html[data-nx] .nx-num,
 html[data-nx] .num,
