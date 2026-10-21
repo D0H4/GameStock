@@ -11,7 +11,7 @@ import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
 import { MARKET_PATH, useRoute } from "./router";
 import { Link } from "./components/Link";
-import { NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
+import { NxTabbar, NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
 import { HomeBoard } from "./next/HomeBoard";
 import { MarketBoard } from "./next/MarketBoard";
 import { NxAdminPage } from "./next/pages/NxAdminPage";
@@ -124,6 +124,7 @@ export default function App() {
         {route.name === "login" && <NxLoginPage method={route.method} />}
         </>}
       </main>
+      <NxTabbar route={route} />
       <MissionRewardToast />
       <TitleWatcher />
       <LoginModal />

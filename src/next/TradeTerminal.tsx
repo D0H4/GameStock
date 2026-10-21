@@ -84,6 +84,10 @@ function TopTicker() {
   );
 }
 
+function navActive(route: Route, match: (typeof NAV)[number]["match"]): boolean {
+  return route.name === match || (match === "market" && route.name === "trade");
+}
+
 export function NxTopbar({ route }: { route: Route }) {
   const theme = useNxTheme();
   return (
@@ -94,7 +98,7 @@ export function NxTopbar({ route }: { route: Route }) {
       </Link>
       <nav className="nx-nav" aria-label="주요 화면">
         {NAV.map((item) => {
-          const active = route.name === item.match || (item.match === "market" && route.name === "trade");
+          const active = navActive(route, item.match);
           return (
             <Link key={item.to} to={item.to} className={`nx-nav-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined}>
               {item.label}
@@ -112,6 +116,25 @@ export function NxTopbar({ route }: { route: Route }) {
       <TopTicker />
       <ProfileMenu route={route} />
     </header>
+  );
+}
+
+/**
+ * 휴대폰 브라우저의 아래 탭바. 본문 뒤에 두어 Tab 이동도 보이는 순서(위 → 본문 → 아래)를 따른다.
+ * 다른 화면에서는 CSS로 숨기고, 그때는 상단 바의 메뉴가 같은 일을 한다.
+ */
+export function NxTabbar({ route }: { route: Route }) {
+  return (
+    <nav className="nx-tabbar" aria-label="주요 화면">
+      {NAV.map((item) => {
+        const active = navActive(route, item.match);
+        return (
+          <Link key={item.to} to={item.to} className={`nx-tabbar-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined}>
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
