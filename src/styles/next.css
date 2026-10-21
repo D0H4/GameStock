@@ -20,6 +20,8 @@ html[data-nx][data-nx-theme="dark"] {
   --ink: #f1eef8;
   --ink-muted: #aaa4be;
   --ink-faint: #6f6986;
+  /* 그래프의 전일 종가·기준 점선. 패널 위 3:1 이상(3.4:1). */
+  --nx-guide: #6f6986;
   --canvas: var(--nx-stage);
   --paper: var(--nx-panel);
   --sunken: var(--nx-raised);
@@ -71,6 +73,8 @@ html[data-nx][data-nx-theme="light"] {
   --ink: #1b1726;
   --ink-muted: #5c566d;
   --ink-faint: #a29db0;
+  /* --ink-faint는 흰 바탕에서 2.6:1이라 기준 점선에는 한 단계 진하게 쓴다(3.6:1). */
+  --nx-guide: #8a849a;
   --canvas: var(--nx-stage);
   --paper: var(--nx-panel);
   --sunken: var(--nx-raised);
@@ -584,8 +588,9 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 .nx-book-row.is-bid .nx-book-price { color: var(--up-deep); }
 .nx-book-price:hover { background: var(--nx-tint); }
 
-.nx-book-qty { position: relative; padding-right: 8px; font-size: 13px; text-align: right; }
-.nx-book-bar { position: absolute; top: -8px; right: 0; bottom: -8px; z-index: 0; border-radius: 3px; }
+/* 잔량 칸은 줄 높이를 꽉 채우고, 막대는 그 안에서 위아래 2px씩 띄워 현재가 줄·이웃 줄과 겹치지 않게 한다. */
+.nx-book-qty { position: relative; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 13px; }
+.nx-book-bar { position: absolute; top: 2px; right: 0; bottom: 2px; z-index: 0; border-radius: 3px; }
 .nx-book-row.is-ask .nx-book-bar { background: var(--down-wash); }
 .nx-book-row.is-bid .nx-book-bar { background: var(--up-wash); }
 .nx-book-qty { isolation: isolate; }

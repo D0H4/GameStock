@@ -80,7 +80,7 @@
 .nx-hero-chart { justify-self: end; width: min(100%, 208px); margin: 0; }
 .nx-index-chart { display: block; width: 100%; height: 96px; overflow: visible; }
 .nx-index-chart.is-empty { border-bottom: 1px dashed var(--nx-line); }
-.nx-index-base { stroke: var(--ink-faint); stroke-dasharray: 4 4; stroke-width: 1; }
+.nx-index-base { stroke: var(--nx-guide); stroke-dasharray: 4 4; stroke-width: 1; }
 .nx-index-line { fill: none; stroke-width: 2.4; stroke-linejoin: round; }
 .nx-index-chart.is-up .nx-index-line { stroke: var(--up); }
 .nx-index-chart.is-down .nx-index-line { stroke: var(--down); }
@@ -239,9 +239,14 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 .nx-watch-limit.is-inline { position: static; margin-left: 4px; }
 
 .nx-col-range { width: 160px; }
-.nx-range { position: relative; display: block; width: 140px; height: 6px; border-radius: 3px; background: var(--nx-raised); }
-.nx-range-band { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--ink-faint); }
-.nx-range-now { position: absolute; top: 50%; width: 3px; height: 14px; border-radius: 3px; background: var(--brand); transform: translate(-50%, -50%); }
+.nx-day-chart { display: block; width: 140px; height: 36px; overflow: visible; }
+.nx-day-chart.is-loading { height: 18px; border-bottom: 1px dashed var(--nx-line); }
+.nx-day-note { color: var(--ink-muted); font-size: 12px; }
+.nx-day-base { stroke: var(--nx-guide); stroke-dasharray: 3 3; stroke-width: 1; }
+.nx-day-line { fill: none; stroke: var(--ink-faint); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.nx-day-chart.is-up .nx-day-line { stroke: var(--up); }
+.nx-day-chart.is-down .nx-day-line { stroke: var(--down); }
+.nx-rate-chart { display: none; }
 
 @media (max-width: 1080px) {
   .nx-content.nx-page { padding: 16px 12px; }
@@ -250,8 +255,10 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
   .nx-index-chart { height: 120px; }
   .nx-home-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heat" "movers" "news" "holdings"; }
   .nx-search { flex: 1; margin-left: 0; }
-  .nx-col-cap,
-  .nx-col-range { display: none; }
+  .nx-col-cap { display: none; }
+  /* 좁은 화면에서는 시가총액을 빼고 그래프만 줄여서 남긴다. */
+  .nx-col-range { width: 88px; }
+  .nx-day-chart { width: 72px; }
 }
 
 @media (max-width: 520px) {
@@ -262,7 +269,12 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
   .nx-table td { padding: 0 8px; }
   .nx-name-sub { display: none; }
   .nx-table td:nth-child(5),
-  .nx-table th:nth-child(5) { display: none; }
+  .nx-table th:nth-child(5),
+  .nx-table .nx-col-range { display: none; }
+  .nx-rate-chart { display: flex; justify-content: flex-end; margin-bottom: 2px; }
+  .nx-rate-chart .nx-day-chart { width: 64px; height: 20px; }
+  .nx-rate-chart .nx-day-chart.is-loading { height: 10px; }
+  .nx-rate-chart .nx-day-note { font-size: 11px; }
   .nx-mover-price { display: none; }
   .nx-mover-news { margin-left: 0; }
 }

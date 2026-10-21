@@ -5,22 +5,13 @@ import { Link } from "../components/Link";
 import { NewsFeed } from "../components/NewsFeed";
 import { PriceCell } from "../components/PriceCell";
 import { apiFetch } from "../lib/api";
-import { compactWon, indexValue, rate, serverTimestamp, signedNumber, since, won } from "../market/format";
+import { bucketPrices, type PricePoint } from "../market/dayHistory";
+import { compactWon, indexValue, rate, signedNumber, since, won } from "../market/format";
 import { useMarket } from "../market/MarketProvider";
 import { holdings, sessionRate, totals } from "../market/selectors";
 import type { MarketSnapshot } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
 import { MARKET_PATH, NEWS_PATH } from "../router";
-
-type PricePoint = { recordedAt: string; price: number };
-
-const BUCKET_MS = 10 * 60_000;
-
-/** 한국시간 오늘 0시. */
-function kstMidnight(now: number): number {
-  const kst = new Date(now + 9 * 3_600_000);
-  return Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 3_600_000;
-}
 
 /*
  * 지수 기록 API가 없어서 서버 지수와 같은 식(종목별 기준가 대비 비율을 시가총액으로 가중 평균 × 1000)을
@@ -37,31 +28,20 @@ function useIndexHistory(snapshot: MarketSnapshot): { points: number[]; status: 
         const list = codes.split(",").filter(Boolean);
         const histories = await Promise.all(list.map((code) => apiFetch<PricePoint[]>(`/api/stocks/${code}/history?range=24h`).catch(() => [] as PricePoint[])));
         if (!active) return;
-        const start = kstMidnight(Date.now());
-        const end = Date.now();
-        const buckets: number[] = [];
-        for (let at = start; at <= end; at += BUCKET_MS) buckets.push(at);
+        const now = Date.now();
         const ratios = list.map((code, index) => {
           const prevClose = snapshot.quotes[code]?.prevClose ?? 0;
-          const series = histories[index]
-            .map((point) => ({ at: serverTimestamp(point.recordedAt), price: point.price }))
-            .filter((point) => Number.isFinite(point.at) && point.price > 0)
-            .sort((a, b) => a.at - b.at);
           const weight = snapshot.quotes[code]?.marketCap ?? 0;
-          if (!prevClose || !weight || series.length === 0) return null;
-          let cursor = 0;
-          let last = series[0].price;
-          return { weight, ratios: buckets.map((at) => {
-            while (cursor < series.length && series[cursor].at <= at) last = series[cursor++].price;
-            return last / prevClose;
-          }) };
+          const prices = bucketPrices(histories[index], now);
+          if (!prevClose || !weight || prices.length === 0) return null;
+          return { weight, ratios: prices.map((price) => price / prevClose) };
         }).filter((row): row is { weight: number; ratios: number[] } => row !== null);
         if (ratios.length === 0) {
           setState({ points: [], status: "error" });
           return;
         }
         const totalWeight = ratios.reduce((sum, row) => sum + row.weight, 0);
-        const points = buckets.map((_, index) => (1000 * ratios.reduce((sum, row) => sum + row.ratios[index] * row.weight, 0)) / totalWeight);
+        const points = ratios[0].ratios.map((_, index) => (1000 * ratios.reduce((sum, row) => sum + row.ratios[index] * row.weight, 0)) / totalWeight);
         setState({ points, status: "ready" });
       } catch {
         if (active) setState((current) => ({ ...current, status: current.points.length ? "ready" : "error" }));
