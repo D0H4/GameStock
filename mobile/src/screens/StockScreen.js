@@ -8,7 +8,7 @@ import { GameIcon } from '../components/GameIcon';
 import { LineChart } from '../components/LineChart';
 import { cleanTitle, clockTime, newsSourceUrl, newsSummary, price, relativeTime, signedPercent } from '../format';
 import { api, sessionRate } from '../market';
-import { RADIUS, SPACE, Txt, toneOf, useTheme } from '../theme';
+import { RADIUS, RADIUS_SM, SPACE, Txt, toneOf, useTheme } from '../theme';
 import { OrderSheet } from './OrderSheet';
 
 const RANGES = [
@@ -79,7 +79,7 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
   if (!stock) {
     return (
       <View style={[styles.fill, styles.center, { backgroundColor: theme.ground, paddingTop: insets.top }]}>
-        {market.loaded ? <Txt variant="callout" tone="inkSoft">이 종목을 찾을 수 없어요.</Txt> : <ActivityIndicator color={theme.brand} />}
+        {market.loaded ? <Txt variant="callout" tone="inkSoft">이 종목을 찾을 수 없어요.</Txt> : <ActivityIndicator color={theme.inkSoft} />}
         <Pressable accessibilityRole="button" onPress={onBack} style={styles.backLink}><Txt variant="callout" tone="inkSoft">시장으로 돌아가기</Txt></Pressable>
       </View>
     );
@@ -108,7 +108,7 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
           <Ionicons name="chevron-back" size={26} color={theme.ink} />
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={watching ? '관심 종목에서 빼기' : '관심 종목에 넣기'} accessibilityState={{ selected: watching }} onPress={() => void toggleWatch()} style={styles.barButton}>
-          <Ionicons name={watching ? 'star' : 'star-outline'} size={24} color={theme.ink} />
+          <Ionicons name={watching ? 'star' : 'star-outline'} size={24} color={watching ? theme.guard : theme.ink} />
         </Pressable>
       </View>
 
@@ -121,18 +121,18 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
               <Txt variant="caption" tone="inkSoft">{`${code} · ${stock.genre}`}</Txt>
             </View>
           </View>
-          <Txt variant="display" numeric style={{ marginTop: SPACE.md }}>{`${price(stock.price)}원`}</Txt>
+          <Txt variant="price" numeric style={{ marginTop: SPACE.md }}>{`${price(stock.price)}원`}</Txt>
           <Txt variant="callout" tone={tone} numeric>{`오늘 ${signedPercent(rate)} (${rate >= 0 ? '+' : '−'}${price(Math.abs(stock.price - (stock.referencePrice || stock.price)))}원)`}</Txt>
           {held > 0 ? <Txt variant="caption" tone="inkSoft" style={{ marginTop: SPACE.xs }}>{`${amount(held)} 보유 중`}</Txt> : null}
-          {watchError ? <Txt variant="caption" style={{ color: theme.warn, marginTop: SPACE.xs }}>{watchError}</Txt> : null}
+          {watchError ? <Txt variant="caption" style={{ marginTop: SPACE.xs }}>{watchError}</Txt> : null}
         </View>
 
         {restriction ? (
-          <View style={[styles.notice, { backgroundColor: theme.warnWash }]}>
-            <Ionicons name="alert-circle" size={18} color={theme.warn} />
+          <View style={[styles.notice, { backgroundColor: theme.guardWash }]}>
+            <Ionicons name="shield-half" size={18} color={theme.guardText} />
             <View style={styles.shrink}>
-              <Txt variant="callout" style={{ color: theme.warn }}>{restriction.label}</Txt>
-              <Txt variant="caption" style={{ color: theme.warn }}>{restriction.effect || restriction.reason}</Txt>
+              <Txt variant="callout" style={{ color: theme.guardText }}>{restriction.label}</Txt>
+              <Txt variant="caption" style={{ color: theme.guardText }}>{restriction.effect || restriction.reason}</Txt>
             </View>
           </View>
         ) : null}
@@ -142,7 +142,7 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
             {RANGES.map(item => {
               const selected = range === item.key;
               return (
-                <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRange(item.key)} style={[styles.range, selected && { backgroundColor: theme.ground }]}>
+                <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRange(item.key)} style={[styles.range, selected && { backgroundColor: theme.raised }]}>
                   <Txt variant="caption" tone={selected ? 'ink' : 'inkSoft'}>{item.label}</Txt>
                 </Pressable>
               );
@@ -185,10 +185,10 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
           </View>
           {detail.orderbook ? (
             <View>
-              {asks.length ? asks.map(level => <BookRow key={`a${level.price}`} level={level} side="sell" max={maxLevel} current={stock.price} onPress={() => startOrder('buy', level.price)} />)
+              {asks.length ? asks.map(level => <BookRow key={`a${level.price}`} level={level} side="sell" max={maxLevel} onPress={() => startOrder('buy', level.price)} />)
                 : <Txt variant="caption" tone="inkSoft" style={styles.bookEmpty}>매도 대기 주문이 없어요</Txt>}
-              <View style={[styles.bookDivider, { backgroundColor: theme.line }]} />
-              {bids.length ? bids.map(level => <BookRow key={`b${level.price}`} level={level} side="buy" max={maxLevel} current={stock.price} onPress={() => startOrder('sell', level.price)} />)
+              <JudgeLine stock={stock} tone={tone} />
+              {bids.length ? bids.map(level => <BookRow key={`b${level.price}`} level={level} side="buy" max={maxLevel} onPress={() => startOrder('sell', level.price)} />)
                 : <Txt variant="caption" tone="inkSoft" style={styles.bookEmpty}>매수 대기 주문이 없어요</Txt>}
             </View>
           ) : <View style={styles.chartLoading}><ActivityIndicator color={theme.inkSoft} /></View>}
@@ -244,11 +244,11 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
       </ScrollView>
 
       <View style={[styles.actions, { paddingBottom: SPACE.sm, backgroundColor: theme.card, borderTopColor: theme.line }]}>
-        <Pressable accessibilityRole="button" onPress={() => startOrder('sell')} style={({ pressed }) => [styles.action, { backgroundColor: theme.down, opacity: pressed ? 0.85 : 1 }]}>
-          <Txt variant="body" style={{ color: '#FFFFFF' }}>매도</Txt>
+        <Pressable accessibilityRole="button" onPress={() => startOrder('sell')} style={({ pressed }) => [styles.action, { backgroundColor: theme.downFill, opacity: pressed ? 0.85 : 1 }]}>
+          <Txt variant="body" style={{ color: theme.onFill }}>매도</Txt>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => startOrder('buy')} style={({ pressed }) => [styles.action, { backgroundColor: theme.up, opacity: pressed ? 0.85 : 1 }]}>
-          <Txt variant="body" style={{ color: '#FFFFFF' }}>매수</Txt>
+        <Pressable accessibilityRole="button" onPress={() => startOrder('buy')} style={({ pressed }) => [styles.action, { backgroundColor: theme.upFill, opacity: pressed ? 0.85 : 1 }]}>
+          <Txt variant="body" style={{ color: theme.onFill }}>매수</Txt>
         </Pressable>
       </View>
 
@@ -295,10 +295,29 @@ function Driver({ label, value, buy, sell }) {
   );
 }
 
-/** 호가 한 줄. 매도 잔량은 왼쪽, 매수 잔량은 오른쪽에 막대로 그리고 가격은 가운데에 둔다. */
-function BookRow({ level, side, max, current, onPress }) {
+/**
+ * 판정선. 매도 호가와 매수 호가 사이에 현재가를 꽂는 줄이다(DESIGN.md의 서명 부품).
+ * 위에 2px 핑크 선, 바탕은 brand-wash, 현재가는 굵은 고정폭 숫자로 쓴다.
+ */
+function JudgeLine({ stock, tone }) {
   const theme = useTheme();
-  const isCurrent = level.price === current;
+  const rate = sessionRate(stock);
+  return (
+    <View
+      style={[styles.judge, { backgroundColor: theme.brandWash, borderTopColor: theme.brand }]}
+      accessible
+      accessibilityLabel={`현재가 ${price(stock.price)}원, 오늘 ${signedPercent(rate)}`}
+    >
+      <Txt variant="caption" tone="inkSoft" style={styles.judgeSide}>현재가</Txt>
+      <Txt variant="title" numeric>{price(stock.price)}</Txt>
+      <Txt variant="caption" tone={tone} numeric style={[styles.judgeSide, styles.judgeRate]}>{signedPercent(rate)}</Txt>
+    </View>
+  );
+}
+
+/** 호가 한 줄. 매도 잔량은 왼쪽, 매수 잔량은 오른쪽에 막대로 그리고 가격은 가운데에 둔다. */
+function BookRow({ level, side, max, onPress }) {
+  const theme = useTheme();
   const bar = `${Math.max(4, Math.round((level.quantity / max) * 100))}%`;
   const wash = side === 'sell' ? theme.downWash : theme.upWash;
   return (
@@ -316,7 +335,7 @@ function BookRow({ level, side, max, current, onPress }) {
           </>
         ) : null}
       </View>
-      <View style={[styles.bookPrice, isCurrent && { borderColor: theme.ink }]}>
+      <View style={styles.bookPrice}>
         <Txt variant="callout" numeric tone={side === 'sell' ? 'down' : 'up'}>{price(level.price)}</Txt>
       </View>
       <View style={styles.bookSide}>
@@ -340,26 +359,28 @@ const styles = StyleSheet.create({
   barButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   hero: { paddingHorizontal: SPACE.lg + 2, paddingBottom: SPACE.lg },
   heroName: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: 12, padding: SPACE.md, marginBottom: SPACE.md },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, padding: SPACE.md, marginBottom: SPACE.md },
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },
   cardHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: SPACE.lg + 2, paddingTop: SPACE.lg + 2, paddingBottom: SPACE.sm, gap: SPACE.sm },
   ranges: { flexDirection: 'row', gap: 4, marginBottom: SPACE.md },
-  range: { flex: 1, minHeight: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  range: { flex: 1, minHeight: 36, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center' },
   chartLoading: { minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   drivers: { marginTop: SPACE.md, paddingTop: SPACE.sm, borderTopWidth: StyleSheet.hairlineWidth, gap: SPACE.md },
   driver: { gap: 6 },
   driverLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: SPACE.sm, flexWrap: 'wrap' },
-  shareTrack: { height: 4, borderRadius: 2, overflow: 'hidden', flexDirection: 'row' },
+  shareTrack: { height: 4, borderRadius: 3, overflow: 'hidden', flexDirection: 'row' },
   shareFill: { height: 4 },
   book: { flexDirection: 'row', alignItems: 'center', minHeight: 40, paddingHorizontal: SPACE.lg + 2 },
   bookSide: { flex: 1, height: 32, justifyContent: 'center' },
-  bookBar: { position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 4 },
+  bookBar: { position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 3 },
   bookBarRight: { left: undefined, right: 0 },
   bookQtyRight: { textAlign: 'right', paddingRight: SPACE.sm },
   bookQtyLeft: { paddingLeft: SPACE.sm },
-  bookPrice: { minWidth: 96, minHeight: 32, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent', borderRadius: 8 },
-  bookDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: SPACE.lg + 2, marginVertical: 2 },
+  bookPrice: { minWidth: 96, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  judge: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingHorizontal: SPACE.lg + 2, marginVertical: 2, borderTopWidth: 2 },
+  judgeSide: { flex: 1 },
+  judgeRate: { textAlign: 'right' },
   bookEmpty: { paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md },
   trade: { flexDirection: 'row', alignItems: 'center', minHeight: 36, paddingHorizontal: SPACE.lg + 2 },
   tradeTime: { width: 72 },
@@ -371,5 +392,5 @@ const styles = StyleSheet.create({
   underline: { textDecorationLine: 'underline' },
   footer: { textAlign: 'center', marginTop: SPACE.sm },
   actions: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, borderTopWidth: StyleSheet.hairlineWidth },
-  action: { flex: 1, minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  action: { flex: 1, minHeight: 52, borderRadius: RADIUS, alignItems: 'center', justifyContent: 'center' },
 });

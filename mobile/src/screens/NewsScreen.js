@@ -34,10 +34,10 @@ export function NewsScreen({ market, onOpenNews }) {
         data={news}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={{ paddingTop: insets.top + SPACE.sm, paddingBottom: SPACE.xxl }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.brand} colors={[theme.brand]} progressViewOffset={insets.top} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.inkSoft} colors={[theme.ink]} progressBackgroundColor={theme.raised} progressViewOffset={insets.top} />}
         ListHeaderComponent={(
           <View style={styles.head}>
-            <Txt variant="title" accessibilityRole="header">뉴스</Txt>
+            <Txt variant="page" accessibilityRole="header">뉴스</Txt>
             {news.length ? <Txt variant="caption" tone="inkSoft">오른쪽 숫자는 기사가 나온 뒤의 가격 변화예요.</Txt> : null}
           </View>
         )}

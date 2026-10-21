@@ -45,7 +45,7 @@ export function SwipeBack({ onBack, children }) {
   if (Platform.OS !== 'ios') return <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground }]}>{children}</View>;
 
   return (
-    <Animated.View accessibilityViewIsModal style={[StyleSheet.absoluteFill, styles.page, { backgroundColor: theme.ground, transform: [{ translateX: offset }] }]}>
+    <Animated.View accessibilityViewIsModal style={[StyleSheet.absoluteFill, styles.page, { backgroundColor: theme.ground, borderLeftColor: theme.line, transform: [{ translateX: offset }] }]}>
       {children}
       {/* 가장자리 띠만 손가락을 받는다. 화면 안쪽의 스크롤과 버튼은 그대로 동작한다. */}
       <View style={[styles.edge, { top: insets.top + HEADER_HEIGHT }]} {...responder.panHandlers} />
@@ -54,7 +54,7 @@ export function SwipeBack({ onBack, children }) {
 }
 
 const styles = StyleSheet.create({
-  // 밀려나는 화면의 왼쪽 그림자로 아래 화면과 경계를 보여 준다.
-  page: { shadowColor: '#000', shadowOffset: { width: -2, height: 0 }, shadowOpacity: 0.12, shadowRadius: 8 },
+  // 그림자 대신 밀려나는 화면의 왼쪽 괘선으로 아래 화면과 경계를 보여 준다(평평한 무대 규칙).
+  page: { borderLeftWidth: 1 },
   edge: { position: 'absolute', left: 0, bottom: FOOTER_HEIGHT, width: EDGE_WIDTH },
 });

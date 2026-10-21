@@ -6,7 +6,7 @@ import { GameIcon } from '../components/GameIcon';
 import { PriceTrail } from '../components/PriceTrail';
 import { cleanTitle, indexValue, price, relativeTime, signedPercent } from '../format';
 import { computeIndex, indexTrail, newsWithIds, sessionRate, usePriceHistory } from '../market';
-import { RADIUS, SPACE, Txt, toneOf, useTheme } from '../theme';
+import { RADIUS, RADIUS_XS, SPACE, Txt, toneOf, useTheme } from '../theme';
 
 const MOVER_COUNT = 5;
 const DAY_MS = 24 * 60 * 60_000;
@@ -60,7 +60,7 @@ export function HomeScreen({ market, onOpen }) {
   if (!loaded) {
     return (
       <View style={[styles.center, { backgroundColor: theme.ground }]} accessibilityLiveRegion="polite">
-        <ActivityIndicator color={theme.brand} />
+        <ActivityIndicator color={theme.inkSoft} />
         <Txt variant="callout" tone="inkSoft" style={{ marginTop: SPACE.md }}>시세와 뉴스를 불러오는 중이에요</Txt>
       </View>
     );
@@ -71,7 +71,7 @@ export function HomeScreen({ market, onOpen }) {
     <ScrollView
       style={{ backgroundColor: theme.ground }}
       contentContainerStyle={{ paddingTop: insets.top + SPACE.sm, paddingBottom: SPACE.xxl, paddingHorizontal: SPACE.lg }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.brand} colors={[theme.brand]} progressViewOffset={insets.top} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.inkSoft} colors={[theme.ink]} progressBackgroundColor={theme.raised} progressViewOffset={insets.top} />}
     >
       <View style={styles.header}>
         <Image source={require('../../assets/brand/sn-mark.png')} style={styles.mark} accessibilityIgnoresInvertColors />
@@ -86,16 +86,16 @@ export function HomeScreen({ market, onOpen }) {
       ) : null}
 
       {error && stocks.length > 0 ? (
-        <View style={[styles.notice, { backgroundColor: theme.warnWash }]} accessibilityLiveRegion="polite">
-          <Ionicons name="cloud-offline" size={18} color={theme.warn} />
-          <Txt variant="caption" style={{ color: theme.warn, flex: 1 }}>새 시세를 받지 못해 마지막으로 받은 값을 보여 주고 있어요. 아래로 당겨 다시 불러오세요.</Txt>
+        <View style={[styles.notice, { backgroundColor: theme.raised }]} accessibilityLiveRegion="polite">
+          <Ionicons name="cloud-offline" size={18} color={theme.inkSoft} />
+          <Txt variant="caption" style={{ flex: 1 }}>새 시세를 받지 못해 마지막으로 받은 값을 보여 주고 있어요. 아래로 당겨 다시 불러오세요.</Txt>
         </View>
       ) : null}
 
       {restriction ? (
-        <View style={[styles.notice, { backgroundColor: theme.warnWash }]}>
-          <Ionicons name="alert-circle" size={18} color={theme.warn} />
-          <Txt variant="caption" style={{ color: theme.warn, flex: 1 }}>{`${restriction.label} · ${restriction.effect || restriction.reason}`}</Txt>
+        <View style={[styles.notice, { backgroundColor: theme.guardWash }]}>
+          <Ionicons name="shield-half" size={18} color={theme.guardText} />
+          <Txt variant="caption" style={{ color: theme.guardText, flex: 1 }}>{`${restriction.label} · ${restriction.effect || restriction.reason}`}</Txt>
         </View>
       ) : null}
 
@@ -106,7 +106,7 @@ export function HomeScreen({ market, onOpen }) {
           <View style={styles.indexRow}>
             <View style={styles.indexValue} accessible accessibilityLabel={`게임주 지수 ${indexValue(liveIndex)}, 오늘 ${signedPercent(indexRatio)}`}>
               <Txt variant="caption" tone="inkSoft">게임주 지수</Txt>
-              <Txt variant="display" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: 2 }}>{indexValue(liveIndex)}</Txt>
+              <Txt variant="hero" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={{ marginTop: 2 }}>{indexValue(liveIndex)}</Txt>
               <Delta ratio={indexRatio} variant="callout" label="오늘" />
             </View>
             {/* 좁은 화면에서는 종목 추이선과 범례를 숨기므로 지수 그래프도 함께 뺀다(맞출 세로줄과 점선 설명이 없다).
@@ -151,8 +151,8 @@ export function HomeScreen({ market, onOpen }) {
                   <View style={styles.moverName}>
                     <Txt variant="callout" numberOfLines={1} style={styles.shrink}>{stock.name}</Txt>
                     {stock.restriction ? (
-                      <View style={[styles.badge, { backgroundColor: theme.warnWash }]}>
-                        <Txt variant="micro" style={{ color: theme.warn }}>{stock.restriction.label}</Txt>
+                      <View style={[styles.badge, { backgroundColor: theme.guardWash }]}>
+                        <Txt variant="micro" style={{ color: theme.guardText }}>{stock.restriction.label}</Txt>
                       </View>
                     ) : null}
                   </View>
@@ -165,7 +165,7 @@ export function HomeScreen({ market, onOpen }) {
                   </View>
                 </View>
                 <Txt variant="caption" tone="inkSoft" numberOfLines={1} style={styles.reason}>
-                  {reason ? <><Txt variant="caption" tone="brand">뉴스</Txt>{` · ${reason}`}</> : '최근 24시간 관련 뉴스 없음'}
+                  {reason ? <><Txt variant="caption" tone="brandText">뉴스</Txt>{` · ${reason}`}</> : '최근 24시간 관련 뉴스 없음'}
                 </Txt>
               </Pressable>
             );
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, marginBottom: SPACE.sm },
   mark: { width: 30, height: 30, borderRadius: 8 },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: 12, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   moverTop: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   moverName: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
   moverPrice: { alignItems: 'flex-end' },
-  badge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  badge: { borderRadius: RADIUS_XS, paddingHorizontal: 6, paddingVertical: 1 },
   reason: { marginTop: 6, marginLeft: 40 + SPACE.md },
   legend: { paddingHorizontal: SPACE.lg + 2, paddingBottom: SPACE.md, paddingTop: SPACE.xs },
   news: { paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md },

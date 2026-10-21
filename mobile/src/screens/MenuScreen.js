@@ -3,20 +3,27 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useAuth } from '../auth';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RADIUS, SPACE, Txt, useTheme } from '../theme';
+import { RADIUS, RADIUS_SM, SPACE, Txt, useTheme, useThemeMode } from '../theme';
 
 // 웹 계정 메뉴(ProfileMenu)의 항목. 모두 로그인 전용이라, 로그인하지 않았으면 앱이 로그인 시트를 먼저 띄운다.
-// 관리자 화면은 일반 사용자에게 보이면 안 되므로 여기 두지 않고, 웹 화면의 계정 메뉴에만 남긴다.
+// 관리자 화면은 관리자 계정에만 보인다. 서버도 모든 관리 요청에서 권한을 다시 확인한다.
 const ACCOUNT = { label: '내 계좌', detail: '보유 종목과 손익, 주문·체결 내역', icon: 'wallet-outline', path: '/mypage' };
 const ITEMS = [
   { label: '충전하기', detail: '오늘의 투자 미션과 모의 자금 보상', icon: 'checkbox-outline', path: '/charge' },
   { label: '대출', detail: '모의 대출과 상환, 한도와 이자', icon: 'cash-outline', path: '/loan' },
   { label: '칭호 설정', detail: '칭호 조건과 획득 현황, 장착', icon: 'ribbon-outline', path: '/titles' },
-  { label: '프로필·계정 설정', detail: '닉네임, 프로필 사진, 계좌 리셋', icon: 'person-circle-outline', path: '/settings' },
+  { label: '프로필·계정 설정', detail: '닉네임, 프로필 사진, 계좌 초기화', icon: 'person-circle-outline', path: '/settings' },
+];
+const ADMIN = { label: '관리자', detail: '회원 조치, 주문 조회, 공지, 감사 기록', icon: 'shield-checkmark-outline', path: '/admin' };
+
+const SCHEMES = [
+  { key: 'dark', label: '어둡게', icon: 'moon' },
+  { key: 'light', label: '밝게', icon: 'sunny' },
 ];
 
 export function MenuScreen({ onOpen, onLogin }) {
   const theme = useTheme();
+  const { scheme, setScheme } = useThemeMode();
   const insets = useSafeAreaInsets();
   const { user, profile, signOut } = useAuth();
   const confirmSignOut = () => Alert.alert('로그아웃할까요?', '앱과 앱 안의 웹 화면에서 모두 로그아웃해요.', [
@@ -29,7 +36,7 @@ export function MenuScreen({ onOpen, onLogin }) {
         style={{ backgroundColor: theme.ground }}
         contentContainerStyle={{ paddingTop: insets.top + SPACE.sm, paddingBottom: SPACE.xxl, paddingHorizontal: SPACE.lg }}
       >
-        <Txt variant="title" accessibilityRole="header" style={styles.title}>설정</Txt>
+        <Txt variant="page" accessibilityRole="header" style={styles.title}>설정</Txt>
         {user ? (
           <View style={styles.who} accessible accessibilityLabel={`${profile?.nickname ?? '내 계정'}, ${user.email ?? ''}로 로그인됨`}>
             <Txt variant="headline" numberOfLines={1}>{profile?.nickname ?? '내 계정'}</Txt>
@@ -38,8 +45,8 @@ export function MenuScreen({ onOpen, onLogin }) {
         ) : (
           <View style={[styles.card, styles.guest, { backgroundColor: theme.card }]}>
             <Txt variant="callout">로그인하면 계좌, 미션, 대출, 칭호를 쓸 수 있어요.</Txt>
-            <Pressable accessibilityRole="button" onPress={onLogin} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.brand, opacity: pressed ? 0.85 : 1 }]}>
-              <Txt variant="body" style={{ color: theme.onBrand }}>로그인</Txt>
+            <Pressable accessibilityRole="button" onPress={onLogin} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.ink, opacity: pressed ? 0.85 : 1 }]}>
+              <Txt variant="body" style={{ color: theme.ground }}>로그인</Txt>
             </Pressable>
           </View>
         )}
@@ -48,6 +55,32 @@ export function MenuScreen({ onOpen, onLogin }) {
         </View>
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           {ITEMS.map((item, index) => <Row key={item.path} item={item} onOpen={onOpen} divided={index > 0} />)}
+        </View>
+        {profile?.admin ? (
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <Row item={ADMIN} onOpen={onOpen} />
+          </View>
+        ) : null}
+        {/* 로그인 없이도 바꿀 수 있다. 앱 안의 웹 화면도 같은 밝기를 따른다. */}
+        <View style={[styles.card, styles.scheme, { backgroundColor: theme.card }]}>
+          <Txt variant="callout">화면 밝기</Txt>
+          <View style={[styles.segment, { backgroundColor: theme.raised }]} accessibilityRole="radiogroup" accessibilityLabel="화면 밝기">
+            {SCHEMES.map(item => {
+              const selected = item.key === scheme;
+              return (
+                <Pressable
+                  key={item.key}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => setScheme(item.key)}
+                  style={[styles.segmentItem, selected && { backgroundColor: theme.ink }]}
+                >
+                  <Ionicons name={selected ? item.icon : `${item.icon}-outline`} size={16} color={selected ? theme.ground : theme.inkSoft} />
+                  <Txt variant="caption" style={{ color: selected ? theme.ground : theme.ink }}>{item.label}</Txt>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
         {user ? (
           <Pressable accessibilityRole="button" onPress={confirmSignOut} style={({ pressed }) => [styles.card, styles.signOut, { backgroundColor: pressed ? theme.pressed : theme.card }]}>
@@ -94,6 +127,9 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   who: { paddingHorizontal: SPACE.lg + 2, paddingBottom: SPACE.lg, gap: 2 },
   guest: { padding: SPACE.lg + 2, gap: SPACE.md },
-  loginButton: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  loginButton: { minHeight: 48, borderRadius: RADIUS, alignItems: 'center', justifyContent: 'center' },
   signOut: { minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  scheme: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md, paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md },
+  segment: { flexDirection: 'row', borderRadius: RADIUS, padding: 4, gap: 4 },
+  segmentItem: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, minWidth: 80, paddingHorizontal: SPACE.md, borderRadius: RADIUS_SM, justifyContent: 'center' },
 });

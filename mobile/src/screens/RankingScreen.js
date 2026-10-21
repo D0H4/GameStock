@@ -5,7 +5,7 @@ import { request, useAuth } from '../auth';
 import { Avatar } from '../components/Avatar';
 import { won } from '../format';
 import { titleColor } from '../titles';
-import { RADIUS, SPACE, Txt, toneOf, useTheme } from '../theme';
+import { RADIUS, RADIUS_SM, RADIUS_XS, SPACE, Txt, mixColor, toneOf, useTheme } from '../theme';
 
 const TABS = [
   { key: 'total', label: '전체 자산', path: '/api/ranking' },
@@ -100,7 +100,7 @@ export function RankingScreen() {
 
   const header = (
     <View style={styles.head}>
-      <Txt variant="title" accessibilityRole="header">랭킹</Txt>
+      <Txt variant="page" accessibilityRole="header">랭킹</Txt>
       <View style={[styles.segment, { backgroundColor: theme.card }]} accessibilityRole="tablist">
         {TABS.map(item => {
           const selected = item.key === tab;
@@ -117,7 +117,7 @@ export function RankingScreen() {
           <Txt variant="caption" numeric>{`주간 정산까지 ${countdown(data.awardAt, now)}`}</Txt>
         </View>
       ) : null}
-      {data != null && error ? <Txt variant="caption" style={{ color: theme.warn }}>새 순위를 받지 못해 마지막으로 받은 값이에요.</Txt> : null}
+      {data != null && error ? <Txt variant="caption">새 순위를 받지 못해 마지막으로 받은 값이에요.</Txt> : null}
     </View>
   );
 
@@ -135,7 +135,7 @@ export function RankingScreen() {
         data={rows}
         keyExtractor={(item, index) => (item.gap ? 'gap' : `${item.rank}-${item.nickname}-${index}`)}
         contentContainerStyle={{ paddingTop: insets.top + SPACE.sm, paddingBottom: SPACE.xxl }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.brand} colors={[theme.brand]} progressViewOffset={insets.top} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.inkSoft} colors={[theme.ink]} progressBackgroundColor={theme.raised} progressViewOffset={insets.top} />}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
         ListFooterComponent={footer}
@@ -158,7 +158,7 @@ export function RankingScreen() {
               <Rank rank={item.rank} />
               <Avatar url={item.profileImageUrl} />
               <View style={styles.who}>
-                {title ? <Txt variant="micro" numberOfLines={1} style={{ color: titleColor(title) ?? theme.inkSoft }}>{title}</Txt> : null}
+                {title ? <Txt variant="micro" numberOfLines={1} style={{ color: titleInk(title, theme) }}>{title}</Txt> : null}
                 <View style={styles.nameLine}>
                   <Txt variant="callout" numberOfLines={1} style={styles.shrink}>{item.nickname}</Txt>
                   {mine ? <View style={[styles.meBadge, { backgroundColor: theme.brand }]}><Txt variant="micro" style={{ color: theme.onBrand }}>나</Txt></View> : null}
@@ -177,20 +177,32 @@ export function RankingScreen() {
   );
 }
 
-// 1~3위 메달. 바탕색은 흰 카드와 대비가 약해 3:1 이상인 테두리로 경계를 잡고, 숫자는 잉크색(8:1 이상)으로 쓴다.
+/**
+ * 칭호 색표는 흰 바탕 기준이라 다크에서는 읽히지 않는다. 웹(.has-title-ink)과 같은 비율로
+ * 다크는 흰색 쪽으로 55%, 라이트는 잉크 쪽으로 15% 섞는다.
+ */
+function titleInk(title, theme) {
+  const color = titleColor(title);
+  if (!color) return theme.inkSoft;
+  return theme.scheme === 'dark' ? mixColor(color, '#FFFFFF', 0.45) : mixColor(color, theme.ink, 0.85);
+}
+
+// 1~3위 순위 원판. DESIGN.md의 금·은·동 위에 무대색 숫자를 쓴다. 라이트의 흰 카드 위에서는
+// 원판과 카드의 대비가 약해 3:1 이상인 테두리로 경계를 잡는다.
 const MEDALS = {
   1: { fill: '#F2C94C', ring: '#B8860B', label: '금메달' },
-  2: { fill: '#D5D9DE', ring: '#8A9099', label: '은메달' },
-  3: { fill: '#E0A46B', ring: '#A8642E', label: '동메달' },
+  2: { fill: '#C9CED8', ring: '#8A9099', label: '은메달' },
+  3: { fill: '#D79A63', ring: '#A8642E', label: '동메달' },
 };
 
 /** 순위. 1~3위는 금·은·동 메달 안에 숫자를 넣고, 나머지는 숫자만 쓴다. */
 function Rank({ rank }) {
+  const theme = useTheme();
   const medal = MEDALS[rank];
-  if (!medal) return <Txt variant="headline" numeric style={styles.rank}>{rank}</Txt>;
+  if (!medal) return <Txt variant="headline" tone="inkSoft" numeric style={styles.rank}>{rank}</Txt>;
   return (
     <View style={styles.rankBox} accessibilityLabel={`${medal.label} ${rank}위`}>
-      <View style={[styles.medal, { backgroundColor: medal.fill, borderColor: medal.ring }]}>
+      <View style={[styles.medal, { backgroundColor: medal.fill, borderColor: theme.scheme === 'light' ? medal.ring : medal.fill }]}>
         <Txt variant="callout" numeric style={styles.medalText}>{rank}</Txt>
       </View>
     </View>
@@ -200,12 +212,12 @@ function Rank({ rank }) {
 const styles = StyleSheet.create({
   rankBox: { width: 28, alignItems: 'center' },
   medal: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  medalText: { color: '#1A1620' },
+  medalText: { color: '#12101C' },
   fill: { flex: 1 },
   statusCover: { position: 'absolute', top: 0, left: 0, right: 0 },
   head: { paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md, gap: SPACE.md },
-  segment: { flexDirection: 'row', borderRadius: 12, padding: 4, gap: 4 },
-  segmentItem: { flex: 1, minHeight: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segment: { flexDirection: 'row', borderRadius: RADIUS, padding: 4, gap: 4 },
+  segmentItem: { flex: 1, minHeight: 44, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center' },
   week: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: SPACE.sm },
   rowBox: { marginHorizontal: SPACE.lg, paddingHorizontal: SPACE.lg + 2 },
   first: { borderTopLeftRadius: RADIUS, borderTopRightRadius: RADIUS },
@@ -216,7 +228,7 @@ const styles = StyleSheet.create({
   who: { flex: 1, minWidth: 0, gap: 1 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   shrink: { flexShrink: 1 },
-  meBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  meBadge: { borderRadius: RADIUS_XS, paddingHorizontal: 6, paddingVertical: 1 },
   value: { alignItems: 'flex-end', maxWidth: '45%' },
   note: { paddingHorizontal: SPACE.lg + 2, paddingTop: SPACE.md, lineHeight: 18 },
   empty: { textAlign: 'center', paddingVertical: SPACE.xxl, paddingHorizontal: SPACE.lg },

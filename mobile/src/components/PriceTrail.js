@@ -36,10 +36,10 @@ export function PriceTrail({ points, current, reference, newsAt, tone, width = 6
   const stroke = theme[tone] ?? theme.flat;
   return (
     <Svg width={width} height={height} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {shape.base != null && <Line x1={0} x2={width} y1={shape.base} y2={shape.base} stroke={theme.chartBase} strokeWidth={1} strokeDasharray="2 3" />}
+      {shape.base != null && <Line x1={0} x2={width} y1={shape.base} y2={shape.base} stroke={theme.edge} strokeWidth={1} strokeDasharray="2 3" />}
       <Polyline points={shape.line} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
-      {/* 흰 점. 흰 카드 위에서도 보이도록 진한 테두리를 두른다(테두리 대비 17.8:1). */}
-      {shape.marker && <Circle cx={shape.marker.cx} cy={shape.marker.cy} r={3.75} fill="#FFFFFF" stroke={theme.ink} strokeWidth={1.5} />}
+      {/* 흰 점. 라이트의 흰 카드 위에서도 보이도록 진한 테두리를 두른다. */}
+      {shape.marker && <Circle cx={shape.marker.cx} cy={shape.marker.cy} r={3.75} fill={theme.dot} stroke={theme.dotRing} strokeWidth={1.5} />}
     </Svg>
   );
 }

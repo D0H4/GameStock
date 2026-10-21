@@ -145,19 +145,19 @@ export function NewsDetailScreen({ item, market, onBack, onOpenStock, onLogin })
             </Pressable>
           ) : null}
         </View>
-        {watchError ? <Txt variant="caption" style={{ color: theme.warn, marginBottom: SPACE.sm }}>{watchError}</Txt> : null}
+        {watchError ? <Txt variant="caption" style={{ marginBottom: SPACE.sm }}>{watchError}</Txt> : null}
       </ScrollView>
 
       {stock ? (
         <View style={[styles.actions, { backgroundColor: theme.card, borderTopColor: theme.line }]}>
-          <Pressable accessibilityRole="button" accessibilityState={{ selected: watching }} accessibilityLabel={watching ? '관심 종목에서 빼기' : '관심 종목에 넣기'} onPress={() => void toggleWatch()} style={({ pressed }) => [styles.watch, { borderColor: theme.chartBase, backgroundColor: pressed ? theme.pressed : theme.card }]}>
-            <Ionicons name={watching ? 'star' : 'star-outline'} size={22} color={theme.ink} />
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: watching }} accessibilityLabel={watching ? '관심 종목에서 빼기' : '관심 종목에 넣기'} onPress={() => void toggleWatch()} style={({ pressed }) => [styles.watch, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
+            <Ionicons name={watching ? 'star' : 'star-outline'} size={22} color={watching ? theme.guard : theme.ink} />
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => onOpenStock(item.stockCode)} style={({ pressed }) => [styles.action, styles.outline, { borderColor: theme.chartBase, backgroundColor: pressed ? theme.pressed : theme.card }]}>
+          <Pressable accessibilityRole="button" onPress={() => onOpenStock(item.stockCode)} style={({ pressed }) => [styles.action, styles.outline, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
             <Txt variant="body">종목 보기</Txt>
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => onOpenStock(item.stockCode, 'buy')} style={({ pressed }) => [styles.action, { backgroundColor: theme.up, opacity: pressed ? 0.85 : 1 }]}>
-            <Txt variant="body" style={{ color: '#FFFFFF' }}>주문하기</Txt>
+          <Pressable accessibilityRole="button" onPress={() => onOpenStock(item.stockCode, 'buy')} style={({ pressed }) => [styles.action, { backgroundColor: theme.upFill, opacity: pressed ? 0.85 : 1 }]}>
+            <Txt variant="body" style={{ color: theme.onFill }}>주문하기</Txt>
           </Pressable>
         </View>
       ) : null}
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   paragraph: { lineHeight: 26 },
   origin: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 },
   actions: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm, borderTopWidth: StyleSheet.hairlineWidth },
-  watch: { width: 52, minHeight: 52, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  action: { flex: 1, minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  watch: { width: 52, minHeight: 52, borderRadius: RADIUS, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  action: { flex: 1, minHeight: 52, borderRadius: RADIUS, alignItems: 'center', justifyContent: 'center' },
   outline: { borderWidth: 1 },
 });

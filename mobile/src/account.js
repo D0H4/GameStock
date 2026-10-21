@@ -43,11 +43,21 @@ export function AccountProvider({ children }) {
     setState(previous => ({ ...previous, watchlist: watching ? previous.watchlist.filter(item => item !== code) : [...previous.watchlist, code] }));
     try {
       await request(`/api/watchlist/${code}`, { method: watching ? 'DELETE' : 'PUT' });
+      // 관심 종목 담기 미션은 서버가 등록 여부를 확인한 뒤 지급한다(웹 MarketProvider와 같다).
+      // 오늘 배정되지 않았거나 이미 받은 날에는 서버가 거절하므로 배정 여부를 먼저 확인한다.
+      if (!watching) {
+        void request('/api/missions')
+          .then(missions => {
+            if (!missions?.availableMissionIds?.includes('watch') || missions.completedMissionIds?.includes('watch')) return null;
+            return request('/api/missions/watch/reward', { method: 'POST' }).then(() => reload());
+          })
+          .catch(() => {});
+      }
     } catch (error) {
       setState(previous => ({ ...previous, watchlist: watching ? [...previous.watchlist, code] : previous.watchlist.filter(item => item !== code) }));
       throw error;
     }
-  }, [state.watchlist]);
+  }, [state.watchlist, reload]);
 
   const value = useMemo(() => ({ ...state, reload, toggleWatch }), [state, reload, toggleWatch]);
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;

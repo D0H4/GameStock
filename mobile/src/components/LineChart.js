@@ -59,10 +59,10 @@ export function LineChart({ points, current, reference, newsTimes = [], tone, he
         {shape ? (
           <>
             <Svg width={width} height={height} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              {shape.base != null ? <Line x1={0} x2={width} y1={shape.base} y2={shape.base} stroke={theme.chartBase} strokeWidth={1} strokeDasharray="3 4" /> : null}
+              {shape.base != null ? <Line x1={0} x2={width} y1={shape.base} y2={shape.base} stroke={theme.edge} strokeWidth={1} strokeDasharray="3 4" /> : null}
               <Polyline points={shape.line} fill="none" stroke={theme[tone] ?? theme.flat} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
               {shape.markers.map((marker, index) => (
-                <Circle key={index} cx={marker.cx} cy={marker.cy} r={4} fill="#FFFFFF" stroke={theme.ink} strokeWidth={1.5} />
+                <Circle key={index} cx={marker.cx} cy={marker.cy} r={4} fill={theme.dot} stroke={theme.dotRing} strokeWidth={1.5} />
               ))}
             </Svg>
             <Txt variant="micro" tone="inkSoft" numeric style={[styles.extreme, { top: Math.max(0, shape.highY - 17) }]}>{`최고 ${price(shape.high)}`}</Txt>

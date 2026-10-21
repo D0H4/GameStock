@@ -4,7 +4,8 @@
     "slug": "gamestock-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#12101C",
     "scheme": "gamestock",
     "icon": "./assets/app-icon.png",
     "android": {

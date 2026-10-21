@@ -7,7 +7,7 @@ import { useAuth } from '../auth';
 import { GameIcon } from '../components/GameIcon';
 import { price, signedPercent } from '../format';
 import { sessionRate } from '../market';
-import { FONT_FAMILY, RADIUS, SPACE, TYPE, Txt, toneOf, useTheme } from '../theme';
+import { FONT_FAMILY, RADIUS, RADIUS_XS, SPACE, TYPE, Txt, toneOf, useTheme } from '../theme';
 
 const FILTERS = [
   { key: 'all', label: '전체' },
@@ -59,8 +59,8 @@ export function MarketScreen({ market, onOpenStock, onLogin }) {
       return (
         <View style={styles.emptyBox}>
           <Txt variant="callout" tone="inkSoft" style={styles.emptyText}>로그인하면 관심 종목을 모아 볼 수 있어요.</Txt>
-          <Pressable accessibilityRole="button" onPress={onLogin} style={({ pressed }) => [styles.emptyButton, { backgroundColor: theme.brand, opacity: pressed ? 0.85 : 1 }]}>
-            <Txt variant="callout" style={{ color: theme.onBrand }}>로그인</Txt>
+          <Pressable accessibilityRole="button" onPress={onLogin} style={({ pressed }) => [styles.emptyButton, { backgroundColor: theme.ink, opacity: pressed ? 0.85 : 1 }]}>
+            <Txt variant="callout" style={{ color: theme.ground }}>로그인</Txt>
           </Pressable>
         </View>
       );
@@ -72,8 +72,8 @@ export function MarketScreen({ market, onOpenStock, onLogin }) {
   return (
     <View style={[styles.fill, { backgroundColor: theme.ground }]}>
       <View style={{ paddingTop: insets.top + SPACE.sm, paddingHorizontal: SPACE.lg }}>
-        <Txt variant="title" accessibilityRole="header" style={styles.title}>시장</Txt>
-        <View style={[styles.search, { backgroundColor: theme.card, borderColor: theme.chartBase }]}>
+        <Txt variant="page" accessibilityRole="header" style={styles.title}>시장</Txt>
+        <View style={[styles.search, { backgroundColor: theme.raised, borderColor: theme.edge }]}>
           <Ionicons name="search" size={18} color={theme.inkSoft} />
           <TextInput
             value={query}
@@ -84,6 +84,8 @@ export function MarketScreen({ market, onOpenStock, onLogin }) {
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
+            keyboardAppearance={theme.scheme}
+            selectionColor={theme.brand}
             accessibilityLabel="종목 검색"
             clearButtonMode="while-editing"
           />
@@ -98,7 +100,7 @@ export function MarketScreen({ market, onOpenStock, onLogin }) {
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
                   onPress={() => setFilter(item.key)}
-                  style={[styles.chip, { backgroundColor: selected ? theme.ink : theme.card, borderColor: selected ? theme.ink : theme.chartBase }]}
+                  style={[styles.chip, { backgroundColor: selected ? theme.ink : theme.card, borderColor: selected ? theme.ink : theme.edge }]}
                 >
                   <Txt variant="caption" style={{ color: selected ? theme.card : theme.ink }}>{item.label}</Txt>
                 </Pressable>
@@ -124,7 +126,7 @@ export function MarketScreen({ market, onOpenStock, onLogin }) {
         keyboardDismissMode="on-drag"
         contentContainerStyle={[styles.list, rows.length ? { backgroundColor: theme.card } : null]}
         style={styles.listOuter}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.brand} colors={[theme.brand]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.inkSoft} colors={[theme.ink]} progressBackgroundColor={theme.raised} />}
         ListEmptyComponent={empty}
         renderItem={({ item, index }) => (
           <Pressable
@@ -137,10 +139,10 @@ export function MarketScreen({ market, onOpenStock, onLogin }) {
             <View style={styles.name}>
               <View style={styles.nameLine}>
                 <Txt variant="callout" numberOfLines={1} style={styles.shrink}>{item.name}</Txt>
-                {watchlist.includes(item.code) ? <Ionicons name="star" size={13} color={theme.inkSoft} accessibilityLabel="관심 종목" /> : null}
+                {watchlist.includes(item.code) ? <Ionicons name="star" size={13} color={theme.guard} accessibilityLabel="관심 종목" /> : null}
                 {item.restriction ? (
-                  <View style={[styles.badge, { backgroundColor: theme.warnWash }]}>
-                    <Txt variant="micro" style={{ color: theme.warn }}>{item.restriction.label}</Txt>
+                  <View style={[styles.badge, { backgroundColor: theme.guardWash }]}>
+                    <Txt variant="micro" style={{ color: theme.guardText }}>{item.restriction.label}</Txt>
                   </View>
                 ) : null}
               </View>
@@ -162,11 +164,11 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   statusCover: { position: 'absolute', top: 0, left: 0, right: 0 },
   title: { minHeight: 48, paddingTop: SPACE.sm },
-  search: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: SPACE.md, marginTop: SPACE.xs },
+  search: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, borderRadius: RADIUS, borderWidth: 1, paddingHorizontal: SPACE.md, marginTop: SPACE.xs },
   searchInput: { flex: 1, minHeight: 46, fontFamily: FONT_FAMILY, fontSize: TYPE.body.fontSize },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACE.md, marginBottom: SPACE.sm },
   filters: { flexDirection: 'row', gap: 6 },
-  chip: { minHeight: 36, minWidth: 48, paddingHorizontal: SPACE.md, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  chip: { minHeight: 36, minWidth: 48, paddingHorizontal: SPACE.md, borderRadius: RADIUS, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   sort: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36 },
   listOuter: { flex: 1 },
   list: { marginHorizontal: SPACE.lg, marginBottom: SPACE.xxl, borderRadius: RADIUS, overflow: 'hidden' },
@@ -174,10 +176,10 @@ const styles = StyleSheet.create({
   name: { flex: 1, minWidth: 0, gap: 2 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   shrink: { flexShrink: 1 },
-  badge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  badge: { borderRadius: RADIUS_XS, paddingHorizontal: 6, paddingVertical: 1 },
   price: { alignItems: 'flex-end', minWidth: 72 },
   empty: { textAlign: 'center', paddingVertical: SPACE.xxl, paddingHorizontal: SPACE.lg },
   emptyBox: { alignItems: 'center', paddingVertical: SPACE.xxl, gap: SPACE.md },
   emptyText: { textAlign: 'center', paddingHorizontal: SPACE.lg },
-  emptyButton: { minHeight: 44, minWidth: 120, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE.lg },
+  emptyButton: { minHeight: 44, minWidth: 120, borderRadius: RADIUS, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE.lg },
 });

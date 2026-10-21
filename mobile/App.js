@@ -11,13 +11,19 @@ import { SwipeBack } from './src/components/SwipeBack';
 import { NewsScreen } from './src/screens/NewsScreen';
 import { RankingScreen } from './src/screens/RankingScreen';
 import { NewsDetailScreen } from './src/screens/NewsDetailScreen';
+import { MyAccountScreen } from './src/screens/account/MyAccountScreen';
+import { ChargeScreen } from './src/screens/account/ChargeScreen';
+import { LoanScreen } from './src/screens/account/LoanScreen';
+import { TitlesScreen } from './src/screens/account/TitlesScreen';
+import { ProfileScreen } from './src/screens/account/ProfileScreen';
+import { AdminScreen } from './src/screens/account/AdminScreen';
 import { AccountProvider } from './src/account';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { AuthProvider, useAuth } from './src/auth';
 import { TabBar, TABS } from './src/components/TabBar';
 import { WebPane } from './src/WebPane';
 import { newsWithIds, useMarket } from './src/market';
-import { FONTS, ThemeProvider, palettes } from './src/theme';
+import { FONTS, ThemeProvider, useTheme, useThemeMode } from './src/theme';
 
 const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
 // 웹 화면이 보이지 않을 때 머물러 둘 공개 화면. 로그인 전용 웹 화면에 두면 로그인을 다시 요구한다.
@@ -26,6 +32,16 @@ const PARK_PATH = '/news';
 const stockFromPath = path => String(path || '').split('/').filter(Boolean)[1]?.toUpperCase() ?? null;
 /** /news/123 에서 기사 id를 꺼낸다. */
 const newsFromPath = path => { const id = Number(String(path || '').split('/').filter(Boolean)[1]); return Number.isFinite(id) && id > 0 ? id : null; };
+// 설정 탭의 계정 화면. 모두 네이티브이고, 여기 없는 주소만 웹 화면으로 연다.
+const ACCOUNT_SCREENS = {
+  '/mypage': MyAccountScreen,
+  '/charge': ChargeScreen,
+  '/loan': LoanScreen,
+  '/titles': TitlesScreen,
+  '/settings': ProfileScreen,
+  '/admin': AdminScreen,
+};
+const accountScreenFor = path => ACCOUNT_SCREENS[String(path || '').split('?')[0].replace(/\/$/, '')] ?? null;
 
 /** 웹 주소가 어느 탭에 속하는지. 홈('/')은 네이티브 홈이고, 계정 화면들은 설정 탭 메뉴에서 연다. */
 function tabForPath(path) {
@@ -52,7 +68,8 @@ function Shell() {
 }
 
 function ShellBody({ web }) {
-  const theme = palettes.light;
+  const theme = useTheme();
+  const { scheme, setScheme } = useThemeMode();
   const market = useMarket();
   const { user, syncWeb } = useAuth();
   const [tab, setTab] = useState('home');
@@ -81,6 +98,8 @@ function ShellBody({ web }) {
     if (key === 'market') { setStock(stockFromPath(path)); setStockOrder(null); setTab('market'); return; }
     if (key === 'news') { setNewsId(newsFromPath(path)); setTab('news'); return; }
     const target = path ?? TAB_BY_KEY[key]?.path;
+    // 네이티브 계정 화면은 웹을 옮기지 않고 그 화면만 띄운다.
+    if (key === 'more' && accountScreenFor(target)) { setMenuRoot(target); setTab('more'); return; }
     if (target && target !== webPath.current) {
       web.current?.navigate(target);
       webPath.current = target;
@@ -122,6 +141,14 @@ function ShellBody({ web }) {
     if (owner === 'news') { setNewsId(newsFromPath(path)); setTab('news'); return; }
     if (owner === 'ranking') { setTab('ranking'); return; }
     // 웹 화면의 계정 메뉴에서 계정 화면으로 가면 설정 탭이 그 화면을 이어받는다.
+    // 네이티브로 옮긴 화면이면 웹은 공개 화면으로 돌려 두고 네이티브 화면을 연다.
+    if (owner === 'more' && accountScreenFor(path)) {
+      web.current?.navigate(PARK_PATH);
+      webPath.current = PARK_PATH;
+      setMenuRoot(path);
+      setTab('more');
+      return;
+    }
     if (owner === 'more') setMenuRoot(root => root ?? path);
     // 웹에서 로고나 홈 링크를 누르면 네이티브 홈으로 돌아온다.
     setTab(owner);
@@ -140,6 +167,7 @@ function ShellBody({ web }) {
       }
       if (tab === 'more') {
         if (!menuRoot) { setTab('home'); return true; }
+        if (accountScreenFor(menuRoot)) { setMenuRoot(null); return true; }
         if (webPath.current !== menuRoot && web.current?.goBack()) return true;
         setMenuRoot(null);
         return true;
@@ -150,10 +178,18 @@ function ShellBody({ web }) {
     return () => subscription.remove();
   }, [tab, menuRoot, stock, newsId]);
 
-  const showingMenu = tab === 'more' && !menuRoot;
+  const AccountScreen = tab === 'more' ? accountScreenFor(menuRoot) : null;
+  // 메뉴 목록은 네이티브 계정 화면 아래에도 그려 둔다. 아이폰에서 밀어 닫으면 목록이 드러난다.
+  const showingMenu = tab === 'more' && (!menuRoot || Boolean(AccountScreen));
   const found = newsId ? newsWithIds(market.events).find(item => item.id === newsId) ?? null : null;
   if (found) lastNews.current = found;
   const newsItem = found ?? (lastNews.current?.id === newsId ? lastNews.current : null);
+
+  /** 계정 화면 안의 링크(종목, 미션 이동 등). 웹 주소를 그 주소를 맡은 탭으로 연다. */
+  const go = useCallback(path => {
+    if (!path || path === '/') { setTab('home'); return; }
+    open(tabForPath(path), path);
+  }, [open]);
 
   // 로그인 전용 화면은 앱이 먼저 로그인 시트를 띄운다. 로그인되면 원래 가려던 화면을 연다.
   const openMenuItem = useCallback(path => {
@@ -183,14 +219,16 @@ function ShellBody({ web }) {
   }, [user]);
 
   return (
-    <ThemeProvider value={theme}>
-      <StatusBar style="dark" />
+    <>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <View style={[styles.root, { backgroundColor: theme.ground }]}>
         <View style={styles.body}>
           <WebPane
             ref={web}
-            visible={tab === 'more' && !showingMenu}
+            visible={tab === 'more' && Boolean(menuRoot) && !AccountScreen}
             initialPath={PARK_PATH}
+            scheme={scheme}
+            onScheme={setScheme}
             onRoute={onRoute}
             onLoginRequest={() => requestLogin(null)}
             onReady={onWebReady}
@@ -217,11 +255,16 @@ function ShellBody({ web }) {
             </SwipeBack>
           ) : null}
           {showingMenu ? <MenuScreen onOpen={openMenuItem} onLogin={() => requestLogin(null)} /> : null}
+          {AccountScreen ? (
+            <SwipeBack key={menuRoot} onBack={() => setMenuRoot(null)}>
+              <AccountScreen market={market} onBack={() => setMenuRoot(null)} onGo={go} />
+            </SwipeBack>
+          ) : null}
         </View>
         <TabBar active={tab} onSelect={selectTab} />
       </View>
       <LoginScreen visible={login.visible} onClose={closeLogin} />
-    </ThemeProvider>
+    </>
   );
 }
 
@@ -229,9 +272,18 @@ export default function App() {
   const [fontsLoaded] = useFonts(FONTS);
   return (
     <SafeAreaProvider>
-      {fontsLoaded ? <Shell /> : <View style={styles.root} />}
+      <ThemeProvider>
+        <Boot fontsLoaded={fontsLoaded} />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
+}
+
+/** 글꼴과 저장된 밝기를 다 읽기 전에는 무대색만 깐다. 라이트를 고른 사람에게 다크가 잠깐 비치지 않게 한다. */
+function Boot({ fontsLoaded }) {
+  const theme = useTheme();
+  const { ready } = useThemeMode();
+  return fontsLoaded && ready ? <Shell /> : <View style={[styles.root, { backgroundColor: theme.ground }]} />;
 }
 
 const styles = StyleSheet.create({

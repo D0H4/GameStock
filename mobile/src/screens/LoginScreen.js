@@ -95,15 +95,15 @@ export function LoginScreen({ visible, onClose }) {
 
   const isForm = method !== 'choose';
   // 입력칸과 버튼의 테두리는 찾아 눌러야 하는 경계라 바탕 대비 3:1 이상인 색을 쓴다.
-  const field = [styles.input, { borderColor: theme.chartBase, backgroundColor: theme.card, color: theme.ink }];
+  const field = [styles.input, { borderColor: theme.edge, backgroundColor: theme.raised, color: theme.ink }];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       {/* 화면 가운데에 뜨는 로그인 카드. 뒤 화면은 흐리고 살짝 어둡게 덮어 카드에 시선이 모이게 하고,
           키보드가 올라오면 카드도 따라 올라간다. 앱에서 흐림은 이 한 곳에만 쓴다. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="로그인 닫기">
-        <BlurView intensity={24} tint="default" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
-        <View style={styles.scrim} />
+        <BlurView intensity={24} tint={theme.scheme} experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+        <View style={[styles.scrim, { backgroundColor: theme.scrim }]} />
       </Pressable>
       <KeyboardAvoidingView style={styles.sheetWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
         <View style={[styles.sheet, { backgroundColor: theme.card, marginTop: insets.top + SPACE.lg, marginBottom: insets.bottom + SPACE.lg }]}>
@@ -126,11 +126,11 @@ export function LoginScreen({ visible, onClose }) {
 
           {method === 'choose' ? (
             <View style={styles.stack}>
-              <Pressable accessibilityRole="button" onPress={() => void google()} disabled={waitingGoogle} style={({ pressed }) => [styles.button, styles.outline, { borderColor: theme.chartBase, backgroundColor: pressed ? theme.pressed : theme.card }]}>
+              <Pressable accessibilityRole="button" onPress={() => void google()} disabled={waitingGoogle} style={({ pressed }) => [styles.button, styles.outline, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
                 {waitingGoogle ? <ActivityIndicator color={theme.inkSoft} /> : <GoogleMark />}
                 <Txt variant="body">{waitingGoogle ? '브라우저에서 로그인하는 중이에요' : 'Google로 로그인'}</Txt>
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => switchTo('email')} style={({ pressed }) => [styles.button, styles.outline, { borderColor: theme.chartBase, backgroundColor: pressed ? theme.pressed : theme.card }]}>
+              <Pressable accessibilityRole="button" onPress={() => switchTo('email')} style={({ pressed }) => [styles.button, styles.outline, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
                 <Ionicons name="mail-outline" size={19} color={theme.ink} />
                 <Txt variant="body">이메일로 로그인</Txt>
               </Pressable>
@@ -141,6 +141,8 @@ export function LoginScreen({ visible, onClose }) {
               <Label text="이메일" />
               <TextInput
                 style={field}
+                keyboardAppearance={theme.scheme}
+                selectionColor={theme.brand}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -166,6 +168,8 @@ export function LoginScreen({ visible, onClose }) {
                   <TextInput
                     ref={passwordRef}
                     style={field}
+                    keyboardAppearance={theme.scheme}
+                    selectionColor={theme.brand}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -185,6 +189,8 @@ export function LoginScreen({ visible, onClose }) {
                   <TextInput
                     ref={confirmRef}
                     style={field}
+                    keyboardAppearance={theme.scheme}
+                    selectionColor={theme.brand}
                     value={confirm}
                     onChangeText={setConfirm}
                     secureTextEntry={!showPassword}
@@ -198,9 +204,9 @@ export function LoginScreen({ visible, onClose }) {
                   />
                 </>
               ) : null}
-              <Pressable accessibilityRole="button" onPress={() => void submit()} disabled={busy} style={({ pressed }) => [styles.button, { backgroundColor: theme.brand, opacity: busy ? 0.6 : pressed ? 0.85 : 1, marginTop: SPACE.sm }]}>
-                {busy ? <ActivityIndicator color={theme.onBrand} /> : null}
-                <Txt variant="body" style={{ color: theme.onBrand }}>{method === 'register' ? '회원가입' : method === 'reset' ? '재설정 메일 받기' : '로그인'}</Txt>
+              <Pressable accessibilityRole="button" onPress={() => void submit()} disabled={busy} style={({ pressed }) => [styles.button, { backgroundColor: theme.ink, opacity: busy ? 0.6 : pressed ? 0.85 : 1, marginTop: SPACE.sm }]}>
+                {busy ? <ActivityIndicator color={theme.ground} /> : null}
+                <Txt variant="body" style={{ color: theme.ground }}>{method === 'register' ? '회원가입' : method === 'reset' ? '재설정 메일 받기' : '로그인'}</Txt>
               </Pressable>
               {method === 'email' ? (
                 <View style={styles.links}>
@@ -214,13 +220,13 @@ export function LoginScreen({ visible, onClose }) {
           )}
 
           {error ? (
-            <View style={[styles.message, { backgroundColor: theme.warnWash }]} accessibilityLiveRegion="assertive">
-              <Ionicons name="alert-circle" size={18} color={theme.warn} />
-              <Txt variant="callout" style={{ color: theme.warn, flex: 1 }}>{error}</Txt>
+            <View style={[styles.message, { backgroundColor: theme.raised }]} accessibilityLiveRegion="assertive">
+              <Ionicons name="alert-circle" size={18} color={theme.ink} />
+              <Txt variant="callout" style={{ flex: 1 }}>{error}</Txt>
             </View>
           ) : null}
           {notice ? (
-            <View style={[styles.message, { backgroundColor: theme.ground }]} accessibilityLiveRegion="polite">
+            <View style={[styles.message, { backgroundColor: theme.raised }]} accessibilityLiveRegion="polite">
               <Ionicons name="mail-unread-outline" size={18} color={theme.ink} />
               <Txt variant="callout" style={{ flex: 1 }}>{notice}</Txt>
             </View>
@@ -245,9 +251,9 @@ function TextLink({ text, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26, 22, 32, 0.25)' },
+  scrim: { ...StyleSheet.absoluteFillObject },
   sheetWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACE.xl },
-  sheet: { width: '100%', maxWidth: 420, alignSelf: 'center', borderRadius: 20, maxHeight: '86%', paddingBottom: SPACE.xl },
+  sheet: { width: '100%', maxWidth: 420, alignSelf: 'center', borderRadius: RADIUS, maxHeight: '86%', paddingBottom: SPACE.xl },
   bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingTop: SPACE.sm, minHeight: 56 },
   barButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   heading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingLeft: SPACE.md },
@@ -256,14 +262,14 @@ const styles = StyleSheet.create({
   mark: { width: 28, height: 28, borderRadius: 7 },
   description: { marginBottom: SPACE.lg },
   stack: { gap: SPACE.sm },
-  button: { minHeight: 52, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.lg },
+  button: { minHeight: 52, borderRadius: RADIUS, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.lg },
   outline: { borderWidth: 1 },
   help: { marginTop: SPACE.xs, textAlign: 'center' },
   label: { marginTop: SPACE.xs },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACE.xs },
-  input: { minHeight: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: SPACE.lg, fontFamily: FONT_FAMILY, fontSize: TYPE.body.fontSize },
+  input: { minHeight: 52, borderWidth: 1, borderRadius: RADIUS, paddingHorizontal: SPACE.lg, fontFamily: FONT_FAMILY, fontSize: TYPE.body.fontSize },
   links: { flexDirection: 'row', justifyContent: 'center', gap: SPACE.xl, marginTop: SPACE.md },
   link: { minHeight: 44, justifyContent: 'center' },
   underline: { textDecorationLine: 'underline' },
-  message: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS - 4, padding: SPACE.md, marginTop: SPACE.lg },
+  message: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, padding: SPACE.md, marginTop: SPACE.lg },
 });
