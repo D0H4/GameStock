@@ -312,12 +312,25 @@ html[data-nx] .login-message.is-error { color: var(--up-deep); }
 
 /* ───────── 관리자 ───────── */
 
-.nx-admin-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: start; gap: 16px; }
-.nx-admin-nav { position: sticky; top: 72px; display: grid; gap: 2px; }
-.nx-admin-nav a { display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 8px; color: var(--ink-muted); text-decoration: none; }
-.nx-admin-nav a:hover { background: var(--nx-tint); color: var(--ink); }
-.nx-admin-nav a.is-active { background: var(--nx-tint); color: var(--ink); box-shadow: inset 2px 0 var(--brand); }
+.nx-admin-nav { border-bottom: 1px solid var(--nx-line); }
 .nx-admin-body { min-width: 0; }
+
+/*
+ * 회원을 고르면 목록과 상세를 반씩 나눈다. 목록은 고르는 데 필요한 칸(계정·닉네임·현금·이용)만
+ * 한 줄로 남기고, 긴 이메일은 줄여 쓴다. 번호·이메일 전체는 상세 머리에 있다.
+ */
+/* 1100px 이하에서는 shell.css가 목록과 상세를 위아래로 쌓으므로 그 위에서만 나눈다. */
+@media (min-width: 1101px) {
+  .nx-admin .account-settings.admin-page:has(#admin-user-actions) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-table { min-width: 0; }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-table td { white-space: nowrap; }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-email { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-table :is(th, td):is(:nth-child(2), :nth-child(5)),
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-uid { display: none; }
+}
+/* 상세 칸 안에서는 보유 주식과 최근 주문을 위아래로 쌓아 주문 시각이 꺾이지 않게 한다. */
+.nx-admin [aria-labelledby="admin-user-actions"] .member-columns { grid-template-columns: minmax(0, 1fr); }
+.nx-admin .member-order-time { white-space: nowrap; }
 
 /* 관리 구획은 기존 부품을 그대로 쓰므로 공통 면만 맞춘다. */
 html[data-nx] .nx-admin .panel { padding: 18px 20px; border: 0; border-radius: 8px; background: var(--nx-panel); box-shadow: none; }
@@ -355,11 +368,8 @@ html[data-nx] .nx-admin .empty { color: var(--ink-muted); }
   .nx-mypage-fills,
   .nx-mypage-watch { grid-column: 1; grid-row: auto; }
   .nx-settings-layout,
-  .nx-admin-layout,
   .nx-login { grid-template-columns: minmax(0, 1fr); }
-  .nx-profile-card,
-  .nx-admin-nav { position: static; }
-  .nx-admin-nav { display: flex; overflow-x: auto; }
+  .nx-profile-card { position: static; }
   .nx-login { gap: 24px; }
   .nx-login-index { font-size: 48px; }
 }
