@@ -55,6 +55,11 @@
 
 .nx-empty-state { display: grid; justify-items: center; gap: 8px; padding: 56px 16px; color: var(--ink-muted); }
 
+/* 로그인이 필요한 화면, 없는 주소. 막다른 곳이 아니라 다음 행동 두 개를 준다. */
+.nx-gate { display: grid; justify-items: start; gap: 4px; max-width: 560px; padding: 72px 24px; }
+.nx-gate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.nx-gate-actions .nx-btn { min-height: 44px; }
+
 
 /* ───────── 홈 ───────── */
 
@@ -106,7 +111,8 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 
 /* 시장 지도: 칸 면적은 시가총액, 색 농도는 등락 크기. */
 .nx-heat { display: flex; flex-wrap: wrap; gap: 3px; margin: 0; padding: 0; list-style: none; }
-.nx-heat li { display: flex; min-width: 96px; }
+/* 가장 긴 등락률(+29.99%)과 좌우 여백이 들어가는 최소 폭. 칸이 이보다 좁아지면 이웃 칸을 덮었다. */
+.nx-heat li { display: flex; min-width: 108px; }
 
 .nx-heat-tile {
   position: relative;
@@ -114,8 +120,10 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
   flex: 1;
   flex-direction: column;
   justify-content: flex-end;
+  min-width: 0;
   min-height: 84px;
   padding: 10px 12px;
+  overflow: hidden;
   border-radius: 4px;
   color: #fff;
   text-decoration: none;
@@ -135,7 +143,7 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 .nx-heat-tile.is-down.is-l4 { background: #3559cc; }
 .nx-heat-tile.is-guard { box-shadow: inset 0 0 0 2px var(--amber); }
 .nx-heat-name { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.nx-heat-rate { font-size: 18px; font-weight: 700; }
+.nx-heat-rate { font-size: 18px; font-weight: 700; white-space: nowrap; }
 .nx-heat-price { font-size: 12px; }
 .nx-heat-guard { position: absolute; top: 8px; left: 10px; padding: 0 5px; border-radius: 3px; background: var(--amber); color: #241a00; font-size: 10px; line-height: 16px; }
 
@@ -240,6 +248,7 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 @media (max-width: 520px) {
   .nx-heat li { min-width: 30%; }
   .nx-heat-tile { min-height: 72px; padding: 8px; }
+  .nx-heat-rate { font-size: 16px; }
   .nx-table tbody th,
   .nx-table td { padding: 0 8px; }
   .nx-name-sub { display: none; }

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { apiFetch } from "./api";
 
 export type UserTitle = {
@@ -91,6 +92,15 @@ const TITLE_COLORS: Record<string, string> = {
 /** 칭호 이름(주간 칭호의 "n관왕" 꼬리 포함)에 맞는 글씨색. 모르는 칭호면 undefined. */
 export function titleColor(label: string): string | undefined {
   return TITLE_COLORS[label] ?? TITLE_COLORS[label.replace(/\s+\d+관왕$/, "")];
+}
+
+/**
+ * 새 화면용. 색표는 흰 바탕 기준이라 그대로 쓰면 다크 바탕에서 읽히지 않는다.
+ * 원래 색은 --title-ink로만 넘기고, 테마별로 밝히거나 어둡게 섞는 일은 CSS(.has-title-ink)가 한다.
+ */
+export function titleInkStyle(label: string | null | undefined): CSSProperties | undefined {
+  const color = label ? titleColor(label) : undefined;
+  return color ? ({ "--title-ink": color } as CSSProperties) : undefined;
 }
 
 /** 주간 칭호는 "주간 수익률 1위 2관왕"처럼 횟수를 붙여 보여 준다. */

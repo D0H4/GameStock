@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuthUser } from "../../lib/auth";
 import { DEFAULT_PROFILE_AVATAR } from "../../lib/profileAvatars";
-import { titleColor } from "../../lib/titles";
+import { titleInkStyle } from "../../lib/titles";
 import {
   formatCountdown, formatWeekDay, RANKING_CACHE_KEY, RANKING_TAB_KEY, readRankingCache, readTab, readWeeklyCache,
   usePolledRanking, WEEKLY_RANKING_CACHE_KEY,
@@ -35,7 +35,7 @@ function RankRow({ entry, percent, mine = false }: { entry: Row; percent: number
           <Avatar src={entry.profileImageUrl} />
           <span className="nx-player-text">
             {entry.equippedTitle && (
-              <span className={`nx-player-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`} style={{ color: titleColor(entry.equippedTitle) }} title={entry.equippedTitle}>
+              <span className={`nx-player-title has-title-ink${entry.equippedTitleWeekly ? " is-weekly" : ""}`} style={titleInkStyle(entry.equippedTitle)} title={entry.equippedTitle}>
                 {entry.equippedTitle}
               </span>
             )}

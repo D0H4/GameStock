@@ -12,7 +12,8 @@ export type Route =
   | { name: "loan" }
   | { name: "titles" }
   | { name: "admin"; section: AdminSection }
-  | { name: "login"; method: LoginMethod };
+  | { name: "login"; method: LoginMethod }
+  | { name: "notFound" };
 
 export type AdminSection = "users" | "orders" | "notices" | "audit";
 const ADMIN_SECTIONS: readonly AdminSection[] = ["users", "orders", "notices", "audit"];
@@ -43,7 +44,7 @@ function parse(pathname: string): Route {
     const section = ADMIN_SECTIONS.find((name) => name === parts[1]) ?? "users";
     return { name: "admin", section };
   }
-  return { name: "home" };
+  return parts.length === 0 ? { name: "home" } : { name: "notFound" };
 }
 
 let cachedPath = typeof window === "undefined" ? "/" : window.location.pathname + window.location.search;

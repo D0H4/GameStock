@@ -34,6 +34,11 @@ html[data-nx][data-nx-theme="dark"] {
   --down: #4f7cff;
   --down-deep: #8aa8ff;
   --down-wash: #1b2445;
+  /* 흰 글자를 올리는 매수·매도 면. --up/--down 그대로는 흰 글자 대비가 3.2~3.7:1이라 한 단계 진하게 쓴다. */
+  --up-fill: #e0263c;
+  --down-fill: #2f5fe0;
+  /* 핑크 면 위 글자. 흰색은 3.0:1이라 무대색을 쓴다(6.2:1). */
+  --brand-ink: #12101c;
   --flat: var(--ink-muted);
   --amber: #ffc83d;
   --amber-deep: #ffd66e;
@@ -76,6 +81,9 @@ html[data-nx][data-nx-theme="light"] {
   --down: #2453c9;
   --down-deep: #1f3f9e;
   --down-wash: #e8eefc;
+  --up-fill: var(--up);
+  --down-fill: var(--down);
+  --brand-ink: #12101c;
   --flat: var(--ink-muted);
   --amber: #e0a400;
   --amber-deep: #8a6100;
@@ -358,7 +366,7 @@ html[data-nx] .nx-chart .stock-series-chart .chart-control-button.is-active { ba
 html[data-nx] .nx-chart .stock-series-chart .chart-readout { min-height: 44px; padding: 4px 0 6px; justify-content: flex-start; text-align: left; }
 html[data-nx] .nx-chart .stock-series-chart .chart-status { color: var(--ink-muted); font-size: 12px; }
 html[data-nx] .nx-chart .stock-series-chart .chart-plot { height: clamp(280px, 38vh, 440px); }
-html[data-nx] .nx-chart .stock-series-chart .chart-current { border-radius: 4px; background: var(--brand); color: #fff; }
+html[data-nx] .nx-chart .stock-series-chart .chart-current { border-radius: 4px; background: var(--brand); color: var(--brand-ink); }
 html[data-nx] .nx-chart .chart-prevclose { stroke: var(--ink-faint); }
 html[data-nx] .nx-chart .chart-timeline { padding-top: 8px; }
 
@@ -397,7 +405,7 @@ html[data-nx] .nx-chart .chart-timeline { padding-top: 8px; }
   padding: 3px 8px;
   border-radius: 4px;
   background: var(--brand);
-  color: #fff;
+  color: var(--brand-ink);
   font-size: 12px;
 }
 
@@ -405,10 +413,11 @@ html[data-nx] .nx-chart .chart-timeline { padding-top: 8px; }
 .nx-news-meta { grid-area: meta; color: var(--nx-news-muted); font-size: 12px; }
 .nx-news-effect { grid-area: effect; display: grid; justify-items: end; font-size: 18px; font-weight: 600; }
 .nx-news-effect-label { color: var(--nx-news-muted); font-size: 11px; font-weight: 400; }
-.nx-news .is-up { color: #e0263c; }
-.nx-news .is-down { color: #2f5fe0; }
-html[data-nx-theme="light"] .nx-news .is-up { color: #ff6b79; }
-html[data-nx-theme="light"] .nx-news .is-down { color: #8aa8ff; }
+/* 공통 등락색 규칙(html[data-nx] .nx-num.is-up)보다 구체적이어야 밝은 뉴스 면에서 진한 색이 적용된다. */
+html[data-nx] a.nx-news .nx-num.is-up { color: #c01f34; }
+html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
+html[data-nx][data-nx-theme="light"] a.nx-news .nx-num.is-up { color: #ff6b79; }
+html[data-nx][data-nx-theme="light"] a.nx-news .nx-num.is-down { color: #8aa8ff; }
 
 /* 호가와 체결 레인 */
 .nx-book { grid-area: book; display: flex; flex-direction: column; }
@@ -437,7 +446,7 @@ html[data-nx-theme="light"] .nx-news .is-down { color: #8aa8ff; }
   position: absolute;
   top: 6px;
   width: 50%;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   font-size: 10px;
   text-align: center;
 }
@@ -510,7 +519,7 @@ html[data-nx-theme="light"] .nx-news .is-down { color: #8aa8ff; }
 .nx-book-row.is-bid .nx-book-bar { background: var(--up-wash); }
 .nx-book-qty { isolation: isolate; }
 .nx-book-bar { z-index: -1; }
-.nx-book-empty { grid-column: 1 / -1; color: var(--ink-faint); text-align: center; }
+.nx-book-empty { grid-column: 1 / -1; color: var(--ink-muted); text-align: center; }
 
 /* 판정선: 현재가 줄이 레인까지 가로지른다. */
 .nx-judge {
@@ -540,7 +549,7 @@ html[data-nx-theme="light"] .nx-news .is-down { color: #8aa8ff; }
 }
 
 .nx-combo strong { font-size: 34px; font-weight: 800; line-height: 1; }
-.nx-combo-last { margin-top: auto; color: var(--ink-faint); font-size: 11px; }
+.nx-combo-last { margin-top: auto; color: var(--ink-muted); font-size: 11px; }
 
 /* 아래 줄: 잔고·주문 */
 .nx-account { grid-area: account; }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "../../lib/profile";
-import { checkTitles, equipTitle, titleColor, type TitleStatus, type UserTitle } from "../../lib/titles";
+import { checkTitles, equipTitle, titleInkStyle, type TitleStatus, type UserTitle } from "../../lib/titles";
 import { NxAccountNav } from "./NxAccountNav";
 
 const CATEGORY_ORDER = ["자산", "수익률", "보유", "거래", "활동", "수집", "주간", "특별"];
@@ -10,7 +10,7 @@ function TitleCard({ title, pending, onToggle }: { title: UserTitle; pending: bo
   const date = title.weekly ? title.updatedAt : title.acquiredAt;
   const body = (
     <>
-      <span className="nx-title-name" style={title.owned ? { color: titleColor(title.name) } : undefined}>
+      <span className="nx-title-name has-title-ink" style={title.owned ? titleInkStyle(title.name) : undefined}>
         {title.name}
         {title.weekly && title.owned && <span className="nx-title-crown nx-num">{title.count}관왕</span>}
       </span>
@@ -97,7 +97,7 @@ export function NxTitlesPage() {
             {/* 랭킹에서 보이는 모습 그대로 미리 보여 준다. */}
             <div className="nx-nameplate" aria-label="랭킹에서 보이는 모습">
               <span className="nx-nameplate-label">랭킹에서 보이는 모습</span>
-              <span className="nx-nameplate-title" style={equipped ? { color: titleColor(equipped.name) } : undefined}>{equipped ? equipped.name : "장착한 칭호 없음"}</span>
+              <span className="nx-nameplate-title has-title-ink" style={equipped ? titleInkStyle(equipped.name) : undefined}>{equipped ? equipped.name : "장착한 칭호 없음"}</span>
               <span className="nx-nameplate-name">{profile?.nickname ?? "내 닉네임"}</span>
             </div>
           </section>

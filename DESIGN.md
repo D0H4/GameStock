@@ -19,12 +19,15 @@ colors:
   down: "#4f7cff"
   down-text: "#8aa8ff"
   down-wash: "#1b2445"
+  up-fill: "#e0263c"
+  down-fill: "#2f5fe0"
+  brand-ink: "#12101c"
   guard: "#ffc83d"
   guard-wash: "#3a3014"
   guard-ink: "#241a00"
   news-bg: "#f1eef8"
   news-ink: "#12101c"
-  news-up: "#e0263c"
+  news-up: "#c01f34"
   news-down: "#2f5fe0"
   heat-up-1: "#5a2130"
   heat-up-2: "#8a2537"
@@ -156,12 +159,12 @@ components:
     textColor: "{colors.ink}"
     padding: "16px 18px"
   button-buy:
-    backgroundColor: "{colors.up}"
+    backgroundColor: "{colors.up-fill}"
     textColor: "#ffffff"
     rounded: "{rounded.lg}"
     padding: "12px 16px"
   button-sell:
-    backgroundColor: "{colors.down}"
+    backgroundColor: "{colors.down-fill}"
     textColor: "#ffffff"
     rounded: "{rounded.lg}"
     padding: "12px 16px"
@@ -187,7 +190,7 @@ components:
     padding: "12px 16px"
   news-tag:
     backgroundColor: "{colors.brand}"
-    textColor: "#ffffff"
+    textColor: "{colors.brand-ink}"
     rounded: "{rounded.sm}"
     padding: "3px 8px"
   guard-badge:
@@ -225,7 +228,7 @@ components:
 무채색 무대 위에 의미가 정해진 색 넷(상승, 하락, 판정, 보호)만 쓴다.
 
 ### Primary
-- **판정 핑크** (#fd5886): 판정선(현재가 줄 윗선), 현재 탭 밑줄, 현재 종목 테두리, 포커스 링, 뉴스 태그. 글자로 쓸 때는 다크에서 #ff7aa2, 라이트에서 #c8285a.
+- **판정 핑크** (#fd5886): 판정선(현재가 줄 윗선), 현재 탭 밑줄, 현재 종목 테두리, 포커스 링, 뉴스 태그. 글자로 쓸 때는 다크에서 #ff7aa2, 라이트에서 #c8285a. 핑크 면 위의 글자는 흰색(3.0:1)이 아니라 무대색 #12101c(6.2:1).
 
 ### Secondary
 - **상승 적색** (#ff4d5e, 글자 #ff6b79): 상승 등락, 매수 호가, 매수 노트, 매수 버튼.
@@ -293,7 +296,7 @@ components:
 
 ### Buttons
 - **Shape:** 8px.
-- **매수/매도:** 상승 적색 / 하락 청색 면에 흰 글자. 이 둘만 색이 칠해진 버튼이다.
+- **매수/매도:** 상승 적색 / 하락 청색 면에 흰 글자. 이 둘만 색이 칠해진 버튼이다. 다크에서는 흰 글자 대비(4.5:1)를 위해 한 단계 진한 면(#e0263c / #2f5fe0)을 쓴다.
 - **Ghost:** 투명 바탕, 1px 괘선 테두리, 보조 잉크 글자. 높이 40px. 호버 시 잉크색과 돋움 바탕.
 - **Focus:** 2px 핑크 외곽선, 2px 띄움.
 

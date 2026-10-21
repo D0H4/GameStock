@@ -119,8 +119,15 @@ html[data-nx] .nx-article-chart .stock-series-chart .chart-plot { height: 220px;
 .nx-avatar { width: 36px; height: 36px; flex: none; border: 1px solid var(--nx-line); border-radius: 50%; background: var(--nx-raised); object-fit: cover; }
 .nx-player-text { display: grid; min-width: 0; }
 .nx-player-title { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+/*
+ * 칭호 색표(lib/titles.ts)는 흰 바탕 기준이다. 다크에서는 흰색 55%를 섞어 패널·돋움·핑크 바탕 모두에서 5.2:1 이상,
+ * 라이트에서는 잉크 15%를 섞어 흰 바탕·돋움·핑크 바탕 모두에서 5.3:1 이상이 되게 한다. 색상(hue)은 그대로 둔다.
+ */
+.has-title-ink[style*="--title-ink"] { color: color-mix(in srgb, var(--title-ink) 45%, #ffffff); }
+html[data-nx-theme="light"] .has-title-ink[style*="--title-ink"] { color: color-mix(in srgb, var(--title-ink) 85%, #1b1726); }
 .nx-player-name { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
-.nx-player-me { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--brand); color: #fff; font-size: 11px; vertical-align: 1px; }
+.nx-player-me { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--brand); color: var(--brand-ink); font-size: 11px; vertical-align: 1px; }
 .nx-rank-gap td { height: 16px; }
 .nx-rank-gap span { display: block; border-top: 1px dashed var(--nx-line); }
 .nx-week-figures { padding: 12px 0 16px; border-bottom: 1px solid var(--nx-line); }
@@ -181,7 +188,7 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 
 .nx-loan-gauge { display: grid; gap: 16px; }
 .nx-gauge-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--ink-muted); font-size: 13px; }
-.nx-gauge-head small { margin-left: 6px; color: var(--ink-faint); font-size: 12px; }
+.nx-gauge-head small { margin-left: 6px; color: var(--ink-muted); font-size: 12px; }
 .nx-gauge-head strong { color: var(--ink); font-size: 26px; font-weight: 700; }
 .nx-gauge.is-warning .nx-gauge-head strong { color: var(--amber-deep); }
 .nx-gauge.is-danger .nx-gauge-head strong { color: var(--up-deep); }
@@ -210,7 +217,7 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 .nx-mission-list li:last-child { border-bottom: 0; }
 .nx-mission-index { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--nx-line); border-radius: 50%; color: var(--ink-muted); font-size: 14px; }
 .nx-mission-index svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.nx-mission-list li.is-done .nx-mission-index { border-color: var(--brand); background: var(--brand); color: #fff; }
+.nx-mission-list li.is-done .nx-mission-index { border-color: var(--brand); background: var(--brand); color: var(--brand-ink); }
 .nx-mission-copy h2 { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
 .nx-mission-copy p { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 1.55; }
 .nx-mission-list li.is-done .nx-mission-copy h2 { color: var(--ink-muted); }
@@ -246,11 +253,11 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 button.nx-title { cursor: pointer; }
 button.nx-title:hover:not(:disabled) { background: var(--nx-raised); }
 .nx-title.is-equipped { border-color: var(--brand); background: var(--brand-wash); }
-.nx-title.is-locked { color: var(--ink-faint); }
+.nx-title.is-locked { color: var(--ink-muted); }
 .nx-title-name { font-size: 16px; }
 .nx-title-crown { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--amber-wash); color: var(--amber-deep); font-size: 11px; }
 .nx-title-cond { color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
-.nx-title.is-locked .nx-title-cond { color: var(--ink-faint); }
+.nx-title.is-locked .nx-title-cond { color: var(--ink-muted); }
 .nx-title-state { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); font-size: 12px; }
 .nx-title.is-equipped .nx-title-state { color: var(--ink); }
 .nx-title-state svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; }

@@ -9,7 +9,8 @@ import { SuspensionNotice, useSuspendedUntil } from "./components/SuspensionNoti
 import { useProfile } from "./lib/profile";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
-import { useRoute } from "./router";
+import { MARKET_PATH, useRoute } from "./router";
+import { Link } from "./components/Link";
 import { NxStatus, NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
 import { HomeBoard } from "./next/HomeBoard";
 import { MarketBoard } from "./next/MarketBoard";
@@ -44,6 +45,7 @@ function titleFor(route: Route): string {
   if (route.name === "loan") return "대출 · 슈엔증권";
   if (route.name === "admin") return "관리자 · 슈엔증권";
   if (route.name === "login") return "로그인 · 슈엔증권";
+  if (route.name === "notFound") return "없는 화면 · 슈엔증권";
   return "슈엔증권";
 }
 
@@ -92,7 +94,27 @@ export default function App() {
         {route.name === "market" && !terminal && <MarketBoard />}
         {route.name === "news" && <NxNewsPage id={route.id} />}
         {route.name === "ranking" && <NxRankingPage />}
-        {PRIVATE_ROUTES.has(route.name) && !auth.user && <p className="nx-empty-state" role="status">로그인 상태를 확인하고 있어요.</p>}
+        {PRIVATE_ROUTES.has(route.name) && !auth.user && (auth.ready ? (
+          /* 로그인 창을 닫아도 이 화면에서 다시 열 수 있게 한다. */
+          <section className="nx-gate">
+            <h1 className="nx-page-title">로그인이 필요한 화면이에요</h1>
+            <p className="nx-screen-sub">{titleFor(route).split(" · ")[0]} 화면은 로그인한 뒤에 볼 수 있어요. 로그인 없이도 시세와 뉴스는 볼 수 있어요.</p>
+            <div className="nx-gate-actions">
+              <button type="button" className="nx-btn is-primary" onClick={() => openLoginPrompt(`/${route.name}`)}>로그인하기</button>
+              <Link className="nx-btn" to={MARKET_PATH(null)}>시장 둘러보기</Link>
+            </div>
+          </section>
+        ) : <p className="nx-empty-state" role="status">로그인 상태를 확인하고 있어요.</p>)}
+        {route.name === "notFound" && (
+          <section className="nx-gate">
+            <h1 className="nx-page-title">없는 화면이에요</h1>
+            <p className="nx-screen-sub">주소가 바뀌었거나 잘못 입력됐어요. 홈이나 시장에서 다시 찾아 주세요.</p>
+            <div className="nx-gate-actions">
+              <Link className="nx-btn is-primary" to="/">홈으로</Link>
+              <Link className="nx-btn" to={MARKET_PATH(null)}>시장 보기</Link>
+            </div>
+          </section>
+        )}
         {route.name === "mypage" && auth.user && <NxMyPage />}
         {route.name === "settings" && auth.user && <NxSettingsPage />}
         {route.name === "titles" && auth.user && <NxTitlesPage />}

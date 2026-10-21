@@ -18,8 +18,8 @@
   cursor: pointer;
 }
 .nx-ticket-side:hover { color: var(--ink); }
-.nx-ticket-side.is-buy.is-active { background: var(--up); color: #fff; }
-.nx-ticket-side.is-sell.is-active { background: var(--down); color: #fff; }
+.nx-ticket-side.is-buy.is-active { background: var(--up-fill); color: #fff; }
+.nx-ticket-side.is-sell.is-active { background: var(--down-fill); color: #fff; }
 
 .nx-ticket-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nx-ticket-guard { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--amber-wash); color: var(--amber-deep); font-size: 13px; line-height: 1.5; }
@@ -61,8 +61,8 @@
   cursor: pointer;
   transition: filter 120ms ease-out;
 }
-.nx-ticket-submit.is-buy { background: var(--up); }
-.nx-ticket-submit.is-sell { background: var(--down); }
+.nx-ticket-submit.is-buy { background: var(--up-fill); }
+.nx-ticket-submit.is-sell { background: var(--down-fill); }
 .nx-ticket-submit:hover:not(:disabled) { filter: brightness(1.08); }
 .nx-ticket-submit:disabled { background: var(--nx-raised); color: var(--ink-faint); cursor: not-allowed; }
 
