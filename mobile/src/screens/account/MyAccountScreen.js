@@ -71,6 +71,7 @@ export function MyAccountScreen({ market, onBack, onGo }) {
   const [orders, setOrders] = useState(null);
   const [ordersFailed, setOrdersFailed] = useState(false);
   const [fills, setFills] = useState(null);
+  const [fillsFailed, setFillsFailed] = useState(false);
   const [cancelling, setCancelling] = useState(null);
   const [message, setMessage] = useState(null);
   const alive = useRef(true);
@@ -89,9 +90,12 @@ export function MyAccountScreen({ market, onBack, onGo }) {
   const loadFills = useCallback(async () => {
     try {
       const next = await request('/api/settlements');
-      if (alive.current) setFills(next);
+      if (!alive.current) return;
+      setFills(next);
+      setFillsFailed(false);
     } catch {
-      if (alive.current) setFills(current => current ?? []);
+      // 받은 내역이 있으면 그대로 두고, 한 번도 못 받았으면 실패로 보인다(빈 내역으로 바꾸지 않는다).
+      if (alive.current) setFillsFailed(true);
     }
   }, []);
 
@@ -217,7 +221,7 @@ export function MyAccountScreen({ market, onBack, onGo }) {
 
       <Card padded={false}>
         <CardHead padded title="체결 내역" meta={fills ? `최근 ${Math.min(fills.length, FILL_COUNT)}건` : null} />
-        {fills == null ? <Empty loading text="체결 내역을 불러오는 중이에요" />
+        {fills == null ? <Empty loading={!fillsFailed} text={fillsFailed ? '체결 내역을 불러오지 못했어요. 아래로 당겨 다시 불러오세요.' : '체결 내역을 불러오는 중이에요'} />
           : fills.length === 0 ? <Empty text="아직 체결된 주문이 없어요." />
           : fills.slice(0, FILL_COUNT).map((fill, index) => {
             const buy = String(fill.side).toUpperCase() === 'BUY';

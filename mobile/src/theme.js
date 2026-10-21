@@ -50,7 +50,11 @@ const dark = {
   dotRing: '#12101C',
   scrim: 'rgba(5, 4, 10, 0.6)',
   // 자산 구성 막대의 종목 칸. 잉크에서 무대 쪽으로 내려가는 무채색 다섯 단계(현금만 핑크).
-  alloc: ['#F1EEF8', '#C9C3D9', '#9F98B3', '#77708C', '#534C68'],
+  // 그래픽 대비 3:1을 지키도록 가장 어두운 칸도 카드 대비 3.9:1에서 멈춘다(DESIGN.md 값보다 한 단계 밝다).
+  alloc: ['#F1EEF8', '#CFC9DF', '#ADA6C2', '#918AA8', '#7A7391'],
+  // 담보비율 게이지의 반대매매·경고 구간. 연한 바탕색은 트랙과 구분되지 않아(1.0~1.2:1) 진한 면을 쓴다.
+  gaugeDanger: '#FF6B79',
+  gaugeWarn: '#FFC83D',
 };
 
 const light = {
@@ -77,11 +81,14 @@ const light = {
   guard: '#E0A400',
   guardWash: '#FFF4D6',
   guardText: '#6B4C00',
-  edge: '#8E8995',
+  // 바탕(#EFEDF5) 위에서도 3:1을 넘는 값(3.2:1).
+  edge: '#87828F',
   dot: '#FFFFFF',
   dotRing: '#1B1726',
   scrim: 'rgba(27, 23, 38, 0.4)',
-  alloc: ['#1B1726', '#453F56', '#6F6986', '#A29DB0', '#CFCADB'],
+  alloc: ['#1B1726', '#3A3449', '#554F66', '#6F6986', '#857F99'],
+  gaugeDanger: '#C01F34',
+  gaugeWarn: '#9A6D00',
 };
 
 export const palettes = { dark, light };

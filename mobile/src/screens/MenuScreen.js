@@ -9,7 +9,7 @@ import { RADIUS, RADIUS_SM, SPACE, Txt, useTheme, useThemeMode } from '../theme'
 // 관리자 화면은 관리자 계정에만 보인다. 서버도 모든 관리 요청에서 권한을 다시 확인한다.
 const ACCOUNT = { label: '내 계좌', detail: '보유 종목과 손익, 주문·체결 내역', icon: 'wallet-outline', path: '/mypage' };
 const ITEMS = [
-  { label: '충전하기', detail: '오늘의 투자 미션과 모의 자금 보상', icon: 'checkbox-outline', path: '/charge' },
+  { label: '충전하기', detail: '오늘의 투자 미션과 모의 자금 보상', icon: 'gift-outline', path: '/charge' },
   { label: '대출', detail: '모의 대출과 상환, 한도와 이자', icon: 'cash-outline', path: '/loan' },
   { label: '칭호 설정', detail: '칭호 조건과 획득 현황, 장착', icon: 'ribbon-outline', path: '/titles' },
   { label: '프로필·계정 설정', detail: '닉네임, 프로필 사진, 계좌 초기화', icon: 'person-circle-outline', path: '/settings' },
@@ -131,5 +131,5 @@ const styles = StyleSheet.create({
   signOut: { minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   scheme: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md, paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md },
   segment: { flexDirection: 'row', borderRadius: RADIUS, padding: 4, gap: 4 },
-  segmentItem: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, minWidth: 80, paddingHorizontal: SPACE.md, borderRadius: RADIUS_SM, justifyContent: 'center' },
+  segmentItem: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, minWidth: 80, paddingHorizontal: SPACE.md, borderRadius: RADIUS_SM, justifyContent: 'center' },
 });

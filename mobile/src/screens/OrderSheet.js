@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   unit: { paddingRight: SPACE.md },
   marketNote: { paddingHorizontal: 2 },
   ratios: { flexDirection: 'row', gap: 6 },
-  ratio: { flex: 1, minHeight: 40, borderWidth: 1, borderRadius: RADIUS, alignItems: 'center', justifyContent: 'center' },
+  ratio: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: RADIUS, alignItems: 'center', justifyContent: 'center' },
   summary: { borderRadius: RADIUS, padding: SPACE.md, gap: 6 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   message: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, padding: SPACE.md },

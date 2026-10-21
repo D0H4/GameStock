@@ -21,8 +21,10 @@ const digits = value => value.replace(/[^0-9]/g, '');
 const grouped = value => (value ? Number(value).toLocaleString('ko-KR') : '');
 
 /**
- * 담보비율 게이지. 100%~300% 트랙 위에 반대매매 구간(상승 바탕색)과 경고 구간(보호 바탕색)을 깔고,
- * 지금의 비율은 핑크 판정선 하나로 꽂는다(DESIGN.md 담보비율 게이지).
+ * 담보비율 게이지. 100%~300% 트랙 위에 반대매매 구간(상승 적색)과 경고 구간(보호 노랑)을 깔고,
+ * 지금의 비율은 핑크 판정선 하나로 꽂는다(DESIGN.md 담보비율 게이지). 구간이 게이지의 정보라
+ * 연한 바탕색 대신 트랙 대비 3:1을 넘는 진한 면을 쓴다. 판정선은 트랙 위아래로 튀어나와 카드 위에서
+ * 보이고, 카드색 테두리로 구간 색과 떨어뜨린다.
  */
 function Gauge({ loan }) {
   const theme = useTheme();
@@ -41,9 +43,9 @@ function Gauge({ loan }) {
         <Txt variant="page" tone={valueTone} numeric>{ratio == null ? '대출 없음' : percent(ratio)}</Txt>
       </View>
       <View style={[styles.track, { backgroundColor: theme.raised }]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-        <View style={[styles.zone, { left: 0, width: `${danger * 100}%`, backgroundColor: theme.upWash, borderTopLeftRadius: RADIUS, borderBottomLeftRadius: RADIUS }]} />
-        <View style={[styles.zone, { left: `${danger * 100}%`, width: `${(warning - danger) * 100}%`, backgroundColor: theme.guardWash }]} />
-        {ratio != null ? <View style={[styles.now, { left: `${gaugeShare(ratio) * 100}%`, backgroundColor: theme.brand }]} /> : null}
+        <View style={[styles.zone, { left: 0, width: `${danger * 100}%`, backgroundColor: theme.gaugeDanger, borderTopLeftRadius: RADIUS, borderBottomLeftRadius: RADIUS }]} />
+        <View style={[styles.zone, { left: `${danger * 100}%`, width: `${(warning - danger) * 100}%`, backgroundColor: theme.gaugeWarn }]} />
+        {ratio != null ? <View style={[styles.now, { left: `${gaugeShare(ratio) * 100}%`, backgroundColor: theme.brand, borderColor: theme.card }]} /> : null}
       </View>
       <View style={styles.scale} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         <Txt variant="micro" tone="inkSoft" numeric>100%</Txt>
@@ -52,11 +54,11 @@ function Gauge({ loan }) {
       {/* 구간 경계는 폭이 좁은 폰에서 눈금 글자가 겹치므로 눈금 대신 범례로 적는다. */}
       <View style={styles.legend} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: theme.upWash, borderColor: theme.up }]} />
+          <View style={[styles.legendDot, { backgroundColor: theme.gaugeDanger }]} />
           <Txt variant="caption" tone="inkSoft" numeric>{`반대매매 ${percent(loan.liquidationRatio)} 미만`}</Txt>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: theme.guardWash, borderColor: theme.guard }]} />
+          <View style={[styles.legendDot, { backgroundColor: theme.gaugeWarn }]} />
           <Txt variant="caption" tone="inkSoft" numeric>{`경고 ${percent(loan.warningRatio)} 미만`}</Txt>
         </View>
       </View>
@@ -231,11 +233,11 @@ const styles = StyleSheet.create({
   gauge: { gap: SPACE.sm, marginTop: SPACE.xs },
   track: { height: 14, borderRadius: RADIUS, marginTop: SPACE.sm },
   zone: { position: 'absolute', top: 0, bottom: 0 },
-  now: { position: 'absolute', top: -6, bottom: -6, width: 3, borderRadius: 3, marginLeft: -1.5 },
+  now: { position: 'absolute', top: -7, bottom: -7, width: 7, borderRadius: 3, borderWidth: 2, marginLeft: -3.5 },
   scale: { flexDirection: 'row', justifyContent: 'space-between' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: SPACE.lg, rowGap: 4 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 10, height: 10, borderRadius: 3, borderWidth: 1 },
+  legendDot: { width: 10, height: 10, borderRadius: 3 },
   rules: { gap: 4 },
   ratios: { flexDirection: 'row', gap: 6 },
   footer: { textAlign: 'center', marginTop: SPACE.sm },

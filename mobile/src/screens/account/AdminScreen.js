@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { request, useAuth } from '../../auth';
-import { AccountFrame, Button, Card, CardHead, Chips, Empty, Field, Notice, Row, Segment, SideTag, kit, kstShort } from '../../components/Kit';
+import { AccountFrame, Button, Card, CardHead, Chips, Empty, Field, FieldError, Notice, Row, Segment, SideTag, kit, kstShort } from '../../components/Kit';
 import { price, won } from '../../format';
 import { SPACE, Txt, useTheme } from '../../theme';
 
@@ -123,7 +123,9 @@ function Users() {
       {error ? <Notice text={error} /> : null}
       <Card padded={false}>
         <CardHead padded title="회원" meta={users ? `${users.length}명` : null} />
-        {users == null ? <Empty loading text="회원을 불러오는 중이에요" /> : users.length === 0 ? <Empty text="검색 결과가 없어요." /> : users.map((user, index) => {
+        {users == null ? (error
+          ? <Empty text="회원 목록을 불러오지 못했어요." action="다시 시도" onAction={() => void search(query)} />
+          : <Empty loading text="회원을 불러오는 중이에요" />) : users.length === 0 ? <Empty text="검색 결과가 없어요." /> : users.map((user, index) => {
           const open = openId === user.id;
           return (
             <View key={user.id} style={index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.line }}>
@@ -132,7 +134,7 @@ function Users() {
                   <View style={styles.inline}>
                     <Txt variant="callout" numberOfLines={1} style={styles.shrink}>{user.nickname}</Txt>
                     {user.role === 'ADMIN' ? <Badge text="관리자" /> : null}
-                    {user.tradeBannedUntil ? <Badge text="이용 정지" tone="up" /> : null}
+                    {user.tradeBannedUntil ? <Badge text="이용 정지" tone="ink" /> : null}
                   </View>
                   <Txt variant="caption" tone="inkSoft" numberOfLines={1} numeric>{`#${user.id} · ${user.email || '이메일 없음'}`}</Txt>
                 </View>
@@ -154,7 +156,7 @@ function Users() {
 function Badge({ text, tone = 'inkSoft' }) {
   const theme = useTheme();
   return (
-    <View style={[styles.badge, { borderColor: tone === 'up' ? theme.up : theme.edge }]}>
+    <View style={[styles.badge, { borderColor: tone === 'ink' ? theme.ink : theme.edge }]}>
       <Txt variant="micro" tone={tone}>{text}</Txt>
     </View>
   );
@@ -268,6 +270,7 @@ function Orders({ names }) {
       <Card padded={false}>
         <CardHead padded title="주문" meta={`${list.rows.length.toLocaleString('ko-KR')}건${list.done ? '' : ' 이상'}`} />
         {list.loading && list.rows.length === 0 ? <Empty loading text="주문을 불러오는 중이에요" />
+          : list.error && list.rows.length === 0 ? <Empty text="주문을 불러오지 못했어요." action="다시 시도" onAction={() => void list.load(params(applied), null)} />
           : list.rows.length === 0 ? <Empty text={filtered ? '조건에 맞는 주문이 없어요.' : '아직 주문이 없어요.'} />
           : list.rows.map((row, index) => {
             const code = String(row.stock_code ?? '');
@@ -413,7 +416,9 @@ function Notices() {
           <Txt variant="headline">공지</Txt>
           <Button label="새 공지" small icon="add" onPress={startNew} />
         </View>
-        {rows == null ? <Empty loading={!error} text="공지를 불러오는 중이에요" /> : rows.length === 0 ? <Empty text="아직 공지가 없어요." /> : rows.map((row, index) => {
+        {rows == null ? (error
+          ? <Empty text="공지를 불러오지 못했어요." action="다시 시도" onAction={() => void load()} />
+          : <Empty loading text="공지를 불러오는 중이에요" />) : rows.length === 0 ? <Empty text="아직 공지가 없어요." /> : rows.map((row, index) => {
           const state = noticeState(Boolean(row.published), row.starts_at, row.ends_at);
           const selected = editingId === num(row.id);
           return (
@@ -441,7 +446,7 @@ function Notices() {
           <Field label="시작 (선택)" style={kit.grow} value={draft.startsAt} onChangeText={value => set('startsAt', value)} placeholder="2026-10-21 14:30" autoCorrect={false} numeric={false} />
           <Field label="끝 (선택)" style={kit.grow} value={draft.endsAt} onChangeText={value => set('endsAt', value)} placeholder="비워 두면 계속" autoCorrect={false} />
         </View>
-        {timeError ? <Txt variant="caption" tone="up">{timeError}</Txt> : <Txt variant="caption" tone="inkSoft">시각은 한국시간이에요.</Txt>}
+        {timeError ? <FieldError text={timeError} /> : <Txt variant="caption" tone="inkSoft">시각은 한국시간이에요.</Txt>}
         <Field label="사유 (감사 기록에 남아요)" value={reason} onChangeText={setReason} maxLength={300} />
         {message ? <Notice text={message} /> : null}
         <Button label={editingId ? '고친 내용 저장' : '공지 등록'} kind="primary" busy={busy} disabled={!valid} onPress={() => void save()} />
@@ -508,6 +513,7 @@ function Audit() {
       <Card padded={false}>
         <CardHead padded title="기록" meta={`${list.rows.length.toLocaleString('ko-KR')}건${list.done ? '' : ' 이상'}`} />
         {list.loading && list.rows.length === 0 ? <Empty loading text="기록을 불러오는 중이에요" />
+          : list.error && list.rows.length === 0 ? <Empty text="기록을 불러오지 못했어요." action="다시 시도" onAction={() => void list.load(params(), null)} />
           : list.rows.length === 0 ? <Empty text={filtered ? '조건에 맞는 기록이 없어요.' : '아직 남은 기록이 없어요.'} />
           : list.rows.map((row, index) => (source === 'audit'
             ? <AuditEntry key={String(row.id)} row={row} divided={index > 0} />

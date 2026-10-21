@@ -33,4 +33,4 @@ const LABELS = {
 };
 
 /** 모르는 미션 ID(서버에 새로 생긴 미션)는 이름만 ID로 보이고 시장으로 보낸다. */
-export const missionLabel = id => LABELS[id] ?? { title: id, description: '', action: '시작하기', href: '/market' };
+export const missionLabel = id => LABELS[id] ?? { title: id, description: '', action: '시장 보기', href: '/market' };

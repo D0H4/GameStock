@@ -169,7 +169,7 @@ export function ProfileScreen({ onBack }) {
                 accessibilityState={{ checked: selected }}
                 accessibilityLabel={item.name}
                 onPress={() => setAvatar(item.src)}
-                style={({ pressed }) => [styles.avatar, { borderColor: selected ? theme.brand : 'transparent', backgroundColor: pressed || selected ? theme.raised : 'transparent' }]}
+                style={({ pressed }) => [styles.avatar, { borderColor: selected ? theme.brandText : 'transparent', backgroundColor: pressed || selected ? theme.raised : 'transparent' }]}
               >
                 <Avatar url={item.src} size={52} />
                 <Txt variant="micro" tone={selected ? 'ink' : 'inkSoft'} numberOfLines={1}>{item.name}</Txt>

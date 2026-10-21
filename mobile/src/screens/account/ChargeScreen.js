@@ -9,7 +9,7 @@ import { MISSION_REWARD, missionLabel } from '../../missions';
 import { RADIUS, SPACE, Txt, useTheme } from '../../theme';
 
 /** 충전하기. 모의 자금은 결제가 아니라 매일 바뀌는 투자 미션 보상으로만 들어온다. */
-export function ChargeScreen({ onBack, onGo }) {
+export function ChargeScreen({ onBack, onGo, onNotify }) {
   const theme = useTheme();
   const account = useAccount();
   const [status, setStatus] = useState(null);
@@ -52,7 +52,11 @@ export function ChargeScreen({ onBack, onGo }) {
       if (!alive.current) return;
       setStatus(result.missions);
       void account.reload();
-      if (result.awarded) setMessage({ text: `${won(result.rewardCash)}을 받았어요.`, ok: true });
+      // 바로 다른 화면으로 옮기므로, 지급 결과는 화면이 바뀌어도 남는 앱 알림으로 보여 준다.
+      if (result.awarded) {
+        const text = `미션 보상 ${won(result.rewardCash)}을 받았어요.`;
+        if (onNotify) onNotify(text); else setMessage({ text, ok: true });
+      }
       onGo(mission.href);
     } catch (failure) {
       if (!alive.current) return;
@@ -68,10 +72,10 @@ export function ChargeScreen({ onBack, onGo }) {
       <View style={kit.hero} accessible accessibilityLabel={`오늘 받은 미션 보상 ${won(count * MISSION_REWARD)}, ${ids.length}개 중 ${count}개 완료`}>
         <Txt variant="caption" tone="inkSoft">오늘 받은 미션 보상</Txt>
         <Txt variant="price" numeric>{won(count * MISSION_REWARD)}</Txt>
-        {/* 미션 하나가 칸 하나. 채워진 칸이 끝낸 미션이다. */}
+        {/* 미션 하나가 칸 하나. 채워진 칸이 끝낸 미션이고, 남은 칸은 바탕 대비 3:1이 넘는 테두리로 그린다. */}
         <View style={styles.steps}>
           {(ids.length ? ids : [0, 1, 2]).map((id, index) => (
-            <View key={String(id) + index} style={[styles.step, { backgroundColor: completed.has(id) ? theme.brand : theme.raised }]} />
+            <View key={String(id) + index} style={[styles.step, completed.has(id) ? { backgroundColor: theme.brand, borderColor: theme.brand } : { borderColor: theme.edge }]} />
           ))}
         </View>
         <Txt variant="caption" tone="inkSoft" numeric style={styles.stepNote}>{`하루 최대 ${won((ids.length || 3) * MISSION_REWARD)} · 한국시간 자정에 새 미션`}</Txt>
@@ -153,7 +157,7 @@ function PromoCode() {
 
 const styles = StyleSheet.create({
   steps: { flexDirection: 'row', gap: 6, marginTop: SPACE.md },
-  step: { width: 56, height: 10, borderRadius: 3 },
+  step: { width: 56, height: 10, borderRadius: 3, borderWidth: 1.5 },
   stepNote: { marginTop: SPACE.sm },
   mission: { alignItems: 'flex-start' },
   check: { width: 24, height: 24, borderRadius: RADIUS - 2, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginTop: 2 },

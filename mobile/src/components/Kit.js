@@ -27,7 +27,10 @@ export function AccountFrame({ title, onBack, onRefresh, children, footer }) {
           <Ionicons name="chevron-back" size={26} color={theme.ink} />
         </Pressable>
       </View>
+      {/* 아이폰에서 키보드가 올라오면 그 높이만큼 스크롤 여백을 늘려, 아래쪽 입력칸도 키보드 위로 올라오게 한다.
+          Android는 Expo 기본 설정(화면 크기 조절)이 같은 일을 한다. */}
       <ScrollView
+        automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.content}
@@ -79,19 +82,22 @@ export function Figure({ label, value, tone = 'ink' }) {
 }
 
 /**
- * kind: primary(잉크 면, 화면의 주 동작) · ghost(테두리) · danger(되돌릴 수 없는 동작, 적색 글자 테두리)
+ * kind: primary(잉크 면, 화면의 주 동작) · ghost(테두리) · danger(되돌릴 수 없는 동작)
  *       · buy / sell(매수·매도와 같은 방향의 돈 흐름).
+ * 적색은 이 체계에서 "상승"이라 위험 표시에 빌려 쓰지 않는다. danger는 잉크 테두리에 경고 아이콘을 달고,
+ * 누르면 늘 확인 창을 한 번 더 거친다.
  */
 export function Button({ label, onPress, kind = 'ghost', disabled, busy, small, icon, style, accessibilityLabel }) {
   const theme = useTheme();
   const surface = {
     primary: { backgroundColor: theme.ink, borderColor: theme.ink, color: theme.ground },
     ghost: { backgroundColor: 'transparent', borderColor: theme.edge, color: theme.ink },
-    danger: { backgroundColor: 'transparent', borderColor: theme.up, color: theme.up },
+    danger: { backgroundColor: 'transparent', borderColor: theme.ink, color: theme.ink },
     buy: { backgroundColor: theme.upFill, borderColor: theme.upFill, color: theme.onFill },
     sell: { backgroundColor: theme.downFill, borderColor: theme.downFill, color: theme.onFill },
   }[kind];
   const off = disabled || busy;
+  const glyph = icon ?? (kind === 'danger' ? 'alert-circle-outline' : null);
   return (
     <Pressable
       accessibilityRole="button"
@@ -107,7 +113,7 @@ export function Button({ label, onPress, kind = 'ghost', disabled, busy, small, 
         style,
       ]}
     >
-      {busy ? <ActivityIndicator color={surface.color} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={surface.color} /> : null}
+      {busy ? <ActivityIndicator color={surface.color} /> : glyph ? <Ionicons name={glyph} size={small ? 16 : 18} color={surface.color} /> : null}
       <Txt variant={small ? 'caption' : 'body'} style={{ color: surface.color }}>{label}</Txt>
     </Pressable>
   );
@@ -119,7 +125,7 @@ export function Field({ label, hint, error, unit, numeric, multiline, style, ...
   return (
     <View style={[styles.field, style]}>
       {label ? <Txt variant="caption" tone="inkSoft">{label}</Txt> : null}
-      <View style={[styles.input, multiline && styles.inputMulti, { backgroundColor: theme.raised, borderColor: error ? theme.up : theme.edge }]}>
+      <View style={[styles.input, multiline && styles.inputMulti, { backgroundColor: theme.raised, borderColor: error ? theme.ink : theme.edge }, error && styles.inputError]}>
         <TextInput
           placeholderTextColor={theme.inkSoft}
           keyboardAppearance={theme.scheme}
@@ -136,18 +142,32 @@ export function Field({ label, hint, error, unit, numeric, multiline, style, ...
         />
         {unit ? <Txt variant="callout" tone="inkSoft">{unit}</Txt> : null}
       </View>
-      {error ? <Txt variant="caption" tone="up">{error}</Txt> : hint ? <Txt variant="caption" tone="inkSoft">{hint}</Txt> : null}
+      {error ? <FieldError text={error} /> : hint ? <Txt variant="caption" tone="inkSoft">{hint}</Txt> : null}
     </View>
   );
 }
 
-/** 짧은 결과·오류 안내. guard는 거래 보호·대출 경고처럼 노랑이 뜻을 가질 때만. */
+/** 입력 오류 문구. 적색(상승) 대신 잉크 글자와 경고 아이콘으로 표시한다. */
+export function FieldError({ text }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.fieldError} accessibilityLiveRegion="polite">
+      <Ionicons name="alert-circle" size={14} color={theme.ink} />
+      <Txt variant="caption" style={styles.fill}>{text}</Txt>
+    </View>
+  );
+}
+
+/**
+ * 짧은 결과·오류 안내. guard는 거래 보호·대출 경고처럼 노랑이 뜻을 가질 때만.
+ * 라이트에서는 돋움색 면이 바탕과 거의 같아(1.04:1) 경계선으로 상자를 드러낸다.
+ */
 export function Notice({ text, tone = 'neutral', icon, children }) {
   const theme = useTheme();
   const guard = tone === 'guard';
   const color = guard ? theme.guardText : theme.ink;
   return (
-    <View style={[styles.notice, { backgroundColor: guard ? theme.guardWash : theme.raised }]} accessibilityLiveRegion="polite">
+    <View style={[styles.notice, { backgroundColor: guard ? theme.guardWash : theme.raised, borderColor: guard ? theme.guard : theme.edge }]} accessibilityLiveRegion="polite">
       <Ionicons name={icon ?? (guard ? 'shield-half' : tone === 'ok' ? 'checkmark-circle' : 'alert-circle')} size={18} color={tone === 'ok' ? theme.inkSoft : color} />
       <View style={styles.fill}>
         {text ? <Txt variant="callout" style={{ color }}>{text}</Txt> : null}
@@ -227,6 +247,23 @@ export function SideTag({ buy, label }) {
   );
 }
 
+/**
+ * 화면을 옮긴 뒤에도 보여야 하는 짧은 결과 알림(미션 보상 지급 등). 탭바 바로 위에 잉크 면으로 3초 동안 뜬다.
+ * 움직임은 쓰지 않는다(MOTION 1). 스크린리더에는 바로 읽힌다.
+ */
+export function Toast({ text }) {
+  const theme = useTheme();
+  if (!text) return null;
+  return (
+    <View pointerEvents="none" style={styles.toastWrap}>
+      <View style={[styles.toast, { backgroundColor: theme.ink }]} accessibilityLiveRegion="assertive" accessibilityRole="alert">
+        <Ionicons name="checkmark-circle" size={18} color={theme.ground} />
+        <Txt variant="callout" style={{ color: theme.ground, flexShrink: 1 }}>{text}</Txt>
+      </View>
+    </View>
+  );
+}
+
 /** 한국시간 "10.21 14:32". 기기 시간대와 상관없이 같은 값을 보여 준다. */
 export function kstShort(value) {
   const ms = typeof value === 'number' ? value : Date.parse(value);
@@ -257,17 +294,21 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, minHeight: 60, paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md },
   figure: { flex: 1, minWidth: 0, gap: 2 },
   button: { minHeight: 52, borderRadius: RADIUS, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.lg },
-  buttonSmall: { minHeight: 40, borderRadius: RADIUS, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: SPACE.md },
+  buttonSmall: { minHeight: 44, borderRadius: RADIUS, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: SPACE.md },
   field: { gap: 6 },
   input: { flexDirection: 'row', alignItems: 'center', minHeight: 52, borderWidth: 1, borderRadius: RADIUS, paddingHorizontal: SPACE.md, gap: SPACE.sm },
   inputMulti: { alignItems: 'stretch' },
+  inputError: { borderWidth: 2 },
+  fieldError: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   inputText: { flex: 1, minHeight: 48, fontSize: TYPE.body.fontSize },
-  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm, borderRadius: RADIUS, padding: SPACE.md, marginBottom: SPACE.md },
+  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm, borderRadius: RADIUS, borderWidth: 1, padding: SPACE.md, marginBottom: SPACE.md },
   segment: { flexDirection: 'row', borderRadius: RADIUS, padding: 4, gap: 4 },
-  segmentItem: { flex: 1, minHeight: 40, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE.sm },
+  segmentItem: { flex: 1, minHeight: 44, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE.sm },
   chips: { gap: 6, paddingVertical: 2 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingHorizontal: SPACE.md, borderRadius: RADIUS, borderWidth: 1 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: SPACE.md, borderRadius: RADIUS, borderWidth: 1 },
   empty: { alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.xl, paddingHorizontal: SPACE.lg },
   emptyText: { textAlign: 'center' },
+  toastWrap: { position: 'absolute', left: SPACE.lg, right: SPACE.lg, bottom: SPACE.md, alignItems: 'center' },
+  toast: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, maxWidth: 480 },
   tag: { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1, alignSelf: 'flex-start' },
 });

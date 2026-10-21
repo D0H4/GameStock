@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, minHeight: 46, fontFamily: FONT_FAMILY, fontSize: TYPE.body.fontSize },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACE.md, marginBottom: SPACE.sm },
   filters: { flexDirection: 'row', gap: 6 },
-  chip: { minHeight: 36, minWidth: 48, paddingHorizontal: SPACE.md, borderRadius: RADIUS, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  chip: { minHeight: 44, minWidth: 48, paddingHorizontal: SPACE.md, borderRadius: RADIUS, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   sort: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36 },
   listOuter: { flex: 1 },
   list: { marginHorizontal: SPACE.lg, marginBottom: SPACE.xxl, borderRadius: RADIUS, overflow: 'hidden' },

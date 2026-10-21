@@ -32,6 +32,9 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
   const [history, setHistory] = useState({ range: null, points: null, error: false });
   const [drivers, setDrivers] = useState(null);
   const [news, setNews] = useState(null);
+  // 근거·뉴스를 한 번도 못 받았을 때만 실패로 보인다. 받은 값이 있으면 다음 갱신까지 그 값을 둔다.
+  const [driversFailed, setDriversFailed] = useState(false);
+  const [newsFailed, setNewsFailed] = useState(false);
   const [openNews, setOpenNews] = useState(null);
   const [order, setOrder] = useState(null);
   const [watchError, setWatchError] = useState('');
@@ -62,8 +65,12 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
   useEffect(() => {
     let cancelled = false;
     const read = () => {
-      api(`/api/stocks/${code}/price-drivers`).then(value => { if (!cancelled) setDrivers(value); }).catch(() => {});
-      api(`/api/stocks/${code}/news`).then(value => { if (!cancelled) setNews(value); }).catch(() => { if (!cancelled) setNews(current => current ?? []); });
+      api(`/api/stocks/${code}/price-drivers`)
+        .then(value => { if (!cancelled) { setDrivers(value); setDriversFailed(false); } })
+        .catch(() => { if (!cancelled) setDriversFailed(true); });
+      api(`/api/stocks/${code}/news`)
+        .then(value => { if (!cancelled) { setNews(value); setNewsFailed(false); } })
+        .catch(() => { if (!cancelled) setNewsFailed(true); });
     };
     read();
     const timer = setInterval(read, 30_000);
@@ -128,7 +135,7 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
         </View>
 
         {restriction ? (
-          <View style={[styles.notice, { backgroundColor: theme.guardWash }]}>
+          <View style={[styles.notice, { backgroundColor: theme.guardWash, borderColor: theme.guard }]}>
             <Ionicons name="shield-half" size={18} color={theme.guardText} />
             <View style={styles.shrink}>
               <Txt variant="callout" style={{ color: theme.guardText }}>{restriction.label}</Txt>
@@ -175,7 +182,7 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
               </View>
               <Txt variant="micro" tone="inkSoft" style={{ marginTop: SPACE.sm }}>최근 24시간 기준이에요.</Txt>
             </>
-          ) : <Txt variant="caption" tone="inkSoft" style={{ marginTop: SPACE.sm }}>가격 근거를 불러오는 중이에요</Txt>}
+          ) : <Txt variant="caption" tone="inkSoft" style={{ marginTop: SPACE.sm }}>{driversFailed ? '가격 근거를 불러오지 못했어요. 30초마다 다시 불러와요.' : '가격 근거를 불러오는 중이에요'}</Txt>}
         </Card>
 
         <Card padded={false}>
@@ -211,7 +218,9 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
 
         <Card padded={false}>
           <View style={styles.cardHead}><Txt variant="headline" accessibilityRole="header">관련 뉴스</Txt></View>
-          {news == null ? <View style={styles.chartLoading}><ActivityIndicator color={theme.inkSoft} /></View>
+          {news == null ? (newsFailed
+            ? <Txt variant="caption" tone="inkSoft" style={styles.bookEmpty}>관련 뉴스를 불러오지 못했어요. 30초마다 다시 불러와요.</Txt>
+            : <View style={styles.chartLoading}><ActivityIndicator color={theme.inkSoft} /></View>)
             : sortedNews.length ? sortedNews.slice(0, 5).map((item, index) => {
               const key = `${item.publishedAt}-${index}`;
               const expanded = openNews === key;
@@ -359,19 +368,19 @@ const styles = StyleSheet.create({
   barButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   hero: { paddingHorizontal: SPACE.lg + 2, paddingBottom: SPACE.lg },
   heroName: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, padding: SPACE.md, marginBottom: SPACE.md },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, borderWidth: 1, padding: SPACE.md, marginBottom: SPACE.md },
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },
   cardHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: SPACE.lg + 2, paddingTop: SPACE.lg + 2, paddingBottom: SPACE.sm, gap: SPACE.sm },
   ranges: { flexDirection: 'row', gap: 4, marginBottom: SPACE.md },
-  range: { flex: 1, minHeight: 36, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center' },
+  range: { flex: 1, minHeight: 44, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center' },
   chartLoading: { minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   drivers: { marginTop: SPACE.md, paddingTop: SPACE.sm, borderTopWidth: StyleSheet.hairlineWidth, gap: SPACE.md },
   driver: { gap: 6 },
   driverLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: SPACE.sm, flexWrap: 'wrap' },
   shareTrack: { height: 4, borderRadius: 3, overflow: 'hidden', flexDirection: 'row' },
   shareFill: { height: 4 },
-  book: { flexDirection: 'row', alignItems: 'center', minHeight: 40, paddingHorizontal: SPACE.lg + 2 },
+  book: { flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingHorizontal: SPACE.lg + 2 },
   bookSide: { flex: 1, height: 32, justifyContent: 'center' },
   bookBar: { position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 3 },
   bookBarRight: { left: undefined, right: 0 },

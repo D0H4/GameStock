@@ -86,14 +86,14 @@ export function HomeScreen({ market, onOpen }) {
       ) : null}
 
       {error && stocks.length > 0 ? (
-        <View style={[styles.notice, { backgroundColor: theme.raised }]} accessibilityLiveRegion="polite">
+        <View style={[styles.notice, { backgroundColor: theme.raised, borderColor: theme.edge }]} accessibilityLiveRegion="polite">
           <Ionicons name="cloud-offline" size={18} color={theme.inkSoft} />
           <Txt variant="caption" style={{ flex: 1 }}>새 시세를 받지 못해 마지막으로 받은 값을 보여 주고 있어요. 아래로 당겨 다시 불러오세요.</Txt>
         </View>
       ) : null}
 
       {restriction ? (
-        <View style={[styles.notice, { backgroundColor: theme.guardWash }]}>
+        <View style={[styles.notice, { backgroundColor: theme.guardWash, borderColor: theme.guard }]}>
           <Ionicons name="shield-half" size={18} color={theme.guardText} />
           <Txt variant="caption" style={{ color: theme.guardText, flex: 1 }}>{`${restriction.label} · ${restriction.effect || restriction.reason}`}</Txt>
         </View>
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, marginBottom: SPACE.sm },
   mark: { width: 30, height: 30, borderRadius: 8 },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, borderWidth: 1, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

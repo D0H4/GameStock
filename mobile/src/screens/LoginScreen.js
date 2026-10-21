@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authErrorMessage, useAuth } from '../auth';
 import { FONT_FAMILY, RADIUS, SPACE, TYPE, Txt, useTheme } from '../theme';
@@ -99,12 +98,9 @@ export function LoginScreen({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      {/* 화면 가운데에 뜨는 로그인 카드. 뒤 화면은 흐리고 살짝 어둡게 덮어 카드에 시선이 모이게 하고,
-          키보드가 올라오면 카드도 따라 올라간다. 앱에서 흐림은 이 한 곳에만 쓴다. */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="로그인 닫기">
-        <BlurView intensity={24} tint={theme.scheme} experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
-        <View style={[styles.scrim, { backgroundColor: theme.scrim }]} />
-      </Pressable>
+      {/* 화면 가운데에 뜨는 로그인 카드. 뒤 화면은 흐림 없이 어둡게만 덮어 카드에 시선을 모은다
+          (DESIGN.md 평평한 무대 규칙). 키보드가 올라오면 카드도 따라 올라간다. */}
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]} onPress={onClose} accessibilityLabel="로그인 닫기" />
       <KeyboardAvoidingView style={styles.sheetWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
         <View style={[styles.sheet, { backgroundColor: theme.card, marginTop: insets.top + SPACE.lg, marginBottom: insets.bottom + SPACE.lg }]}>
           <View style={styles.bar}>
@@ -251,7 +247,6 @@ function TextLink({ text, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  scrim: { ...StyleSheet.absoluteFillObject },
   sheetWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACE.xl },
   sheet: { width: '100%', maxWidth: 420, alignSelf: 'center', borderRadius: RADIUS, maxHeight: '86%', paddingBottom: SPACE.xl },
   bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingTop: SPACE.sm, minHeight: 56 },
@@ -259,7 +254,7 @@ const styles = StyleSheet.create({
   heading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingLeft: SPACE.md },
   shrink: { flexShrink: 1 },
   body: { paddingHorizontal: SPACE.xl, paddingTop: SPACE.sm },
-  mark: { width: 28, height: 28, borderRadius: 7 },
+  mark: { width: 28, height: 28, borderRadius: 8 },
   description: { marginBottom: SPACE.lg },
   stack: { gap: SPACE.sm },
   button: { minHeight: 52, borderRadius: RADIUS, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.lg },

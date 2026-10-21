@@ -24,6 +24,7 @@ import { TabBar, TABS } from './src/components/TabBar';
 import { WebPane } from './src/WebPane';
 import { newsWithIds, useMarket } from './src/market';
 import { FONTS, ThemeProvider, useTheme, useThemeMode } from './src/theme';
+import { Toast } from './src/components/Kit';
 
 const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
 // 웹 화면이 보이지 않을 때 머물러 둘 공개 화면. 로그인 전용 웹 화면에 두면 로그인을 다시 요구한다.
@@ -80,6 +81,14 @@ function ShellBody({ web }) {
   // 뉴스 탭에서 연 기사 id. null이면 뉴스 목록. 읽던 기사가 실시간 갱신으로 목록에서 밀려나도 계속 보여 준다.
   const [newsId, setNewsId] = useState(null);
   const lastNews = useRef(null);
+  // 화면을 옮긴 뒤에도 보여야 하는 짧은 알림. 3초 뒤 사라진다.
+  const [toast, setToast] = useState(null);
+  const notify = useCallback(text => setToast({ text, at: Date.now() }), []);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
   // 로그인 시트. next는 로그인 뒤에 열 화면 주소(없으면 지금 화면에 머문다).
   const [login, setLogin] = useState({ visible: false, next: null });
   const requestLogin = useCallback(next => setLogin({ visible: true, next: next ?? null }), []);
@@ -257,9 +266,10 @@ function ShellBody({ web }) {
           {showingMenu ? <MenuScreen onOpen={openMenuItem} onLogin={() => requestLogin(null)} /> : null}
           {AccountScreen ? (
             <SwipeBack key={menuRoot} onBack={() => setMenuRoot(null)}>
-              <AccountScreen market={market} onBack={() => setMenuRoot(null)} onGo={go} />
+              <AccountScreen market={market} onBack={() => setMenuRoot(null)} onGo={go} onNotify={notify} />
             </SwipeBack>
           ) : null}
+          <Toast text={toast?.text} />
         </View>
         <TabBar active={tab} onSelect={selectTab} />
       </View>
