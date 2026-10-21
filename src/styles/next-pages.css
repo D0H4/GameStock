@@ -95,14 +95,13 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
   grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
   grid-template-areas:
     "heat movers"
-    "news movers"
+    "news news"
     "holdings holdings";
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--nx-line);
-  border-radius: var(--nx-radius);
-  background: var(--nx-line);
+  gap: 14px;
 }
+
+/* 상자마다 제 테두리를 두르고 사이를 띄운다. */
+.nx-home-grid > .nx-panel { border: 1px solid var(--nx-line); border-radius: var(--nx-radius); }
 
 .nx-home-heat { grid-area: heat; }
 .nx-home-movers { grid-area: movers; }
@@ -185,11 +184,13 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 .nx-mover-headline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-mover-when { color: var(--ink-muted); font-size: 11px; }
 
-/* 넓은 화면: 오른쪽 열 높이는 왼쪽(지도·속보)이 정하고, 종목은 그 높이를 채울 만큼 나열한다. */
+/* 넓은 화면: 다섯 종목이 옆 시장 지도 높이를 고르게 나눠 바닥까지 채운다. */
 @media (min-width: 1081px) {
+  .nx-home-heat,
   .nx-home-movers { display: flex; flex-direction: column; }
-  .nx-movers { display: flex; flex: 1 1 0; flex-direction: column; min-height: 0; overflow: hidden; contain: size; }
-  /* 온전한 줄 수로 나누고 남는 높이는 줄마다 고르게 나눠 바닥까지 채운다. */
+  /* 두 상자 중 높은 쪽에 맞춰 늘어나면 지도 칸도 함께 키워 아래 빈 띠를 없앤다. */
+  .nx-heat { flex: 1; }
+  .nx-movers { display: flex; flex: 1; flex-direction: column; }
   .nx-movers li { display: flex; flex: 1 0 auto; flex-direction: column; justify-content: center; }
 }
 

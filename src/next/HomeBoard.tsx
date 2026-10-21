@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useState } from "react";
 import { GameIcon } from "../components/GameIcon";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { Link } from "../components/Link";
@@ -128,49 +128,16 @@ function Heatmap() {
   );
 }
 
-const MOVERS_NARROW = 5;
-
-/**
- * 넓은 화면에서는 목록 칸 높이를 왼쪽 열이 정한다(CSS contain: size).
- * 그 높이에 온전히 들어가는 줄 수만큼 종목을 보여준다. 좁은 화면은 5개.
- */
-function useMoverFit(list: RefObject<HTMLOListElement | null>, total: number): number {
-  const [fit, setFit] = useState(MOVERS_NARROW);
-  useLayoutEffect(() => {
-    const element = list.current;
-    if (!element) return undefined;
-    const wide = window.matchMedia("(min-width: 1081px)");
-    const measure = () => {
-      if (!wide.matches) return setFit(MOVERS_NARROW);
-      const rows = [...element.children] as HTMLElement[];
-      const first = rows[0];
-      if (!first) return;
-      const later = rows[1]?.offsetHeight ?? first.offsetHeight;
-      const room = element.clientHeight - first.offsetHeight;
-      setFit(Math.max(1, 1 + Math.floor(room / later)));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    wide.addEventListener("change", measure);
-    return () => {
-      observer.disconnect();
-      wide.removeEventListener("change", measure);
-    };
-  }, [list, total]);
-  return fit;
-}
+const MOVERS_LIMIT = 5;
 
 function Movers() {
   const snapshot = useMarket();
-  const list = useRef<HTMLOListElement>(null);
-  const ranked = [...snapshot.codes]
+  const codes = [...snapshot.codes]
     .filter((code) => snapshot.quotes[code])
-    .sort((a, b) => Math.abs(sessionRate(snapshot.quotes[b])) - Math.abs(sessionRate(snapshot.quotes[a])));
-  const fit = useMoverFit(list, ranked.length);
-  const codes = ranked.slice(0, fit);
+    .sort((a, b) => Math.abs(sessionRate(snapshot.quotes[b])) - Math.abs(sessionRate(snapshot.quotes[a])))
+    .slice(0, MOVERS_LIMIT);
   return (
-    <ol className="nx-movers" ref={list}>
+    <ol className="nx-movers">
       {codes.map((code) => {
         const quote = snapshot.quotes[code];
         const listing = LISTING_BY_CODE[code];

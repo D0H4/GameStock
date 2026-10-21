@@ -196,33 +196,65 @@ html[data-nx] .price {
 .nx-nav-link:hover { color: var(--ink); }
 .nx-nav-link.is-active { color: var(--ink); box-shadow: inset 0 -2px var(--brand); }
 
-.nx-top .nx-icon-button { margin-left: auto; }
-
-/* 지수와 종목 시세가 번갈아 도는 자리. 폭을 고정해 옆 버튼이 흔들리지 않게 한다. */
+/* 지수는 고정, 그 오른쪽 남는 폭 전부가 종목 시세 띠. 프로필 버튼까지 이어진다. */
 .nx-index {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 300px;
-  margin: 0;
-  overflow: hidden;
+  flex: 1;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+  height: 100%;
   color: var(--ink);
-  text-decoration: none;
 }
 
-a.nx-index:hover .nx-index-label { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.nx-index-item { display: flex; align-items: baseline; gap: 10px; min-width: 0; animation: nx-ticker-in 320ms cubic-bezier(0.16, 1, 0.3, 1); }
-.nx-index-label { overflow: hidden; color: var(--ink-muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.nx-index-item { display: flex; flex: none; align-items: baseline; gap: 10px; margin: 0; }
+.nx-index-label { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
 .nx-index-value { font-size: 16px; font-weight: 600; white-space: nowrap; }
 .nx-index-item > .nx-num:last-child { white-space: nowrap; }
 
-@keyframes nx-ticker-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+/* 시세 띠: 양 끝은 바탕색으로 흐려 잘린 글자가 보이지 않게 한다. 마우스나 포커스가 오면 멈춘다. */
+.nx-tape {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding-left: 20px;
+  overflow: hidden;
+  border-left: 1px solid var(--nx-line);
+  mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
 }
 
+.nx-tape-track { display: flex; width: max-content; height: 100%; animation: nx-tape var(--nx-tape-duration, 60s) linear infinite; }
+.nx-tape:hover .nx-tape-track,
+.nx-tape:focus-within .nx-tape-track { animation-play-state: paused; }
+.nx-tape ul { display: flex; margin: 0; padding: 0; list-style: none; }
+
+.nx-tape-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 100%;
+  padding: 0 28px 0 0;
+  color: var(--ink);
+  line-height: 56px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nx-tape-item:hover .nx-tape-name { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.nx-tape-name { color: var(--ink-muted); font-size: 13px; }
+.nx-tape-price { font-size: 14px; font-weight: 600; }
+.nx-tape-rate { font-size: 13px; }
+
+@keyframes nx-tape {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* 움직임을 줄인 사용자: 띠는 멈추고 손으로 가로 스크롤한다. 두 번째 줄은 필요 없다. */
 @media (prefers-reduced-motion: reduce) {
-  .nx-index-item { animation: none; }
+  .nx-tape { overflow-x: auto; scrollbar-width: none; mask-image: none; }
+  .nx-tape-track { animation: none; }
+  .nx-tape ul[aria-hidden="true"] { display: none; }
 }
 
 .nx-icon-button {
@@ -564,7 +596,9 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-left: 122px;
+  /* 호가 패널 좌우 끝까지 그어 세로 칸 경계와 맞닿게 한다. 글자 자리는 레인 폭(112px)+10px 그대로. */
+  margin: 0 -18px;
+  padding-left: calc(122px + 18px);
   border-top: 2px solid var(--brand);
   background: var(--brand-wash);
 }
@@ -609,7 +643,6 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 /* 넓은 노트북: 목록을 줄인다. */
 @media (max-width: 1360px) {
   .nx-terminal { grid-template-columns: 208px minmax(0, 1fr) 380px; }
-  .nx-index { width: 250px; }
 }
 
 /* 태블릿·휴대폰: 한 줄로 쌓고, 종목 목록은 가로로 넘긴다. */
@@ -617,6 +650,7 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   .nx-top { gap: 12px; padding: 0 12px; }
   .nx-brand span { display: none; }
   .nx-index { display: none; }
+  .nx-top .nx-icon-button { margin-left: auto; }
   .nx-terminal {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "watch" "center" "side" "account";
@@ -641,5 +675,5 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   .nx-nav-link { padding: 0 8px; font-size: 14px; }
   .nx-watch-toggle { padding: 0 10px; }
   .nx-ladder { grid-template-columns: 84px minmax(0, 1fr); }
-  .nx-judge { padding-left: 94px; }
+  .nx-judge { padding-left: calc(94px + 18px); }
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "../../components/Link";
 import { apiFetch } from "../../lib/api";
 import { openLoginPrompt, useAuthUser } from "../../lib/auth";
-import { clock, fillTime, won } from "../../market/format";
+import { fillTime, won } from "../../market/format";
 import { useMarket } from "../../market/MarketProvider";
 import { LISTING_BY_CODE } from "../../market/universe";
 import { TRADE_PATH } from "../../router";
@@ -163,10 +163,13 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
         )}
       </div>
 
-      <div className={`nx-acct-status${tab === "orders" && error ? " is-error" : ""}`} role="status" aria-live="polite">
-        <span>{tab === "orders" && error ? error : !user ? "로그인 후 이용할 수 있어요." : tab === "orders" && message ? message : tab === "orders" ? `미체결 ${count}건` : `${count}건 · ${clock(snapshot.updatedAt)} 기준`}</span>
-        {tab === "orders" && error && <button type="button" className="nx-link-button" onClick={() => setRevision((current) => current + 1)}>다시 시도</button>}
-      </div>
+      {/* 미체결 탭에서만 취소 결과와 조회 실패를 알린다. 잔고·체결 탭은 표만 둔다. */}
+      {tab === "orders" && user && (
+        <div className={`nx-acct-status${error ? " is-error" : ""}`} role="status" aria-live="polite">
+          <span>{error || message || `미체결 ${count}건`}</span>
+          {error && <button type="button" className="nx-link-button" onClick={() => setRevision((current) => current + 1)}>다시 시도</button>}
+        </div>
+      )}
     </div>
   );
 }

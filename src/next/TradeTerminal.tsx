@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
@@ -40,45 +40,47 @@ export function useNxRoot(): void {
   }, [theme]);
 }
 
-const TICKER_MS = 4000;
+/** 종목 하나가 띠를 한 칸 지나가는 시간(초). 종목 수에 곱해 전체 한 바퀴 시간을 정한다. */
+const TAPE_SECONDS_PER_ITEM = 4;
 
-/** 상단 바 시세 자리. 게임주 지수에서 시작해 종목 시세를 하나씩 돌아가며 보여준다. */
+/** 상단 바 시세 자리. 게임주 지수는 왼쪽에 고정하고, 전 종목 시세는 그 옆 띠로 흘려 보낸다. */
 function TopTicker() {
   const snapshot = useMarket();
-  const [step, setStep] = useState(0);
   const codes = snapshot.codes.filter((code) => snapshot.quotes[code] && LISTING_BY_CODE[code]);
-  const slots = codes.length + 1;
+  const { value, prevClose } = snapshot.index;
+  const change = value - prevClose;
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setStep((current) => current + 1), TICKER_MS);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const slot = step % slots;
-  if (slot === 0) {
-    const { value, prevClose } = snapshot.index;
-    const change = value - prevClose;
+  /* 띠가 끊기지 않게 같은 목록을 두 번 잇는다. 두 번째 줄은 화면 읽기와 탭 이동에서 뺀다. */
+  const items = (copy: boolean) => codes.map((code) => {
+    const quote = snapshot.quotes[code];
+    const ratio = sessionRate(quote);
     return (
-      <p className="nx-index">
-        <span className="nx-index-item" key="index">
-          <span className="nx-index-label">게임주 지수</span>
-          <span className="nx-num nx-index-value">{indexValue(value)}</span>
-          <span className={`nx-num ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>{rate(prevClose > 0 ? change / prevClose : 0)}</span>
-        </span>
-      </p>
+      <li key={code}>
+        <Link className="nx-tape-item" to={MARKET_PATH(code)} tabIndex={copy ? -1 : undefined}>
+          <span className="nx-tape-name">{LISTING_BY_CODE[code].name}</span>
+          <span className="nx-num nx-tape-price">{won(quote.price)}</span>
+          <span className={`nx-num nx-tape-rate ${ratio > 0 ? "is-up" : ratio < 0 ? "is-down" : ""}`}>{rate(ratio)}</span>
+        </Link>
+      </li>
     );
-  }
-  const code = codes[slot - 1];
-  const quote = snapshot.quotes[code];
-  const ratio = sessionRate(quote);
+  });
+
   return (
-    <Link className="nx-index" to={MARKET_PATH(code)}>
-      <span className="nx-index-item" key={code}>
-        <span className="nx-index-label">{LISTING_BY_CODE[code].name}</span>
-        <span className="nx-num nx-index-value">{won(quote.price)}</span>
-        <span className={`nx-num ${ratio > 0 ? "is-up" : ratio < 0 ? "is-down" : ""}`}>{rate(ratio)}</span>
-      </span>
-    </Link>
+    <div className="nx-index">
+      <p className="nx-index-item">
+        <span className="nx-index-label">게임주 지수</span>
+        <span className="nx-num nx-index-value">{indexValue(value)}</span>
+        <span className={`nx-num ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>{rate(prevClose > 0 ? change / prevClose : 0)}</span>
+      </p>
+      {codes.length > 0 && (
+        <div className="nx-tape" style={{ "--nx-tape-duration": `${codes.length * TAPE_SECONDS_PER_ITEM}s` } as CSSProperties}>
+          <div className="nx-tape-track">
+            <ul aria-label="종목별 현재 시세">{items(false)}</ul>
+            <ul aria-hidden="true">{items(true)}</ul>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

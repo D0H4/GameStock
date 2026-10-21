@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "../../components/Link";
 import { requireSignIn, useAuthUser } from "../../lib/auth";
-import { useTradingShortcuts } from "../../lib/useTradingShortcuts";
 import { won } from "../../market/format";
 import { useMarket, useMarketApi } from "../../market/MarketProvider";
 import { affordableQuantity } from "../../market/orderSizing";
@@ -10,7 +9,7 @@ import type { OrderResult } from "../../market/types";
 import { nextTickPrice, previousTickPrice, roundToTick, tickSize } from "../../market/universe";
 
 /*
- * 새 화면의 주문서. 주문 규칙(호가 단위, 수량 한도, 주문 가능 금액, 단축키, 거래 제한)은
+ * 새 화면의 주문서. 주문 규칙(호가 단위, 수량 한도, 주문 가능 금액, 거래 제한)은
  * 기존 AdvancedOrderTicket과 한 줄도 다르지 않게 옮기고, 배치만 판정선 체계로 다시 짰다.
  */
 
@@ -32,7 +31,6 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
 }) {
   const quantityId = useId();
   const priceId = useId();
-  const formRef = useRef<HTMLFormElement>(null);
   const submissionPendingRef = useRef(false);
   const limitPriceEditedRef = useRef(false);
   const snapshot = useMarket();
@@ -43,10 +41,8 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   const [limitPrice, setLimitPrice] = useState(() => String(roundToTick(snapshot.quotes[code]?.asks[0]?.price ?? snapshot.quotes[code]?.price ?? 1)));
   const [qty, setQty] = useState("");
   const [result, setResult] = useState<OrderResult | null>(null);
-  const [shortcutMessage, setShortcutMessage] = useState("");
-  const [shortcutPending, setShortcutPending] = useState(false);
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [shortcutMode, setShortcutMode] = useState<"off" | "editing" | "active">("off");
 
   useEffect(() => {
     if (selectedLimitPrice === undefined || selectedLimitPrice === null) return;
@@ -71,7 +67,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     const next = Math.min(maxQty, Math.max(1, Math.floor(maxQty * ratio)));
     setQty(String(maxQty > 0 ? next : ""));
     setResult(null);
-    setShortcutMessage("");
+    setNotice("");
   };
 
   const changeSide = (nextSide: "buy" | "sell") => {
@@ -79,7 +75,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     limitPriceEditedRef.current = false;
     setQty("");
     setResult(null);
-    setShortcutMessage("");
+    setNotice("");
     if (orderType === "LIMIT" && quote) {
       const nextSuggested = nextSide === "buy" ? quote.asks[0]?.price ?? quote.price : quote.bids[0]?.price ?? quote.price;
       setLimitPrice(String(roundToTick(nextSuggested)));
@@ -89,13 +85,13 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   const changeOrderType = (nextOrderType: "MARKET" | "LIMIT") => {
     const orderTypeAllowed = nextOrderType === "MARKET" ? quote?.restriction?.marketOrdersAllowed : quote?.restriction?.limitOrdersAllowed;
     if (quote?.restriction && !orderTypeAllowed) {
-      setShortcutMessage(`${nextOrderType === "MARKET" ? "시장가" : "지정가"} 주문이 현재 제한되어 있습니다.`);
+      setNotice(`${nextOrderType === "MARKET" ? "시장가" : "지정가"} 주문이 현재 제한되어 있습니다.`);
       return;
     }
     setOrderType(nextOrderType);
     limitPriceEditedRef.current = false;
     setResult(null);
-    setShortcutMessage("");
+    setNotice("");
     if (nextOrderType === "LIMIT" && quote) {
       const nextSuggested = side === "buy" ? quote.asks[0]?.price ?? quote.price : quote.bids[0]?.price ?? quote.price;
       setLimitPrice(String(roundToTick(nextSuggested)));
@@ -105,7 +101,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   const moveLimitPrice = (direction: "up" | "down") => {
     if (!quote) return;
     if (quote.restriction && !quote.restriction.limitOrdersAllowed) {
-      setShortcutMessage("현재 지정가 주문이 제한되어 있습니다.");
+      setNotice("현재 지정가 주문이 제한되어 있습니다.");
       return;
     }
     const typedPrice = Number(limitPrice);
@@ -115,7 +111,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     setOrderType("LIMIT");
     setLimitPrice(String(nextPrice));
     setResult(null);
-    setShortcutMessage(`지정가 ${won(nextPrice)}로 이동했습니다.`);
+    setNotice(`지정가 ${won(nextPrice)}로 이동했습니다.`);
   };
 
   const useCurrentPrice = () => {
@@ -125,29 +121,8 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     setOrderType("LIMIT");
     setLimitPrice(String(price));
     setResult(null);
-    setShortcutMessage(`현재가 ${won(price)}를 지정가에 반영했습니다.`);
+    setNotice(`현재가 ${won(price)}를 지정가에 반영했습니다.`);
   };
-
-  const cancelOrders = async (all: boolean) => {
-    if (shortcutPending) return;
-    setShortcutPending(true);
-    const outcome = all ? await api.cancelAllOpenOrders() : await api.cancelOpenOrder(code);
-    setResult(null);
-    setShortcutMessage(outcome.message);
-    setShortcutPending(false);
-  };
-
-  useTradingShortcuts({
-    onBuy: () => { if (quote) void submit("buy"); },
-    onSell: () => { if (quote) void submit("sell"); },
-    onCancel: (all) => void cancelOrders(all),
-    onMarket: () => changeOrderType("MARKET"),
-    onMovePrice: moveLimitPrice,
-    onQuantityPreset: (preset) => {
-      const ratio = RATIOS[preset - 1]?.ratio;
-      if (ratio !== undefined) setQuantityRatio(ratio);
-    },
-  }, formRef, submitting || shortcutPending);
 
   if (!quote) return null;
 
@@ -173,8 +148,8 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     : null;
 
   const submit = async (orderSide: "buy" | "sell" = side) => {
-    if (submissionPendingRef.current || shortcutPending) return;
-    setShortcutMessage("");
+    if (submissionPendingRef.current) return;
+    setNotice("");
     const error = snapshot.portfolioError ?? (blocked ? "현재 해당 주문 유형의 거래가 제한되어 있습니다."
       : !valid ? "주문할 수량을 1~1,000주 사이의 정수로 입력해 주세요."
       : orderType === "LIMIT" && !validLimitPrice ? "올바른 호가 단가를 입력해 주세요."
@@ -202,23 +177,10 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     }
   };
 
-  const statusMessage = shortcutPending ? "취소 처리 중…" : result?.message || shortcutMessage || (!user ? "로그인 후 주문할 수 있습니다." : readyMessage ?? "");
-  const shortcutState = submitting || shortcutPending ? "처리 중" : shortcutMode === "active" ? "켜짐" : shortcutMode === "editing" ? "입력 중" : "꺼짐";
+  const statusMessage = result?.message || notice || (!user ? "로그인 후 주문할 수 있습니다." : readyMessage ?? "");
 
   return (
-    <form ref={formRef} tabIndex={-1} className={`nx-ticket is-${side}`} aria-label="주문 입력" aria-busy={submitting}
-      onFocusCapture={(event) => {
-        const target = event.target;
-        setShortcutMode(target.matches("input, select, textarea, [contenteditable=true]") ? "editing" : target.matches("summary") ? "off" : "active");
-      }}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setShortcutMode("off");
-      }}
-      onClick={(event) => {
-        if (event.target instanceof Element && !event.target.closest("button, input, select, textarea, label, a, summary, [contenteditable=true]")) {
-          event.currentTarget.focus({ preventScroll: true });
-        }
-      }}
+    <form tabIndex={-1} className={`nx-ticket is-${side}`} aria-label="주문 입력" aria-busy={submitting}
       onSubmit={(event) => {
         event.preventDefault();
         if (valid && affordable && !blocked && !submitting && (orderType !== "LIMIT" || validLimitPrice)) void submit();
@@ -274,7 +236,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
             disabled={orderType === "MARKET"} value={orderType === "MARKET" ? quote.price : limitPrice}
             aria-invalid={Boolean(priceError)} aria-describedby={`${priceId}-hint`}
             onKeyDown={(event) => { if (!event.nativeEvent.isComposing && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) { event.preventDefault(); moveLimitPrice(event.key === "ArrowUp" ? "up" : "down"); } }}
-            onChange={(event) => { limitPriceEditedRef.current = true; setLimitPrice(event.target.value); setResult(null); setShortcutMessage(""); }} />
+            onChange={(event) => { limitPriceEditedRef.current = true; setLimitPrice(event.target.value); setResult(null); setNotice(""); }} />
           <span className="nx-stepper-unit">원</span>
           <button type="button" aria-label="한 호가 높이기" disabled={orderType === "MARKET" || blocked} onClick={() => moveLimitPrice("up")}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M8 3.5v9" /></svg>
@@ -293,7 +255,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
         <div className="nx-stepper is-plain">
           <input id={quantityId} type="number" inputMode="numeric" className="nx-num" min={1} max={1000} step={1} value={qty} placeholder="0"
             aria-invalid={Boolean(quantityError)} aria-describedby={`${quantityId}-hint`}
-            onChange={(event) => { setQty(event.target.value); setResult(null); setShortcutMessage(""); }} />
+            onChange={(event) => { setQty(event.target.value); setResult(null); setNotice(""); }} />
           <span className="nx-stepper-unit">주</span>
         </div>
         <div className="nx-ratios" role="group" aria-label="주문 수량 비율">
@@ -315,20 +277,6 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
 
       <p className={`nx-ticket-status${result ? (result.ok ? " is-success" : " is-error") : ""}`} role="status" aria-live="polite">{statusMessage}</p>
 
-      <details className="nx-ticket-keys">
-        <summary>
-          <span>주문 단축키</span>
-          <span className={`nx-ticket-keys-state${shortcutMode === "active" && !submitting && !shortcutPending ? " is-on" : ""}`}>{shortcutState}</span>
-        </summary>
-        <div className="nx-ticket-keys-body">
-          <button type="button" className="nx-link-button" onClick={() => formRef.current?.focus({ preventScroll: true })} disabled={submitting || shortcutPending}>단축키 켜기</button>
-          <ul aria-label="주문 단축키 안내">
-            <li><kbd>B</kbd> 매수</li><li><kbd>S</kbd> 매도</li><li><kbd>M</kbd> 시장가</li>
-            <li><kbd>↑</kbd><kbd>↓</kbd> 호가 이동</li><li><kbd>1</kbd>~<kbd>4</kbd> 수량 비율</li>
-            <li><kbd>C</kbd> 이 종목 1건 취소</li><li><kbd>Shift</kbd>+<kbd>C</kbd> 전체 취소</li>
-          </ul>
-        </div>
-      </details>
     </form>
   );
 }
