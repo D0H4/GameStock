@@ -3,12 +3,15 @@ package com.gamestock.backend.market;
 import java.util.*;
 import static com.gamestock.backend.market.BotProfile.*;
 import static com.gamestock.backend.market.MarketEnvironment.clamp;
+import static com.gamestock.backend.market.PriceLimitPolicy.*;
 
 public final class BotStrategyEngine {
     private static final double LARGE_CAP_DIP_TRIGGER = .01;
     private static final double LARGE_CAP_DIP_RANGE = .03;
     private static final double SPECULATIVE_DIP_TRIGGER = .04;
     private static final double SPECULATIVE_DIP_RANGE = .20;
+    /** Do not turn a small inventory error into an immediate buy/sell reversal. */
+    static final double INVENTORY_DEADBAND_RATIO = .15;
 
     public record Position(int quantity, long cash, double averagePrice, long ageMillis, double targetQuantity) {
         public Position(int quantity,long cash,double averagePrice,long ageMillis) {this(quantity,cash,averagePrice,ageMillis,0);}
@@ -34,8 +37,15 @@ public final class BotStrategyEngine {
             // The target is only an intent: every share must first be bought from a real counterparty.
             period=StockMarketProfile.isLargeCap(symbol) ? 30_000+preference.nextDouble()*90_000
                     : 5_000+preference.nextDouble()*15_000;
-            double cycle=Math.sin((now%((long)period))/period*Math.PI*2+phase);
-            return Math.min(equity/Math.max(1,price)*.1,Math.max(0,4+7*cycle)*weight);
+            // A single short sine wave made the same flow bots revisit the same inventory
+            // phases too predictably. Two incommensurate waves keep the demand bounded while
+            // avoiding a clean buy/sell cycle at one fixed cadence.
+            long primaryPeriod=Math.max(1,(long)period);
+            long secondaryPeriod=Math.max(primaryPeriod+1,(long)(period*1.618));
+            double primary=Math.sin((now%primaryPeriod)/period*Math.PI*2+phase);
+            double secondary=Math.sin((now%secondaryPeriod)/(period*1.618)*Math.PI*2+phase*.37+.8);
+            double cycle=.65*primary+.35*secondary;
+            return Math.min(equity/Math.max(1,price)*.1,Math.max(0,5+4*cycle)*weight);
         }
         // Even at maximum demand/weight, aggregate targets consume less than 75% of account equity.
         double budget=equity*(.2+.25*p.riskTolerance())/Math.max(1,symbols);
@@ -107,12 +117,19 @@ public final class BotStrategyEngine {
         };
         signal += environmentWeight*(e.directionBias()+(e.buyPressure()-e.sellPressure())*.3);
         signal += p.noiseLevel()*noise+p.buyBias()-p.sellBias();
+        double targetGap=effectiveInventoryGap(position);
         if(hasInventoryDemand(p)) {
             if(p.holdingTimePreference()<5000)signal*=.15;
-            signal += (p.holdingTimePreference()<5000?1.5:.9)*clamp((position.targetQuantity()-position.quantity())/Math.max(1,position.targetQuantity()),-1,1);
+            signal += (p.holdingTimePreference()<5000?1.5:.9)*clamp(targetGap/Math.max(1,position.targetQuantity()),-1,1);
         }
         // Holding the desired inventory is neutral; only excess inventory encourages selling.
-        double excess=(position.quantity()-position.targetQuantity())/Math.max(1.0,p.positionLimit());
+        double delta=position.quantity()-position.targetQuantity(),deadband=inventoryDeadband(position);
+        double effectiveExcess;
+        if(position.targetQuantity()<=0)effectiveExcess=delta;
+        else if(delta>0)effectiveExcess=Math.max(0,delta-deadband);
+        else if(Math.abs(delta)<=deadband)effectiveExcess=0;
+        else effectiveExcess=delta;
+        double excess=effectiveExcess/Math.max(1.0,p.positionLimit());
         signal -= excess*p.inventoryAversion();
         if(position.quantity()>0 && position.averagePrice()>0) {
             double pnl=m.lastPrice()/position.averagePrice()-1;
@@ -178,7 +195,7 @@ public final class BotStrategyEngine {
         }
         // A directional thesis must not indefinitely lock legacy holdings away from the book.
         // Trim only excess inventory after this trader's own holding horizon, through paid fills.
-        int excessQuantity=Math.max(0,position.quantity()-(int)Math.ceil(position.targetQuantity()));
+        int excessQuantity=Math.max(0,position.quantity()-(int)Math.ceil(position.targetQuantity()+inventoryDeadband(position)));
         boolean inventoryExit=excessQuantity>0 && position.ageMillis()>=p.holdingTimePreference()
                 && m.bidDepth()>0 && m.askDepth()<=4 && !capitulationFloor && !stopLossExit;
         if(inventoryExit)score=Math.min(score,-threshold*2);
@@ -276,6 +293,17 @@ public final class BotStrategyEngine {
             price=Math.max(m.bestBid(),reference*.995);
             market=false;
         }
+        // Passive participants receive a stable, per-bot price-level preference. This keeps
+        // every funded bot from collapsing onto the same best tick while preserving urgent
+        // exits and executable value edges.
+        if(dayReference>0 && !market && !economicCross && !riskExit && !inventoryExit && !dipBuyer
+                && !side.equals("HOLD")) {
+            int span=p.strategy().family()==Family.INTRADAY?1:2;
+            int offset=Math.floorMod(Long.hashCode(seed^((long)(p.username()+":"+symbol+":"+side).hashCode()*0x9E3779B97F4A7C15L)),span*2+1)-span;
+            long dispersed=Math.round(price+offset*tick);
+            long bounded=quoteBand(symbol,dayReference,perceivedNews).clamp(dispersed);
+            price=side.equals("BUY")?floorToTick(bounded):ceilToTick(bounded);
+        }
         price=Math.max(tick,price);
         double volatilityPenalty=1+m.volatility()*150+Math.max(0,e.volatilityMultiplier()-1)*.25;
         double liquidity=clamp((m.bidDepth()+m.askDepth())/150.0,.2,1);
@@ -320,6 +348,21 @@ public final class BotStrategyEngine {
         double range=large?LARGE_CAP_DIP_RANGE:SPECULATIVE_DIP_RANGE;
         double drawdown=clamp((dayReference-m.markPrice())/Math.max(1.0,dayReference),0,1);
         return clamp((drawdown-trigger)/Math.max(.001,range-trigger),0,1);
+    }
+
+    static double inventoryDeadband(Position position) {
+        return position.targetQuantity()>0
+                ? Math.max(1,Math.ceil(position.targetQuantity()*INVENTORY_DEADBAND_RATIO))
+                : 0;
+    }
+
+    static double effectiveInventoryGap(Position position) {
+        double gap=position.targetQuantity()-position.quantity(),deadband=inventoryDeadband(position);
+        if(deadband<=0 || Math.abs(gap)<=deadband)return 0;
+        // Preserve the full cash-backed shortfall signal. The deadband is primarily
+        // for preventing an excess inventory from flipping straight into a sale;
+        // otherwise an empty flow bot could lose its initial buy pressure.
+        return gap>0?gap:gap+deadband;
     }
 
     private boolean protectiveExit(BotProfile p,PriceMetricService.Metrics m,Position position) {
