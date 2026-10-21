@@ -13,7 +13,7 @@ import { newsEffect, sessionRate, strengthRatio } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
 import { NEWS_PATH, TRADE_PATH, type Route } from "../router";
-import { leaveNextUi, toggleNxTheme, useNxTheme } from "./uiMode";
+import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
 
@@ -25,10 +25,9 @@ const NAV = [
 ] as const;
 
 /** 테마와 새 화면 표시는 html에 단다. 포털로 뜨는 팝오버도 같은 색을 받아야 한다. */
-export function useNxRoot(active: boolean): void {
+export function useNxRoot(): void {
   const theme = useNxTheme();
   useEffect(() => {
-    if (!active) return undefined;
     const root = document.documentElement;
     root.dataset.nx = "on";
     root.dataset.nxTheme = theme;
@@ -38,7 +37,7 @@ export function useNxRoot(active: boolean): void {
       delete root.dataset.nxTheme;
       root.style.colorScheme = "light";
     };
-  }, [active, theme]);
+  }, [theme]);
 }
 
 export function NxTopbar({ route }: { route: Route }) {
@@ -83,7 +82,6 @@ export function NxStatus() {
   return (
     <footer className="nx-status">
       <p>모의 시세입니다. 실제 시장 데이터가 아닙니다.</p>
-      <button type="button" className="nx-text-button" onClick={leaveNextUi}>기존 화면으로 보기</button>
     </footer>
   );
 }
