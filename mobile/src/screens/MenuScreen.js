@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useAuth } from '../auth';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RADIUS, SPACE, Txt, useTheme } from '../theme';
 
-// 웹 계정 메뉴(ProfileMenu)의 항목. 화면은 모두 웹이 그리고, 로그인하지 않았으면 웹이 로그인 창을 먼저 띄운다.
+// 웹 계정 메뉴(ProfileMenu)의 항목. 모두 로그인 전용이라, 로그인하지 않았으면 앱이 로그인 시트를 먼저 띄운다.
 // 관리자 화면은 일반 사용자에게 보이면 안 되므로 여기 두지 않고, 웹 화면의 계정 메뉴에만 남긴다.
 const ACCOUNT = { label: '내 계좌', detail: '보유 종목과 손익, 주문·체결 내역', icon: 'wallet-outline', path: '/mypage' };
 const ITEMS = [
@@ -14,9 +15,14 @@ const ITEMS = [
   { label: '프로필·계정 설정', detail: '닉네임, 프로필 사진, 계좌 리셋', icon: 'person-circle-outline', path: '/settings' },
 ];
 
-export function MenuScreen({ onOpen }) {
+export function MenuScreen({ onOpen, onLogin }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { user, profile, signOut } = useAuth();
+  const confirmSignOut = () => Alert.alert('로그아웃할까요?', '앱과 앱 안의 웹 화면에서 모두 로그아웃해요.', [
+    { text: '취소', style: 'cancel' },
+    { text: '로그아웃', style: 'destructive', onPress: () => void signOut() },
+  ]);
   return (
     <View style={styles.fill}>
       <ScrollView
@@ -24,13 +30,30 @@ export function MenuScreen({ onOpen }) {
         contentContainerStyle={{ paddingTop: insets.top + SPACE.sm, paddingBottom: SPACE.xxl, paddingHorizontal: SPACE.lg }}
       >
         <Txt variant="title" accessibilityRole="header" style={styles.title}>설정</Txt>
+        {user ? (
+          <View style={styles.who} accessible accessibilityLabel={`${profile?.nickname ?? '내 계정'}, ${user.email ?? ''}로 로그인됨`}>
+            <Txt variant="headline" numberOfLines={1}>{profile?.nickname ?? '내 계정'}</Txt>
+            {user.email ? <Txt variant="caption" tone="inkSoft" numberOfLines={1}>{user.email}</Txt> : null}
+          </View>
+        ) : (
+          <View style={[styles.card, styles.guest, { backgroundColor: theme.card }]}>
+            <Txt variant="callout">로그인하면 계좌, 미션, 대출, 칭호를 쓸 수 있어요.</Txt>
+            <Pressable accessibilityRole="button" onPress={onLogin} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.brand, opacity: pressed ? 0.85 : 1 }]}>
+              <Txt variant="body" style={{ color: theme.onBrand }}>로그인</Txt>
+            </Pressable>
+          </View>
+        )}
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           <Row item={ACCOUNT} onOpen={onOpen} large />
         </View>
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           {ITEMS.map((item, index) => <Row key={item.path} item={item} onOpen={onOpen} divided={index > 0} />)}
         </View>
-        <Txt variant="caption" tone="inkSoft" style={styles.note}>로그인이 필요한 화면은 열 때 로그인 창이 먼저 떠요.</Txt>
+        {user ? (
+          <Pressable accessibilityRole="button" onPress={confirmSignOut} style={({ pressed }) => [styles.card, styles.signOut, { backgroundColor: pressed ? theme.pressed : theme.card }]}>
+            <Txt variant="callout" tone="inkSoft">로그아웃</Txt>
+          </Pressable>
+        ) : null}
       </ScrollView>
       <View pointerEvents="none" style={[styles.statusCover, { height: insets.top, backgroundColor: theme.ground }]} />
     </View>
@@ -69,5 +92,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, minHeight: 64, paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md },
   rowLarge: { minHeight: 76 },
   rowText: { flex: 1, minWidth: 0 },
-  note: { textAlign: 'center', marginTop: SPACE.sm },
+  who: { paddingHorizontal: SPACE.lg + 2, paddingBottom: SPACE.lg, gap: 2 },
+  guest: { padding: SPACE.lg + 2, gap: SPACE.md },
+  loginButton: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  signOut: { minHeight: 52, alignItems: 'center', justifyContent: 'center' },
 });

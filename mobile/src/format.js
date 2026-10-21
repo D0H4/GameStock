@@ -31,3 +31,27 @@ export const relativeTime = (iso, now = Date.now()) => {
 
 /** RSS 제목 끝의 " - 매체명"은 이유 문장에서 뺀다. */
 export const cleanTitle = title => String(title || '').replace(/\s+-\s+[^-]{1,30}$/, '').trim();
+
+/** RSS 설명의 HTML과 끝의 "출처: URL"을 걷어 낸 요약. 없으면 null. */
+export const newsSummary = description => {
+  const text = String(description || '')
+    .replace(/\s*출처:\s*https?:\/\/\S+\s*$/i, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text || null;
+};
+
+/** 원문 기사 주소. articleUrl이 없으면 설명 끝의 "출처: URL"에서 찾는다. */
+export const newsSourceUrl = news => {
+  if (news?.articleUrl) return news.articleUrl;
+  const match = String(news?.description || '').match(/출처:\s*(https?:\/\/[^\s<]+)/i);
+  return match ? match[1] : null;
+};
+
+export const clockTime = iso => {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+  return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}:${String(at.getSeconds()).padStart(2, '0')}`;
+};

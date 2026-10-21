@@ -26,6 +26,9 @@ export function useMarket() {
   const socketRef = useRef(null);
   const liveRef = useRef(false);
   const codesRef = useRef([]);
+  // 상세 화면이 보고 있는 종목. 소켓에 detailSymbols로 구독하면 호가와 최근 체결도 함께 온다.
+  const detailRef = useRef(null);
+  const [detail, setDetail] = useState({ code: null, orderbook: null, trades: null });
 
   const load = useCallback(async () => {
     try {
@@ -33,7 +36,7 @@ export function useMarket() {
         api('/api/stocks'), api('/api/market-events'), api('/api/market-status'),
       ]);
       codesRef.current = stocks.map(stock => stock.code);
-      socketRef.current?.subscribe(codesRef.current);
+      socketRef.current?.subscribe();
       setState({ stocks, events, status, loaded: true, error: null });
     } catch (error) {
       setState(current => ({ ...current, loaded: true, error }));
@@ -55,7 +58,7 @@ export function useMarket() {
       socket = target;
       target.onopen = () => {
         lastMessage = Date.now();
-        send({ type: 'SUBSCRIBE', symbols: codesRef.current, detailSymbols: [] });
+        send({ type: 'SUBSCRIBE', symbols: codesRef.current, detailSymbols: detailRef.current ? [detailRef.current] : [] });
       };
       target.onmessage = event => {
         if (socket !== target) return;
@@ -68,6 +71,12 @@ export function useMarket() {
         if (message.type !== 'MARKET_SYMBOL') return;
         const stock = message.payload?.stock;
         if (!stock) return;
+        const { symbol, orderbook, trades } = message.payload;
+        if (symbol === detailRef.current && (orderbook || trades)) {
+          setDetail(current => (current.code === symbol
+            ? { code: symbol, orderbook: orderbook ?? current.orderbook, trades: trades?.length ? trades : current.trades }
+            : current));
+        }
         setState(current => ({
           ...current,
           stocks: current.stocks.map(old => (old.code === message.payload.symbol ? { ...old, ...stock } : old)),
@@ -81,7 +90,9 @@ export function useMarket() {
       target.onerror = () => target.close();
     };
 
-    socketRef.current = { subscribe: symbols => send({ type: 'SUBSCRIBE', symbols, detailSymbols: [] }) };
+    socketRef.current = {
+      subscribe: () => send({ type: 'SUBSCRIBE', symbols: codesRef.current, detailSymbols: detailRef.current ? [detailRef.current] : [] }),
+    };
     const heartbeat = setInterval(() => {
       if (socket?.readyState === WebSocket.OPEN && Date.now() - lastMessage > 45_000) socket.close();
       else send({ type: 'PING' });
@@ -120,7 +131,20 @@ export function useMarket() {
     };
   }, [load]);
 
-  return { ...state, live, refresh: load };
+  /** 상세 화면이 열리고 닫힐 때 부른다. 처음 값은 REST로 채우고, 이후로는 소켓이 갱신한다. */
+  const watchDetail = useCallback(code => {
+    detailRef.current = code;
+    setDetail({ code, orderbook: null, trades: null });
+    socketRef.current?.subscribe();
+    if (!code) return;
+    Promise.all([api(`/api/stocks/${code}/orderbook`), api(`/api/stocks/${code}/trades`)])
+      .then(([orderbook, trades]) => setDetail(current => (current.code === code
+        ? { code, orderbook: current.orderbook ?? orderbook, trades: current.trades ?? trades }
+        : current)))
+      .catch(() => {});
+  }, []);
+
+  return { ...state, live, refresh: load, detail, watchDetail };
 }
 
 /** 종목별 24시간 가격 기록. 홈의 추이선에만 쓰므로 5분마다 다시 읽는다. */
