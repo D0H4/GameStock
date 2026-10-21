@@ -4,11 +4,11 @@
 
 사용자는 모의 자금으로 게임 종목을 사고팔고, 보유 자산과 투자 성과를 확인한다. 서버에서는 사용자와 봇의 주문을 매칭하고, RSS 뉴스 분석과 시장 시뮬레이션을 함께 실행한다. 실제 기업의 주식이나 현금을 거래하는 서비스는 아니다.
 
-> 문서 기준: **2026-10-15, 현재 로컬 소스 코드와 설정**. 아래의 ‘구현’은 코드가 연결돼 있다는 뜻이며, 운영 배포 상태나 실제 기기에서의 통합 검증 완료를 뜻하지 않는다.
+> 문서 기준: **2026-10-21, 현재 로컬 소스 코드와 저장소 설정**. 아래의 ‘구현’은 코드가 연결돼 있다는 뜻이며, 운영 배포 상태나 실제 기기에서의 통합 검증 완료를 뜻하지 않는다.
 
 ## 현재 진행 상황
 
-웹·백엔드·DB·Firebase 인증을 연결한 핵심 거래 기능이 구현돼 있다. 최근에는 뉴스 상세 화면, 주간 수익률 랭킹, 칭호, 모의 대출, 관리자 기능까지 범위가 확장됐다. 현재 단계는 기능을 추가한 상태에서 거래 정합성과 전체 이용 흐름을 검증·보완하는 단계다.
+웹·백엔드·DB·Firebase 인증을 연결한 핵심 거래 기능이 구현돼 있다. 최근에는 뉴스 상세 화면, 주간 수익률 랭킹, 칭호, 모의 대출, 관리자 기능까지 범위가 확장됐다. 모바일은 홈·시장·종목·뉴스·랭킹·로그인을 네이티브 화면으로 제공하고, 설정 메뉴에서 여는 계정 화면은 WebView로 웹 클라이언트를 이어서 사용한다. 현재 단계는 기능을 추가한 상태에서 거래 정합성과 전체 이용 흐름을 검증·보완하는 단계다.
 
 | 영역            | 현재 구현 범위                                                                      | 확인이 더 필요한 부분                                             |
 | --------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -21,8 +21,8 @@
 | 참여 기능       | 관심종목, 출석, 일일 미션, 전체·주간 랭킹, 칭호 획득·장착·프로모션 코드             | 페이지 방문 미션의 실제 수행 확인, 주간 경계 동작                 |
 | 모의 대출       | 대출·상환·원장, 일일 이자, 담보 경고·반대매매                                       | 시세 급변·체결 부족 상황의 반대매매 통합 검증                     |
 | 관리자          | 사용자 검색, 거래 제한·해제, 강제 닉네임 변경, 관리자 권한 검사                     | 운영 계정 권한·조치 이력 검증                                     |
-| 모바일          | Expo WebView로 웹 공통 화면 표시, 외부 브라우저 인증 연결                           | 실제 기기 로그인·거래·딥링크, 서명 APK 릴리스                     |
-| 배포            | Firebase Hosting 설정·GitHub Actions, Railway 빌드·시작 설정                        | 현재 활성 커밋과 운영 동작은 별도 확인 필요                       |
+| 모바일          | Expo 네이티브 탭·로그인·시장·뉴스·랭킹 화면, 설정 메뉴의 계정 화면 WebView 연동      | 실제 기기 로그인·거래·딥링크, 서명 APK 릴리스                     |
+| 배포            | Firebase Hosting 웹 배포와 OCI 백엔드 배포를 GitHub Actions로 연결                   | 현재 활성 커밋과 운영 동작은 별도 확인 필요                       |
 
 가격 변동 이유를 제공하는 `price-drivers` API는 있지만 공통 화면에 연결되지 않았다. 가격 알림·댓글·태그도 API와 저장 구조가 있으며, 알림 발동과 사용자 화면은 완성 범위에서 제외한다. 시즌별 자산 초기화나 투자 성적 공유 카드도 현재 기능으로 안내하지 않는다.
 
@@ -103,7 +103,8 @@ React 웹 ── Firebase SDK ── Google / 이메일 인증
                     ├─ 메모리 호가·매칭 → DB 배치 저장
                     └─ RSS 수집·분석·봇·거래 보호
 
-Expo 앱 → WebView → 같은 React 웹
+Expo 앱 네이티브 화면 ─ REST /api/* · WebSocket /ws/stream ─┘
+   └ 설정 메뉴의 계정 화면 일부 → WebView → 같은 React 웹
 ```
 
 | 구분      | 사용 기술                                                     |
@@ -111,14 +112,14 @@ Expo 앱 → WebView → 같은 React 웹
 | 웹        | React 19, TypeScript, Vite 7, Firebase Web SDK, CSS           |
 | 서버      | Java 17, Spring Boot 3.5, JDBC, WebSocket, Firebase Admin SDK |
 | DB        | MySQL, 시작 시 보완 스키마·초기 데이터 처리                   |
-| 모바일    | Expo 57, React Native, react-native-webview                   |
-| 배포 설정 | Firebase Hosting, GitHub Actions, Railway                     |
+| 모바일    | Expo 57, React Native 0.86, WebView(설정 메뉴의 계정 화면), Expo Auth Session |
+| 배포 설정 | Firebase Hosting, GitHub Actions, OCI(Nginx·systemd), Railway 참고 설정       |
 
 시세·뉴스·시장 상태를 REST로 가져온 뒤 WebSocket을 구독한다. 스트림이 연결되지 않으면 2초 간격 REST 갱신을 사용하고, 연결 중에도 30초마다 REST로 보정한다. 로그인한 요청과 스트림에는 Firebase ID 토큰을 사용한다.
 
 첫 화면에는 저장된 캐시나 초기 모의 스냅샷이 사용될 수 있다. 초기 표시 데이터는 운영 시장의 최신 상태를 증명하지 않으며, 브라우저에서 독립적인 오프라인 거래 시장을 계속 실행하지 않는다.
 
-**API 연결 주의:** `src/lib/api.ts`에는 설정 주소 외에 Railway와 localhost를 순서대로 시도하는 대체 경로가 있다. 로컬 서버를 끈 상태에서도 운영 서버로 연결될 수 있으므로 주문·계좌 변경을 시험하기 전 실제 연결 대상을 확인해야 한다.
+**API 연결 주의:** `src/lib/api.ts`는 `VITE_API_BASE_URL` 하나를 명시적으로 사용한다. 개발 환경에서 값이 없으면 `http://localhost:8081`, 프로덕션 빌드에서 값이 없으면 OCI API 주소를 기본값으로 사용하며, 다른 DB로 자동 재시도하지 않는다. 주문·계좌 변경을 시험하기 전 현재 환경변수와 실제 연결 대상을 확인해야 한다.
 
 뉴스 분석은 가중 키워드·관련성 규칙을 사용한다. 생성형 AI나 학습된 주가 예측 모델로 설명하지 않는다. 뉴스 이후의 가격 변화율은 다른 거래·시장 요인의 영향도 포함하므로 해당 기사만의 인과 효과를 뜻하지 않는다.
 
@@ -185,13 +186,16 @@ npm run preview
 ```powershell
 Set-Location mobile
 npm ci
+# 로컬 백엔드를 사용할 때만 지정한다. 운영 기본값은 OCI API다.
+$env:EXPO_PUBLIC_API_BASE_URL = 'http://PC의_LAN_IP:8081'
+# 설정 메뉴에서 여는 계정 화면(WebView)을 로컬 웹으로 확인할 때만 지정한다.
 $env:EXPO_PUBLIC_WEB_APP_URL = 'http://PC의_LAN_IP:5180'
 npm start
 ```
 
 휴대폰에서 로컬 웹에 접근하려면 웹 개발 서버를 `npm run dev -- --host 0.0.0.0`으로 실행하고, 웹의 API 주소도 휴대폰에서 접근할 수 있는 PC의 LAN 주소로 지정한다. 백엔드 CORS에도 해당 웹 출처를 설정한다.
 
-현재 `mobile/App.js`는 `WebMirrorScreen`을 진입점으로 사용한다. 웹 URL에 `app-shell=1`을 붙이며 이메일 로그인은 공통 웹 화면, Google 로그인은 외부 브라우저·딥링크 흐름을 사용한다. `LegacyApp`은 현재 진입점이 아니다. 표시되는 웹의 API 주소는 웹 빌드 설정을 따르므로 앱의 `EXPO_PUBLIC_API_BASE_URL`만 바꿔서는 WebView의 연결 대상이 바뀌지 않는다.
+현재 `mobile/App.js`는 네이티브 탭 셸을 진입점으로 사용한다. 홈·시장 목록·종목 상세·주문 시트·뉴스 목록·뉴스 상세·랭킹·로그인(이메일·Google·회원가입·비밀번호 재설정)은 네이티브 화면이다. 설정 메뉴의 내 계좌·충전·대출·칭호·프로필/계정 설정만 `mobile/src/WebPane.js`의 WebView로 웹 클라이언트를 연다. `EXPO_PUBLIC_API_BASE_URL`은 네이티브 REST·WebSocket과 앱 인증에 사용하고, `EXPO_PUBLIC_WEB_APP_URL`은 WebView가 열 웹 주소를 정한다. Google 로그인은 외부 브라우저와 `gamestock://auth/callback` 딥링크를 사용한다.
 
 ## 환경변수와 배포 설정
 
@@ -202,7 +206,7 @@ npm start
 | Firebase Admin                 | `FIREBASE_SERVICE_ACCOUNT_PATH` 또는 `FIREBASE_SERVICE_ACCOUNT_JSON`(JSON 문자열·파일 경로 지원)                                                                                                   |
 | 관리자 지정                    | `GAMESTOCK_ADMIN_GOOGLE_UID`, `GAMESTOCK_ADMIN_GOOGLE_EMAIL`                                                                                                                                       |
 | 시뮬레이션                     | `GAMESTOCK_BOT_PARTICIPANTS`, `GAMESTOCK_MATCHING_ENABLED`, `GAMESTOCK_BATCH_BOTS_ENABLED` 등. 전체 기본값은 `application.yml` 참고                                                                |
-| 모바일                         | `EXPO_PUBLIC_WEB_APP_URL`, 기존 네이티브 경로용 `EXPO_PUBLIC_API_BASE_URL`                                                                                                                         |
+| 모바일                         | `EXPO_PUBLIC_API_BASE_URL`(네이티브 REST·WebSocket·인증), `EXPO_PUBLIC_WEB_APP_URL`(설정 메뉴 WebView 주소)                                                                                         |
 | GitHub Actions                 | `FIREBASE_SERVICE_ACCOUNT` 저장소 시크릿                                                                                                                                                           |
 
 서비스 계정 JSON, DB 비밀번호, Firebase ID 토큰은 Git에 넣지 않는다. `VITE_*`는 브라우저에 포함되는 공개 설정이므로 관리자 자격증명을 넣으면 안 된다.
@@ -212,13 +216,13 @@ npm start
 - 웹: https://gamestock-20994.web.app
 - API: https://gamestock-api.161-33-33-45.sslip.io
 
-Firebase Hosting은 `firebase.json`에 따라 `dist/`를 제공하고 SPA 경로를 `index.html`로 연결한다. `.github/workflows/firebase-hosting.yml`은 `main` push 또는 수동 실행 시 의존성 설치·타입 검사·빌드 후 배포한다. 워크플로와 웹·앱 기본 API 주소는 OCI를 가리킨다. 한 화면에서 다른 DB로 자동 전환하지 않는다.
+Firebase Hosting은 `firebase.json`에 따라 `dist/`를 제공하고 SPA 경로를 `index.html`로 연결한다. `.github/workflows/firebase-hosting.yml`은 `main` push 또는 수동 실행 시 Node 24 환경에서 의존성 설치·타입 검사·빌드 후 배포한다. `.github/workflows/oci-backend.yml`은 백엔드 변경 시 Java 17로 테스트·패키징하고 OCI에 배포한 뒤 HTTPS API와 WebSocket을 확인한다. 웹·앱 기본 API 주소는 OCI를 가리키며, 한 화면에서 다른 DB로 자동 전환하지 않는다.
 
 OCI에서는 Oracle Linux의 `gamestock.service`가 Java 17 백엔드를 실행하고 Nginx가 HTTPS/WSS를 제공한다. MySQL은 사설망에서 연결하며 자격증명은 `/etc/gamestock/production.env`에만 둔다. IP를 포함한 임시 도메인이므로 공인 IP가 바뀌면 주소와 인증서도 갱신해야 한다. 운영·백업·복구 절차는 [OCI 운영 문서](docs/oci-operations.md)를 따른다.
 
-기존 Railway 설정은 롤백 참고용으로 보존한다. OCI와 Railway의 매칭 엔진을 동시에 실행하지 않는다.
+기존 Railway 설정은 현재 운영 경로가 아니라 롤백·구성 참고용으로 보존한다. OCI와 Railway의 매칭 엔진을 동시에 실행하지 않는다.
 
-| 서비스 루트 | 설정 파일              | 빌드·실행                                                                                              |
+| 서비스 루트 | 참고 설정 파일         | 빌드·실행                                                                                              |
 | ----------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
 | 저장소 루트 | `railway.json`         | `cd backend && mvn -DskipTests clean package` → `java -jar backend/target/gamestock-backend-0.1.0.jar` |
 | `backend/`  | `backend/railway.json` | `mvn -DskipTests clean package` → `java -jar target/gamestock-backend-0.1.0.jar`                       |
@@ -233,17 +237,25 @@ src/
   components/            차트·호가·주문·뉴스 상세·계좌 등 공통 UI
   market/                종목·타입·계좌 계산·REST/스트림 연동·초기 모의 엔진
   lib/                   Firebase·인증·API·프로필·칭호 공통 처리
-  styles/                웹·모바일·테마 스타일
+  styles/                웹 CSS·테마 스타일
   router.ts              브라우저 history 기반 라우팅
 backend/
   src/main/java/         인증·관리자·시장·주문·봇·뉴스·대출·칭호·WebSocket
   src/main/resources/    application.yml
   src/test/              거래·동시성·뉴스·보호장치·인증·대출·칭호 등 테스트
-  ops/                   DB 용량 진단·최적화 SQL
-mobile/                  Expo WebView 앱과 기존 네이티브 코드
+  ops/                   OCI 배포·검증 스크립트와 Railway 참고 SQL
+mobile/
+  App.js                네이티브 탭 셸·로그인·WebView 연결
+  src/screens/          홈·시장·종목·뉴스·랭킹·설정·로그인 화면
+  src/WebPane.js        설정 메뉴의 계정 화면용 웹 클라이언트
+  src/auth.js, market.js 네이티브 인증·REST·WebSocket 시장 연동
 database/               MySQL 초기 스키마
 scripts/                 로컬 실행·시장 API·DB 정합성 점검
-server/                  웹 빌드 결과용 Node 정적 서버
+server/
+  index.js              `dist/`를 제공하는 Node 정적 서버(`npm start`)
+  src/                  현재 실행 기준이 아닌 기존 데모 서버 코드
+public/                 웹 브랜드·게임 아이콘·캐릭터 자산
+.github/workflows/      Firebase Hosting·OCI 배포 워크플로
 docs/                    주제별 설계·검증·설정 문서
 ```
 
@@ -256,6 +268,7 @@ docs/                    주제별 설계·검증·설정 문서
 - [거래 엔진 검증](docs/market-engine-validation.md)
 - [Firebase 로그인 설정](docs/firebase-login-setup.md)
 - [모바일 설정](docs/mobile-app-setup.md)
+- [모바일 네이티브 전환 현황](docs/mobile-app-next-steps.md)
 - [배포 구조](docs/deployment-structure.md)
 
 ## 검증 방법과 다음 작업
@@ -282,4 +295,4 @@ docs/                    주제별 설계·검증·설정 문서
 - [ ] 뉴스 관련성·긍부정 분류를 표본 기사로 평가하고 추출 실패 확인
 - [ ] 가격 변동 이유 API를 화면에 연결하고 페이지 미션 수행 확인 보완
 - [ ] 실제 휴대폰의 인증·딥링크·주문·스크롤 확인 및 서명 APK 준비
-- [ ] Firebase·Railway의 활성 커밋과 실제 서비스 동작을 각각 확인
+- [ ] Firebase Hosting·OCI의 활성 커밋과 실제 서비스 동작을 각각 확인
