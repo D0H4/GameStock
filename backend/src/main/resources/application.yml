@@ -40,7 +40,9 @@ market:
     book-cache: true
     compact-ledger: true
     inline-liquidity: true
-    active-cadence-ms: ${GAMESTOCK_ACTIVE_BATCH_MS:100}
+    # 배치마다 드는 고정 쿼리(영수증·잠금·revision)를 줄인다. 체결 수는 경과 시간만큼 쌓인
+    # 예산으로 정해지므로 주기가 길어지면 배치 하나가 커질 뿐이다. 코드상 상한은 250ms다.
+    active-cadence-ms: ${GAMESTOCK_ACTIVE_BATCH_MS:250}
     # 사용자 거래 원장은 유지한다. 봇 전용 상세 로그만 보관 기한 후 집계로 남긴다.
     detail-retention-minutes: ${GAMESTOCK_BOT_DETAIL_MINUTES:15}
     adaptive: ${GAMESTOCK_ADAPTIVE_ACTIVITY:true}

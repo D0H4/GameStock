@@ -32,11 +32,25 @@ public class AdminRuntimeControl {
     }
     public boolean botsPaused(){return settings().botsPaused();}
     public TradingRestriction restriction(String code) {
-        if(settings().marketPaused())return new TradingRestriction("ADMIN_HALT","운영 점검","HALT",0,"관리자가 시장을 일시 정지했습니다.","신규 주문과 체결이 중단됩니다. 주문 취소는 가능합니다.",null,null,false,false);
+        if(settings().marketPaused())return marketHalt();
         var rows=db.queryForList("SELECT a.state,a.reason FROM admin_stock_state a JOIN stocks s ON s.id=a.stock_id WHERE s.stock_code=? AND a.state <> 'ACTIVE'",code);
         if(rows.isEmpty())return null;
         var row=rows.get(0);
-        return new TradingRestriction("ADMIN_HALT","DELISTED".equals(row.get("state"))?"상장 폐지":"거래 정지","HALT",0,String.valueOf(row.get("reason")),"신규 주문과 체결이 중단됩니다. 주문 취소는 가능합니다.",null,null,false,false);
+        return stockHalt(String.valueOf(row.get("state")),String.valueOf(row.get("reason")));
+    }
+    /** restriction(code) for every listing from two reads; codes without a manual restriction are absent. */
+    Map<String,TradingRestriction> restrictions(Collection<String> codes) {
+        Map<String,TradingRestriction> result=new HashMap<>();
+        if(settings().marketPaused()){var halt=marketHalt();codes.forEach(code->result.put(code,halt));return result;}
+        db.query("SELECT s.stock_code,a.state,a.reason FROM admin_stock_state a JOIN stocks s ON s.id=a.stock_id WHERE a.state <> 'ACTIVE'",
+                rs->{result.putIfAbsent(rs.getString(1),stockHalt(rs.getString(2),rs.getString(3)));});
+        return result;
+    }
+    private static TradingRestriction marketHalt(){
+        return new TradingRestriction("ADMIN_HALT","운영 점검","HALT",0,"관리자가 시장을 일시 정지했습니다.","신규 주문과 체결이 중단됩니다. 주문 취소는 가능합니다.",null,null,false,false);
+    }
+    private static TradingRestriction stockHalt(String state,String reason){
+        return new TradingRestriction("ADMIN_HALT","DELISTED".equals(state)?"상장 폐지":"거래 정지","HALT",0,String.valueOf(reason),"신규 주문과 체결이 중단됩니다. 주문 취소는 가능합니다.",null,null,false,false);
     }
     void apply(BatchOrderBook book){
         boolean paused=settings().marketPaused();Set<Long> halted=new HashSet<>(db.queryForList("SELECT stock_id FROM admin_stock_state WHERE state<>'ACTIVE'",Long.class));
