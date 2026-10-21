@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameIcon } from '../components/GameIcon';
 import { PriceTrail } from '../components/PriceTrail';
 import { cleanTitle, indexValue, price, relativeTime, signedPercent } from '../format';
-import { computeIndex, indexTrail, sessionRate, usePriceHistory } from '../market';
+import { computeIndex, indexTrail, newsWithIds, sessionRate, usePriceHistory } from '../market';
 import { RADIUS, SPACE, Txt, toneOf, useTheme } from '../theme';
 
 const MOVER_COUNT = 5;
@@ -18,20 +18,6 @@ const MIN_NAME_WIDTH = 96;
 const INDEX_TRAIL_WIDTH = 80;
 const PRICE_COLUMN = 72;
 const INDEX_TRAIL_HEIGHT = 36;
-
-/* 웹 MarketProvider의 stableNewsIds와 같은 해시. 같은 기사를 /news/:id로 연다. */
-function newsIds(events) {
-  const used = new Set();
-  return events.map(event => {
-    const key = `${event.stockCode}|${event.publishedAt ?? ''}|${event.title}`;
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
-    let id = (hash >>> 0) % 2_000_000_000 + 1;
-    while (used.has(id)) id += 1;
-    used.add(id);
-    return id;
-  });
-}
 
 export function HomeScreen({ market, onOpen }) {
   const theme = useTheme();
@@ -47,10 +33,7 @@ export function HomeScreen({ market, onOpen }) {
   const { stocks, events, status, loaded, error } = market;
 
   const view = useMemo(() => {
-    const ids = newsIds(events);
-    const news = events
-      .map((event, index) => ({ ...event, id: ids[index], at: Date.parse(event.publishedAt) || 0 }))
-      .sort((a, b) => b.at - a.at);
+    const news = newsWithIds(events);
     const latestByCode = {};
     for (const item of news) if (!latestByCode[item.stockCode]) latestByCode[item.stockCode] = item;
     const rated = stocks.map(stock => ({ ...stock, rate: sessionRate(stock) }));

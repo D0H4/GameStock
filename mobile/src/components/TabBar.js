@@ -7,12 +7,12 @@ import { Txt, useTheme } from '../theme';
 export const TABS = [
   { key: 'home', label: '홈', icon: 'home', path: null },
   { key: 'market', label: '시장', icon: 'stats-chart', path: null },
-  { key: 'news', label: '뉴스', icon: 'newspaper', path: '/news' },
-  { key: 'ranking', label: '랭킹', icon: 'trophy', path: '/ranking' },
+  { key: 'news', label: '뉴스', icon: 'newspaper', path: null },
+  { key: 'ranking', label: '랭킹', icon: 'trophy', path: null },
   { key: 'more', label: '설정', icon: 'settings', path: null },
 ];
 
-/** 하단 탭바. 홈·시장·설정(메뉴 목록)은 네이티브 화면이고, path가 있는 탭은 WebView 화면을 연다. */
+/** 하단 탭바. 다섯 탭 모두 네이티브 화면이다. 설정 메뉴의 계정 화면만 아직 WebView로 연다. */
 export function TabBar({ active, onSelect }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();

@@ -231,3 +231,30 @@ export const sessionRate = stock => {
   if (reference > 0) return (stock.price - reference) / reference;
   return (Number(stock.changePercent) || 0) / 100;
 };
+
+/**
+ * 웹 MarketProvider의 stableNewsIds와 같은 해시로 기사 id를 붙이고 최신순으로 정렬한다.
+ * id는 받은 순서대로 붙여야 웹과 같아지므로 정렬은 id를 붙인 뒤에 한다.
+ */
+export function newsWithIds(events) {
+  const used = new Set();
+  return events
+    .map(event => {
+      const key = `${event.stockCode}|${event.publishedAt ?? ''}|${event.title}`;
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
+      let id = (hash >>> 0) % 2_000_000_000 + 1;
+      while (used.has(id)) id += 1;
+      used.add(id);
+      return { ...event, id, at: Date.parse(event.publishedAt) || 0 };
+    })
+    .sort((a, b) => b.at - a.at);
+}
+
+/** 발행 시점 가격 대비 지금 가격의 변화(비율). 웹 selectors.newsEffect와 같다. 시세가 없으면 서버 값을 쓴다. */
+export function newsEffect(item, stock) {
+  const atPublish = Number(item.priceAtPublish) || 0;
+  if (stock && atPublish > 0) return (stock.price - atPublish) / atPublish;
+  const percent = Number(item.priceChangePercent);
+  return Number.isFinite(percent) ? percent / 100 : 0;
+}

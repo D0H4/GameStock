@@ -8,12 +8,15 @@ import { MenuScreen } from './src/screens/MenuScreen';
 import { MarketScreen } from './src/screens/MarketScreen';
 import { StockScreen } from './src/screens/StockScreen';
 import { SwipeBack } from './src/components/SwipeBack';
+import { NewsScreen } from './src/screens/NewsScreen';
+import { RankingScreen } from './src/screens/RankingScreen';
+import { NewsDetailScreen } from './src/screens/NewsDetailScreen';
 import { AccountProvider } from './src/account';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { AuthProvider, useAuth } from './src/auth';
 import { TabBar, TABS } from './src/components/TabBar';
 import { WebPane } from './src/WebPane';
-import { useMarket } from './src/market';
+import { newsWithIds, useMarket } from './src/market';
 import { FONTS, ThemeProvider, palettes } from './src/theme';
 
 const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
@@ -21,6 +24,8 @@ const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
 const PARK_PATH = '/news';
 /** /market/BA, /trade/BA 같은 웹 주소에서 종목 코드를 꺼낸다. */
 const stockFromPath = path => String(path || '').split('/').filter(Boolean)[1]?.toUpperCase() ?? null;
+/** /news/123 에서 기사 id를 꺼낸다. */
+const newsFromPath = path => { const id = Number(String(path || '').split('/').filter(Boolean)[1]); return Number.isFinite(id) && id > 0 ? id : null; };
 
 /** 웹 주소가 어느 탭에 속하는지. 홈('/')은 네이티브 홈이고, 계정 화면들은 설정 탭 메뉴에서 연다. */
 function tabForPath(path) {
@@ -53,6 +58,11 @@ function ShellBody({ web }) {
   const [tab, setTab] = useState('home');
   // 시장 탭에서 연 종목. null이면 시장 목록을 보여 준다.
   const [stock, setStock] = useState(null);
+  // 종목 상세를 열면서 주문 시트도 바로 열지('buy' | 'sell' | null).
+  const [stockOrder, setStockOrder] = useState(null);
+  // 뉴스 탭에서 연 기사 id. null이면 뉴스 목록. 읽던 기사가 실시간 갱신으로 목록에서 밀려나도 계속 보여 준다.
+  const [newsId, setNewsId] = useState(null);
+  const lastNews = useRef(null);
   // 로그인 시트. next는 로그인 뒤에 열 화면 주소(없으면 지금 화면에 머문다).
   const [login, setLogin] = useState({ visible: false, next: null });
   const requestLogin = useCallback(next => setLogin({ visible: true, next: next ?? null }), []);
@@ -68,7 +78,8 @@ function ShellBody({ web }) {
 
   const open = useCallback((key, path) => {
     // 시장은 네이티브 화면이다. 주소에 종목 코드가 있으면 상세를 연다.
-    if (key === 'market') { setStock(stockFromPath(path)); setTab('market'); return; }
+    if (key === 'market') { setStock(stockFromPath(path)); setStockOrder(null); setTab('market'); return; }
+    if (key === 'news') { setNewsId(newsFromPath(path)); setTab('news'); return; }
     const target = path ?? TAB_BY_KEY[key]?.path;
     if (target && target !== webPath.current) {
       web.current?.navigate(target);
@@ -82,12 +93,11 @@ function ShellBody({ web }) {
     if (key === 'home') return setTab('home');
     // 시장 탭을 다시 누르면 목록으로 돌아간다.
     if (key === 'market') { if (tab === 'market') setStock(null); return setTab('market'); }
+    if (key === 'news') { if (tab === 'news') setNewsId(null); return setTab('news'); }
+    if (key === 'ranking') return setTab('ranking');
     // 설정 탭은 누를 때마다 메뉴 목록부터 보여 준다.
-    if (key === 'more') { setMenuRoot(null); return setTab('more'); }
-    // 이미 열린 탭을 다시 누르면 그 탭의 첫 화면으로 돌아간다.
-    if (key === tab) return open(key, TAB_BY_KEY[key].path);
-    // 그 탭에서 보던 화면이 남아 있으면 그대로, 아니면 탭 첫 화면을 연다.
-    return open(key, tabForPath(webPath.current) === key ? webPath.current : TAB_BY_KEY[key].path);
+    setMenuRoot(null);
+    return setTab('more');
   };
 
   const onRoute = useCallback(path => {
@@ -105,10 +115,12 @@ function ShellBody({ web }) {
     const owner = tabForPath(path);
     const current = tabRef.current;
     // 홈이나 설정 메뉴 목록을 보는 동안 뒤에서 일어난 이동은 탭을 바꾸지 않는다.
-    if ((current === 'home' || current === 'market') && owner !== 'home') return;
+    if (['home', 'market', 'news', 'ranking'].includes(current) && owner !== 'home') return;
     if (current === 'more' && !menuRootRef.current) return;
     // 웹 화면(뉴스 등)의 종목 링크는 네이티브 종목 상세로 연다.
-    if (owner === 'market') { setStock(stockFromPath(path)); setTab('market'); return; }
+    if (owner === 'market') { setStock(stockFromPath(path)); setStockOrder(null); setTab('market'); return; }
+    if (owner === 'news') { setNewsId(newsFromPath(path)); setTab('news'); return; }
+    if (owner === 'ranking') { setTab('ranking'); return; }
     // 웹 화면의 계정 메뉴에서 계정 화면으로 가면 설정 탭이 그 화면을 이어받는다.
     if (owner === 'more') setMenuRoot(root => root ?? path);
     // 웹에서 로고나 홈 링크를 누르면 네이티브 홈으로 돌아온다.
@@ -122,20 +134,26 @@ function ShellBody({ web }) {
         if (stock) setStock(null); else setTab('home');
         return true;
       }
+      if (tab === 'news') {
+        if (newsId) setNewsId(null); else setTab('home');
+        return true;
+      }
       if (tab === 'more') {
         if (!menuRoot) { setTab('home'); return true; }
         if (webPath.current !== menuRoot && web.current?.goBack()) return true;
         setMenuRoot(null);
         return true;
       }
-      if (webPath.current !== TAB_BY_KEY[tab]?.path && web.current?.goBack()) return true;
       setTab('home');
       return true;
     });
     return () => subscription.remove();
-  }, [tab, menuRoot, stock]);
+  }, [tab, menuRoot, stock, newsId]);
 
   const showingMenu = tab === 'more' && !menuRoot;
+  const found = newsId ? newsWithIds(market.events).find(item => item.id === newsId) ?? null : null;
+  if (found) lastNews.current = found;
+  const newsItem = found ?? (lastNews.current?.id === newsId ? lastNews.current : null);
 
   // 로그인 전용 화면은 앱이 먼저 로그인 시트를 띄운다. 로그인되면 원래 가려던 화면을 연다.
   const openMenuItem = useCallback(path => {
@@ -171,7 +189,7 @@ function ShellBody({ web }) {
         <View style={styles.body}>
           <WebPane
             ref={web}
-            visible={tab !== 'home' && tab !== 'market' && !showingMenu}
+            visible={tab === 'more' && !showingMenu}
             initialPath={PARK_PATH}
             onRoute={onRoute}
             onLoginRequest={() => requestLogin(null)}
@@ -182,7 +200,20 @@ function ShellBody({ web }) {
           {tab === 'market' ? <MarketScreen market={market} onOpenStock={setStock} onLogin={() => requestLogin(null)} /> : null}
           {tab === 'market' && stock ? (
             <SwipeBack key={stock} onBack={() => setStock(null)}>
-              <StockScreen code={stock} market={market} onBack={() => setStock(null)} onLogin={() => requestLogin(null)} />
+              <StockScreen code={stock} market={market} initialOrder={stockOrder} onBack={() => setStock(null)} onLogin={() => requestLogin(null)} />
+            </SwipeBack>
+          ) : null}
+          {tab === 'ranking' ? <RankingScreen /> : null}
+          {tab === 'news' ? <NewsScreen market={market} onOpenNews={setNewsId} /> : null}
+          {tab === 'news' && newsId ? (
+            <SwipeBack key={newsId} onBack={() => setNewsId(null)}>
+              <NewsDetailScreen
+                item={newsItem}
+                market={market}
+                onBack={() => setNewsId(null)}
+                onOpenStock={(code, order) => { setStock(code); setStockOrder(order ?? null); setTab('market'); }}
+                onLogin={() => requestLogin(null)}
+              />
             </SwipeBack>
           ) : null}
           {showingMenu ? <MenuScreen onOpen={openMenuItem} onLogin={() => requestLogin(null)} /> : null}

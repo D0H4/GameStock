@@ -2,13 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authErrorMessage, useAuth } from '../auth';
 import { FONT_FAMILY, RADIUS, SPACE, TYPE, Txt, useTheme } from '../theme';
 
 const TITLES = { choose: '로그인', email: '이메일 로그인', register: '이메일로 회원가입', reset: '비밀번호 찾기' };
 const DESCRIPTIONS = {
-  choose: '모의 자금 100만원으로 게임 종목을 사고팔 수 있어요.',
+  choose: '',
   email: '이메일과 비밀번호로 로그인하세요.',
   register: '이메일과 비밀번호로 새 계정을 만들어요.',
   reset: '가입할 때 쓴 이메일을 입력하면 재설정 메일을 보내 드려요.',
@@ -97,25 +98,31 @@ export function LoginScreen({ visible, onClose }) {
   const field = [styles.input, { borderColor: theme.chartBase, backgroundColor: theme.card, color: theme.ink }];
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={[styles.fill, { backgroundColor: theme.ground }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.bar, { paddingTop: Platform.OS === 'android' ? insets.top : SPACE.sm }]}>
-          {isForm ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="로그인 방법 다시 고르기" onPress={() => switchTo(method === 'email' ? 'choose' : 'email')} hitSlop={8} style={styles.barButton}>
-              <Ionicons name="chevron-back" size={24} color={theme.ink} />
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* 화면 가운데에 뜨는 로그인 카드. 뒤 화면은 흐리고 살짝 어둡게 덮어 카드에 시선이 모이게 하고,
+          키보드가 올라오면 카드도 따라 올라간다. 앱에서 흐림은 이 한 곳에만 쓴다. */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="로그인 닫기">
+        <BlurView intensity={24} tint="default" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+        <View style={styles.scrim} />
+      </Pressable>
+      <KeyboardAvoidingView style={styles.sheetWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
+        <View style={[styles.sheet, { backgroundColor: theme.card, marginTop: insets.top + SPACE.lg, marginBottom: insets.bottom + SPACE.lg }]}>
+          <View style={styles.bar}>
+            {isForm ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="로그인 방법 다시 고르기" onPress={() => switchTo(method === 'email' ? 'choose' : 'email')} hitSlop={8} style={styles.barButton}>
+                <Ionicons name="chevron-back" size={24} color={theme.ink} />
+              </Pressable>
+            ) : null}
+            <View style={styles.heading}>
+              <Image source={require('../../assets/brand/sn-mark.png')} style={styles.mark} accessibilityIgnoresInvertColors />
+              <Txt variant="title" accessibilityRole="header" numberOfLines={1} style={styles.shrink}>{TITLES[method]}</Txt>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="로그인 닫기" onPress={onClose} hitSlop={8} style={styles.barButton}>
+              <Ionicons name="close" size={24} color={theme.ink} />
             </Pressable>
-          ) : <View style={styles.barButton} />}
-          <Pressable accessibilityRole="button" accessibilityLabel="로그인 닫기" onPress={onClose} hitSlop={8} style={styles.barButton}>
-            <Ionicons name="close" size={24} color={theme.ink} />
-          </Pressable>
-        </View>
-        <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + SPACE.xl }]} keyboardShouldPersistTaps="handled">
-          <View style={styles.brand}>
-            <Image source={require('../../assets/brand/sn-mark.png')} style={styles.mark} accessibilityIgnoresInvertColors />
-            <Txt variant="callout" tone="inkSoft">슈엔증권</Txt>
           </View>
-          <Txt variant="display" accessibilityRole="header">{TITLES[method]}</Txt>
-          <Txt variant="callout" tone="inkSoft" style={styles.description}>{DESCRIPTIONS[method]}</Txt>
+          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" bounces={false}>
+          {DESCRIPTIONS[method] ? <Txt variant="callout" tone="inkSoft" style={styles.description}>{DESCRIPTIONS[method]}</Txt> : null}
 
           {method === 'choose' ? (
             <View style={styles.stack}>
@@ -213,13 +220,13 @@ export function LoginScreen({ visible, onClose }) {
             </View>
           ) : null}
           {notice ? (
-            <View style={[styles.message, { backgroundColor: theme.card }]} accessibilityLiveRegion="polite">
+            <View style={[styles.message, { backgroundColor: theme.ground }]} accessibilityLiveRegion="polite">
               <Ionicons name="mail-unread-outline" size={18} color={theme.ink} />
               <Txt variant="callout" style={{ flex: 1 }}>{notice}</Txt>
             </View>
           ) : null}
-          <Txt variant="caption" tone="inkSoft" style={styles.footer}>이메일과 비밀번호는 앱에 저장하지 않고 Firebase가 인증해요.</Txt>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -238,13 +245,16 @@ function TextLink({ text, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1 },
-  bar: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACE.sm },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26, 22, 32, 0.25)' },
+  sheetWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACE.xl },
+  sheet: { width: '100%', maxWidth: 420, alignSelf: 'center', borderRadius: 20, maxHeight: '86%', paddingBottom: SPACE.xl },
+  bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingTop: SPACE.sm, minHeight: 56 },
   barButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  heading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingLeft: SPACE.md },
+  shrink: { flexShrink: 1 },
   body: { paddingHorizontal: SPACE.xl, paddingTop: SPACE.sm },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.lg },
   mark: { width: 28, height: 28, borderRadius: 7 },
-  description: { marginTop: SPACE.sm, marginBottom: SPACE.xl },
+  description: { marginBottom: SPACE.lg },
   stack: { gap: SPACE.sm },
   button: { minHeight: 52, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.lg },
   outline: { borderWidth: 1 },
@@ -256,5 +266,4 @@ const styles = StyleSheet.create({
   link: { minHeight: 44, justifyContent: 'center' },
   underline: { textDecorationLine: 'underline' },
   message: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS - 4, padding: SPACE.md, marginTop: SPACE.lg },
-  footer: { textAlign: 'center', marginTop: SPACE.xxl },
 });

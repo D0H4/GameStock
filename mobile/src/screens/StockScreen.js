@@ -22,7 +22,7 @@ const TRADE_COUNT = 10;
 const amount = value => `${Math.round(Number(value) || 0).toLocaleString('ko-KR')}주`;
 
 /** 종목 상세. 할 일은 판단 하나다: 가격과 흐름, 움직인 이유, 지금 호가, 그리고 주문. */
-export function StockScreen({ code, market, onBack, onLogin }) {
+export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -35,6 +35,12 @@ export function StockScreen({ code, market, onBack, onLogin }) {
   const [openNews, setOpenNews] = useState(null);
   const [order, setOrder] = useState(null);
   const [watchError, setWatchError] = useState('');
+
+  // 뉴스 상세의 '주문하기'로 들어오면 주문 시트를 바로 연다.
+  useEffect(() => {
+    if (!initialOrder) return;
+    if (user) setOrder({ side: initialOrder, limitPrice: null }); else onLogin();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 호가와 최근 체결은 소켓으로 실시간 갱신된다.
   useEffect(() => {
