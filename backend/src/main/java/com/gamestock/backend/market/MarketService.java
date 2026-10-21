@@ -181,6 +181,10 @@ public class MarketService {
     Map<String,Long> bookCacheStats(){return Map.of("hits",botLanes.stream().mapToLong(l->l.cache.hits()).sum(),"misses",botLanes.stream().mapToLong(l->l.cache.misses()).sum());}
     private final List<BotLane> botLanes=new ArrayList<>();
     private long activityLpId;
+    private static final long TRADER_CAPITAL_INTERVAL_MS=30_000;
+    /** Trader id to the one symbol it trades; the capital pool prices each trader's lots by it. */
+    private final Map<Long,Long> traderStocks=new HashMap<>();
+    private long nextTraderCapitalRebalance;
     private static final class BotLane {
         final Set<Long> stocks,users;
         final BotActivityEngine engine;
@@ -320,6 +324,7 @@ public class MarketService {
             BotProfile profile=traderProfiles.get(i);
             participants.add(new BotActivityEngine.Participant(ids.get(profile.username()),profile,stocks.get(i%stocks.size())));
         }
+        traderStocks.clear();participants.forEach(p->traderStocks.put(p.id(),p.stock()));
         activityLpId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,LP_USERNAME);
         botLanes.clear();
         int count=Math.min(4,stocks.size());
@@ -1299,9 +1304,62 @@ public class MarketService {
         expireOrders();
         advanceTradingProtections();
         if (protection.marketStatus().open()) refreshEnvironments();
+        if (protection.marketStatus().open()) rebalanceTraderCapital();
         for (String code : botStockCodes()) refreshMarkPrice(code);
         if(botJournal!=null)botJournal.retain(clock.millis(),Math.max(15,detailRetentionMinutes));
         events.publishEvent(new MarketChangedEvent());
+    }
+
+    /**
+     * Runs under the exclusive market lock after expired orders are refunded. That lock also
+     * invalidates every lane's cached book, so the next batch plans against the moved cash.
+     */
+    private void rebalanceTraderCapital() {
+        long now=clock.millis();
+        if(traderStocks.isEmpty()||now<nextTraderCapitalRebalance)return;
+        nextTraderCapitalRebalance=now+TRADER_CAPITAL_INTERVAL_MS;
+        if(adminRuntime!=null&&adminRuntime.settings().tradersStopped())return;
+        Map<Long,Long> prices=new HashMap<>();
+        jdbc.query("SELECT id,current_price FROM stocks",rs->{prices.put(rs.getLong(1),rs.getLong(2));});
+        List<TraderCapitalPool.Trader> traders=new ArrayList<>();
+        long[] lpCash={0};
+        // One ordered lock pass over the LP and every trader, the same order batch persistence uses.
+        jdbc.query("SELECT id,cash FROM users WHERE password_hash='TRADER' OR id=? ORDER BY id FOR UPDATE",rs->{
+            if(rs.getLong(1)==activityLpId){lpCash[0]=rs.getLong(2);return;}
+            Long stock=traderStocks.get(rs.getLong(1));
+            if(stock!=null)traders.add(new TraderCapitalPool.Trader(rs.getLong(1),rs.getLong(2),prices.getOrDefault(stock,0L)));
+        },activityLpId);
+        // The LP sells newly issued refill shares for trader cash. Its net gain over the opening
+        // budgets goes back to the pool, taken from the symbols that earned it.
+        Map<Long,Long> surplus=new java.util.LinkedHashMap<>();long net=0;
+        if(activityLpId>0) {
+            for(long stock:prices.keySet())refreshLiquidityProjection(stock,activityLpId);
+            for(var row:jdbc.queryForList("""
+                    SELECT r.stock_id,c.cash+COALESCE(b.lp_cash_delta,0)-r.opening_cash AS gain FROM lp_risk_books r
+                    JOIN lp_cash_projection c ON c.stock_id=r.stock_id LEFT JOIN bot_ledger_totals b ON b.stock_id=r.stock_id
+                    """)) {
+                long gain=((Number)row.get("gain")).longValue();net+=gain;
+                if(gain>0)surplus.put(((Number)row.get("stock_id")).longValue(),gain);
+            }
+        }
+        long external=traders.isEmpty()?0:Math.max(0,Math.min(net,lpCash[0]/2));
+        var deltas=TraderCapitalPool.plan(traders,external);
+        if(deltas.isEmpty())return;
+        long returned=deltas.values().stream().mapToLong(Long::longValue).sum();
+        jdbc.batchUpdate("UPDATE users SET cash=cash+? WHERE id=?",
+                deltas.entrySet().stream().map(e->new Object[]{e.getValue(),e.getKey()}).toList());
+        if(returned>0) {
+            jdbc.update("UPDATE users SET cash=cash-? WHERE id=?",returned,activityLpId);
+            long gains=surplus.values().stream().mapToLong(Long::longValue).sum(),charged=0;
+            Long largest=surplus.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElseThrow();
+            for(var e:surplus.entrySet()) {
+                long share=(long)Math.floor(returned*(e.getValue()/(double)gains));
+                if(share>0)jdbc.update("UPDATE lp_cash_projection SET cash=cash-? WHERE stock_id=?",share,e.getKey());
+                charged+=share;
+            }
+            if(returned>charged)jdbc.update("UPDATE lp_cash_projection SET cash=cash-? WHERE stock_id=?",returned-charged,largest);
+        }
+        log.debug("Rebalanced trader capital across {} accounts, {} returned from the LP",deltas.size(),returned);
     }
 
     public synchronized List<String> botStockCodes() {
