@@ -1,0 +1,227 @@
+/*
+ * 휴대폰 브라우저로 연 웹 화면 전용.
+ * 앱 안 WebView(app-shell=1 → data-app-shell="mobile")와 넓은 화면은 건드리지 않도록
+ * 모든 규칙을 data-app-shell="web" + 좁은 폭 조건 안에만 둔다.
+ *
+ * 화면 이동 메뉴는 엄지가 닿는 아래쪽 탭바(NxTabbar)로 내린다. 지금 화면은 탭 위쪽 핑크 판정선으로 표시한다.
+ * 비워진 상단 바에는 넓은 화면처럼 종목 시세 띠를 흘린다.
+ */
+
+/* 아래 탭바는 휴대폰 웹에서만 보인다. 나머지 화면에서는 상단 바 메뉴가 같은 일을 한다. */
+.nx-tabbar { display: none; }
+
+/*
+ * viewport-fit=cover(main.tsx)로 화면이 노치 아래까지 펼쳐지므로, 가로로 눕힌 휴대폰에서는
+ * 노치 폭만큼 좌우를 비운다. 노치가 없는 화면에서는 값이 0이라 아무것도 바뀌지 않는다.
+ */
+html[data-app-shell="web"] body {
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+@media (max-width: 720px) {
+  html[data-app-shell="web"][data-nx] {
+    --nx-tabbar: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 탭바에 마지막 줄이 가리지 않게 본문 아래를 비운다. */
+  html[data-app-shell="web"][data-nx] .app {
+    padding-bottom: var(--nx-tabbar);
+  }
+
+  /* ───────── 상단 바: 로고 · 밝기 · 시세 띠 · 계정 (문서 순서 그대로) ───────── */
+
+  html[data-app-shell="web"][data-nx] .nx-top {
+    gap: 0;
+    height: 52px;
+    padding: 0 8px 0 12px;
+  }
+
+  /* 로고는 26px로 보이되 누르는 영역은 44px. 바깥 여백을 당겨 로고 위치는 그대로 둔다. */
+  html[data-app-shell="web"][data-nx] .nx-top .nx-brand {
+    flex: none;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-left: -9px;
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-top .nx-nav { display: none; }
+
+  html[data-app-shell="web"][data-nx] .nx-top .nx-icon-button {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    margin: 0 4px 0 0;
+    border-color: transparent;
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-top .nx-index {
+    display: flex;
+    gap: 0;
+  }
+
+  /* 지수는 홈 첫 화면에 크게 있으니 띠에서는 뺀다. */
+  html[data-app-shell="web"][data-nx] .nx-top .nx-index-item { display: none; }
+
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape {
+    padding-left: 0;
+    border-left: 0;
+    mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+  }
+
+  /* 휴대폰에는 마우스 올림이 없다. 손가락이 닿는 순간 띠를 멈춰 누른 종목이 그대로 열리게 한다. */
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape:active .nx-tape-track { animation-play-state: paused; }
+
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-item {
+    gap: 6px;
+    padding-right: 20px;
+    line-height: 52px;
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-name { font-size: 12px; }
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-price { font-size: 13px; }
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-rate { font-size: 12px; }
+
+  html[data-app-shell="web"][data-nx] .nx-top .profile-menu { flex: none; }
+
+  /* ───────── 아래 탭바 ───────── */
+
+  html[data-app-shell="web"][data-nx] .nx-tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: var(--nx-tabbar);
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    border-top: 1px solid var(--nx-line);
+    background: var(--nx-stage);
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-tabbar-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+    color: var(--ink-muted);
+    font-size: 14px;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-tabbar-link:active { background: var(--nx-tint); }
+
+  html[data-app-shell="web"][data-nx] .nx-tabbar-link.is-active {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* 판정선: 지금 화면 탭의 위 가장자리에 걸친 핑크 막대. */
+  html[data-app-shell="web"][data-nx] .nx-tabbar-link.is-active::before {
+    position: absolute;
+    top: -1px;
+    left: 28%;
+    right: 28%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--brand);
+    content: "";
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-tabbar-link:focus-visible { outline-offset: -4px; }
+
+  /* 고정된 탭바 위로 알림을 띄운다. */
+  html[data-app-shell="web"][data-nx] .mission-toast {
+    bottom: calc(var(--nx-tabbar) + 12px);
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+
+  /* ───────── 입력: iOS가 16px 미만 입력칸에 초점이 가면 화면을 확대하므로 16px로 맞춘다. ───────── */
+
+  html[data-app-shell="web"][data-nx] .nx-input,
+  html[data-app-shell="web"][data-nx] .nx-select,
+  html[data-app-shell="web"][data-nx] .nx-search input,
+  html[data-app-shell="web"][data-nx] input[type="text"],
+  html[data-app-shell="web"][data-nx] input[type="search"],
+  html[data-app-shell="web"][data-nx] input[type="email"],
+  html[data-app-shell="web"][data-nx] input[type="number"],
+  html[data-app-shell="web"][data-nx] input[type="password"],
+  html[data-app-shell="web"][data-nx] textarea,
+  html[data-app-shell="web"][data-nx] select {
+    font-size: max(16px, 1em);
+  }
+
+  /* ───────── 홈 ───────── */
+
+  html[data-app-shell="web"][data-nx] .nx-hero-chart {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  html[data-app-shell="web"][data-nx] .nx-hero-value { font-size: 44px; }
+
+  html[data-app-shell="web"][data-nx] .nx-home-grid > .nx-panel { padding: 14px 14px; }
+
+  /* ───────── 시장: 엄지로 누르는 칩·정렬·관심 버튼은 44px ───────── */
+
+  html[data-app-shell="web"][data-nx] .nx-chip { min-height: 44px; }
+  html[data-app-shell="web"][data-nx] .nx-sort { min-width: 44px; min-height: 44px; }
+
+  /* 시장 표: 등락률까지 한 화면에, 종목 이름은 두 줄까지 */
+  html[data-app-shell="web"][data-nx] .nx-table .nx-col-watch { width: 44px; padding: 0; }
+  html[data-app-shell="web"][data-nx] .nx-star { width: 44px; height: 44px; }
+  html[data-app-shell="web"][data-nx] .nx-table tbody th {
+    width: 100%;
+    max-width: 0;
+    padding: 0 6px 0 0;
+    white-space: normal;
+  }
+  html[data-app-shell="web"][data-nx] .nx-table td { padding: 0 8px; }
+  html[data-app-shell="web"][data-nx] .nx-table thead th { padding-right: 8px; padding-left: 8px; }
+  html[data-app-shell="web"][data-nx] .nx-name-link { gap: 8px; min-width: 0; min-height: 44px; }
+  html[data-app-shell="web"][data-nx] .nx-name-link > span:not([class]) { min-width: 0; }
+  html[data-app-shell="web"][data-nx] .nx-name-text {
+    display: -webkit-box;
+    overflow: hidden;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  /* ───────── 랭킹: 투자자 칸이 남는 폭을 모두 쓴다 ───────── */
+
+  html[data-app-shell="web"][data-nx] .nx-ranking-panel { padding: 0 12px 14px; }
+  html[data-app-shell="web"][data-nx] .nx-ranking-tabs { margin: 0 -12px 8px; }
+  html[data-app-shell="web"][data-nx] .nx-rank-table .nx-rank-cell { width: 40px; padding: 0 4px; }
+  html[data-app-shell="web"][data-nx] .nx-rank-table td.nx-player-cell { width: 100%; max-width: 0; padding: 0 6px; }
+  html[data-app-shell="web"][data-nx] .nx-rank-table tbody td:not(.nx-player-cell) { padding: 0 6px; }
+  html[data-app-shell="web"][data-nx] .nx-player { gap: 8px; }
+  html[data-app-shell="web"][data-nx] .nx-avatar { width: 30px; height: 30px; }
+}
+
+/* 아주 좁은 화면(작은 휴대폰): 종목 아이콘을 줄여 이름에 폭을 더 준다. */
+@media (max-width: 360px) {
+  html[data-app-shell="web"][data-nx] .nx-name-link .game-icon { width: 24px; height: 24px; border-radius: 6px; }
+  html[data-app-shell="web"][data-nx] .nx-table td { padding: 0 6px; }
+  /* 랭킹: 아바타보다 닉네임이 먼저다. 아바타를 빼고 닉네임은 두 줄까지 보인다. */
+  html[data-app-shell="web"][data-nx] .nx-player-cell .nx-avatar { display: none; }
+  html[data-app-shell="web"][data-nx] .nx-player-name {
+    display: -webkit-box;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* 움직임을 줄인 사용자: 띠는 멈춰 있고 손으로 넘긴다. 흐르는 글자를 가리던 양 끝 흐림은 필요 없다. */
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  html[data-app-shell="web"][data-nx] .nx-top .nx-tape { mask-image: none; }
+}

@@ -31,7 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 속보 본문 미리보기. 뉴스는 Google News RSS 링크로만 저장되므로
+ * 뉴스 본문 미리보기. 뉴스는 Google News RSS 링크로만 저장되므로
  * 링크를 언론사 원문 주소로 풀고, 원문 페이지에서 본문 첫 두 문단을 뽑는다.
  * 원문을 세 번 거쳐 읽느라 한 건에 수 초가 걸리므로, 수집된 소식은 백그라운드에서 미리 풀어
  * market_events.excerpt에 저장하고 소식 목록과 함께 내려 준다. 클릭 시 조회도 저장값을 먼저 쓴다.
@@ -119,8 +119,15 @@ public class NewsExcerptService {
     private final AtomicBoolean prefetching = new AtomicBoolean();
     private final AtomicBoolean staleCleared = new AtomicBoolean();
 
+    private org.springframework.context.ApplicationEventPublisher events;
+
     public NewsExcerptService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void configureEvents(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
     }
 
     public Excerpt excerpt(String link) {
@@ -173,6 +180,7 @@ public class NewsExcerptService {
             int cleared = jdbc.update("UPDATE market_events SET excerpt = NULL, excerpt_checked_at = NULL "
                     + "WHERE event_type = 'NEWS' AND excerpt IS NOT NULL AND excerpt NOT LIKE ?", "%\"v\":" + EXCERPT_VERSION + "%");
             if (cleared > 0) log.info("예전 규칙으로 뽑은 뉴스 본문 {}건을 다시 뽑습니다.", cleared);
+            if (cleared > 0 && events != null) events.publishEvent(new NewsChangedEvent());
         }
         /* 원문 주소를 못 푼 소식은 6시간 뒤 다시 시도하고, 2주 지난 소식은 클릭할 때만 푼다. */
         List<Map.Entry<Long, String>> pending = jdbc.query("""
@@ -216,8 +224,9 @@ public class NewsExcerptService {
                 log.debug("뉴스 본문 저장값 만들기 실패", error);
             }
         }
-        jdbc.update("UPDATE market_events SET excerpt = ?, excerpt_checked_at = UTC_TIMESTAMP() WHERE event_type = 'NEWS' AND " + where,
+        int stored = jdbc.update("UPDATE market_events SET excerpt = ?, excerpt_checked_at = UTC_TIMESTAMP() WHERE event_type = 'NEWS' AND " + where,
                 value, key);
+        if (stored > 0 && events != null) events.publishEvent(new NewsChangedEvent());
     }
 
     /** market_events.excerpt에 저장된 값을 읽는다. 없거나 깨졌거나 예전 규칙으로 뽑은 값이면 null. */

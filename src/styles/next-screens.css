@@ -1,0 +1,562 @@
+/*
+ * 새 화면(?ui=next)의 화면별 배치: 뉴스, 랭킹, 내 계좌, 대출, 충전, 칭호, 설정, 로그인, 관리자.
+ * 부품은 next-kit.css, 색과 규칙은 DESIGN.md(판정선 체계)를 따른다.
+ */
+
+/* ───────── 공통 보조 ───────── */
+
+.nx-icon-link { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; color: var(--ink-muted); }
+.nx-icon-link:hover { background: var(--nx-tint); color: var(--ink); }
+.nx-icon-link svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+.nx-cell-name { display: inline-flex; align-items: center; gap: 10px; }
+.nx-cell-name .game-icon { width: 24px; height: 24px; border-radius: 6px; }
+.nx-scroll-x { overflow-x: auto; }
+.nx-scroll-y { max-height: 420px; overflow-y: auto; }
+.nx-form { display: grid; gap: 12px; }
+.nx-inline-form { display: flex; gap: 8px; }
+.nx-inline-form .nx-input { flex: 1; }
+
+.nx-grid-table small { color: var(--ink-muted); font-size: 11px; }
+
+/* ───────── 뉴스 ───────── */
+
+.nx-news-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+/* 건수는 버튼 글자색을 그대로 따른다. 더 흐린 색은 대비 기준(4.5:1)을 넘지 못했다. */
+.nx-news-filters .nx-seg-count { margin-left: 6px; font-size: 12px; }
+.nx-news-game .nx-select { width: auto; min-width: 150px; }
+.nx-news-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--nx-line);
+}
+.nx-news-layout > .nx-panel { border-radius: 0; }
+.nx-news-list { max-height: calc(100vh - 240px); padding: 6px; overflow-y: auto; }
+.nx-news-list ol { margin: 0; padding: 0; list-style: none; }
+
+.nx-news-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.nx-news-row:hover { background: var(--nx-tint); }
+.nx-news-row.is-active { background: var(--nx-tint); box-shadow: inset 0 0 0 1px var(--brand); }
+.nx-news-row .game-icon { width: 28px; height: 28px; border-radius: 6px; }
+.nx-news-row-body { display: grid; gap: 4px; min-width: 0; }
+.nx-news-row-title { display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.nx-news-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--ink-muted); font-size: 12px; }
+.nx-news-row-effect { min-width: 60px; padding-top: 2px; font-size: 13px; text-align: right; }
+.nx-news-row-effect.is-up,
+.nx-article-stats .is-up { color: var(--up-deep); }
+.nx-news-row-effect.is-down,
+.nx-article-stats .is-down { color: var(--down-deep); }
+
+.nx-news-hint { display: grid; place-items: center; padding: 48px; color: var(--ink-muted); font-size: 14px; text-align: center; }
+.nx-news-hint p { max-width: 36ch; line-height: 1.7; }
+
+.nx-news-article { max-height: calc(100vh - 240px); padding: 22px 28px; overflow-y: auto; }
+.nx-article-head { display: flex; align-items: center; gap: 10px; }
+.nx-article-game { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; text-decoration: none; }
+.nx-article-game:hover { text-decoration: underline; text-underline-offset: 3px; }
+.nx-article-game .game-icon { width: 28px; height: 28px; border-radius: 6px; }
+/* 출처 표시: 게임사 공지는 브랜드 색 테두리, 언론 기사는 무채색. 목록과 본문이 같은 표시를 쓴다. */
+.nx-news-kind { flex: none; padding: 1px 7px; border: 1px solid var(--nx-line); border-radius: 4px; color: var(--ink-muted); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.nx-news-kind.is-official { border-color: var(--brand); color: var(--brand-deep); }
+.nx-article-head .nx-icon-link { margin-left: auto; }
+.nx-article-title { margin: 16px 0 6px; font-size: 22px; font-weight: 500; line-height: 1.4; letter-spacing: -0.02em; outline: 0; }
+.nx-article-time { margin: 0; color: var(--ink-muted); font-size: 12px; }
+
+.nx-article-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 20px 0 8px; overflow: hidden; border-radius: 8px; background: var(--nx-line); }
+.nx-article-stats div { display: grid; gap: 4px; padding: 14px 16px; background: var(--nx-raised); }
+.nx-article-stats dt { color: var(--ink-muted); font-size: 12px; }
+.nx-article-stats dd { margin: 0; font-size: 22px; font-weight: 700; }
+
+.nx-article-chart { flex: none; min-height: 0; margin: 4px 0 8px; }
+html[data-nx] .nx-article-chart .stock-series-chart .chart-plot { height: 220px; }
+
+.nx-article-body p { margin: 0 0 12px; font-size: 15px; line-height: 1.75; }
+.nx-article-empty { color: var(--ink-muted); }
+.nx-article-origin { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-deep); font-size: 13px; }
+.nx-article-origin svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.nx-article-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--nx-line); }
+.nx-star-on { fill: var(--amber); stroke: var(--amber); }
+
+/* ───────── 랭킹 ───────── */
+
+.nx-ranking-panel { padding: 0 20px 16px; }
+.nx-ranking-tabs { margin: 0 -20px 8px; padding: 0 10px; border-bottom: 1px solid var(--nx-line); }
+.nx-rank-scroll { overflow-x: auto; }
+.nx-rank-table tbody th,
+.nx-rank-table tbody td { height: 60px; font-size: 14px; }
+.nx-rank-table tr.is-top > * { height: 72px; }
+.nx-rank-table tr.is-top .nx-player-name { font-size: 16px; }
+.nx-rank-table .nx-rank-cell { width: 64px; text-align: center; }
+.nx-rank-table thead th:nth-child(2),
+.nx-rank-table td.nx-player-cell { text-align: left; }
+.nx-rank-table .is-up { color: var(--up-deep); }
+.nx-rank-table .is-down { color: var(--down-deep); }
+
+.nx-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--ink-muted);
+  font-family: var(--nx-num);
+  font-size: 14px;
+  font-weight: 700;
+}
+.nx-rank.is-medal { color: #1b1726; }
+.nx-rank.is-1 { background: #f2c94c; }
+.nx-rank.is-2 { background: #c9ced8; }
+.nx-rank.is-3 { background: #d79a63; }
+
+.nx-player { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.nx-avatar { width: 36px; height: 36px; flex: none; border: 1px solid var(--nx-line); border-radius: 50%; background: var(--nx-raised); object-fit: cover; }
+.nx-player-text { display: grid; min-width: 0; }
+.nx-player-title { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+/*
+ * 칭호 색표(lib/titles.ts)는 흰 바탕 기준이다. 다크에서는 흰색 55%를 섞어 패널·돋움·핑크 바탕 모두에서 5.2:1 이상,
+ * 라이트에서는 잉크 15%를 섞어 흰 바탕·돋움·핑크 바탕 모두에서 5.3:1 이상이 되게 한다. 색상(hue)은 그대로 둔다.
+ */
+.has-title-ink[style*="--title-ink"] { color: color-mix(in srgb, var(--title-ink) 45%, #ffffff); }
+html[data-nx-theme="light"] .has-title-ink[style*="--title-ink"] { color: color-mix(in srgb, var(--title-ink) 85%, #1b1726); }
+.nx-player-name { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.nx-player-me { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--brand); color: var(--brand-ink); font-size: 11px; vertical-align: 1px; }
+.nx-rank-gap td { height: 16px; }
+.nx-rank-gap span { display: block; border-top: 1px dashed var(--nx-line); }
+.nx-week-figures { padding: 12px 0 16px; border-bottom: 1px solid var(--nx-line); }
+.nx-rank-note { margin: 12px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.6; }
+.nx-rank-loading { padding: 16px 0; }
+
+/* ───────── 계좌 공통 ───────── */
+
+
+.nx-account-hero,
+.nx-loan-hero,
+.nx-charge-hero,
+.nx-titles-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+  padding: 8px 0 4px;
+}
+.nx-account-pnl { margin: 10px 0 0; font-size: 16px; font-weight: 600; }
+.nx-account-pnl.is-up { color: var(--up-deep); }
+.nx-account-pnl.is-down { color: var(--down-deep); }
+.nx-account-pnl .nx-muted { margin-left: 6px; font-family: var(--font-ui); font-weight: 500; }
+
+/* 자산 구성 막대: 종목마다 무채색 명도 단계, 현금은 핑크. */
+.nx-alloc { margin: 0; }
+.nx-alloc-bar { display: flex; gap: 2px; height: 12px; overflow: hidden; border-radius: 6px; }
+.nx-alloc-bar span { min-width: 3px; }
+.nx-alloc .is-cash { background: var(--brand); }
+.nx-alloc .is-0 { background: #f1eef8; }
+.nx-alloc .is-1 { background: #c9c3d9; }
+.nx-alloc .is-2 { background: #9f98b3; }
+.nx-alloc .is-3 { background: #77708c; }
+.nx-alloc .is-4 { background: #534c68; }
+html[data-nx-theme="light"] .nx-alloc .is-0 { background: #1b1726; }
+html[data-nx-theme="light"] .nx-alloc .is-1 { background: #453f56; }
+html[data-nx-theme="light"] .nx-alloc .is-2 { background: #6f6986; }
+html[data-nx-theme="light"] .nx-alloc .is-3 { background: #a29db0; }
+html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
+.nx-alloc-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--ink-muted); font-size: 12px; }
+.nx-alloc-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 3px; }
+
+.nx-mypage-board { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+.nx-mypage-holdings,
+.nx-mypage-orders { grid-column: 1; }
+.nx-mypage-fills { grid-column: 2; grid-row: 1 / 3; }
+.nx-mypage-watch { grid-column: 1 / -1; }
+
+.nx-watch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1px; margin: 0; padding: 0; overflow: hidden; border-radius: 8px; background: var(--nx-line); list-style: none; }
+.nx-watch-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px; padding: 10px 12px; background: var(--nx-panel); font-size: 14px; }
+.nx-watch-list a { color: var(--ink); text-decoration: none; }
+.nx-watch-list .is-up { color: var(--up-deep); }
+.nx-watch-list .is-down { color: var(--down-deep); }
+
+/* ───────── 대출 ───────── */
+
+.nx-loan-gauge { display: grid; gap: 16px; }
+.nx-gauge-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--ink-muted); font-size: 13px; }
+.nx-gauge-head small { margin-left: 6px; color: var(--ink-muted); font-size: 12px; }
+.nx-gauge-head strong { color: var(--ink); font-size: 26px; font-weight: 700; }
+.nx-gauge.is-warning .nx-gauge-head strong { color: var(--amber-deep); }
+.nx-gauge.is-danger .nx-gauge-head strong { color: var(--up-deep); }
+.nx-gauge-track { position: relative; height: 14px; border-radius: 8px; background: var(--nx-raised); }
+.nx-gauge-zone { position: absolute; top: 0; bottom: 0; }
+.nx-gauge-zone.is-danger { left: 0; border-radius: 8px 0 0 8px; background: var(--up-wash); }
+.nx-gauge-zone.is-warning { background: var(--amber-wash); }
+/* 판정선: 지금의 담보비율이 게이지 위 어디에 꽂혀 있는지. */
+.nx-gauge-now { position: absolute; top: -6px; bottom: -6px; width: 3px; border-radius: 3px; background: var(--brand); transform: translateX(-50%); }
+.nx-gauge-scale { position: relative; height: 16px; color: var(--ink-muted); font-size: 11px; }
+.nx-gauge-scale span { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
+.nx-gauge-scale span:first-child { transform: none; }
+.nx-gauge-scale span:last-child { transform: translateX(-100%); }
+.nx-loan-rules { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 1.6; }
+.nx-loan-forms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* ───────── 충전(미션) ───────── */
+
+.nx-mission-steps { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.nx-mission-steps li { width: 56px; height: 10px; border-radius: 3px; background: var(--nx-raised); }
+.nx-mission-steps li.is-done { background: var(--brand); }
+
+.nx-mission-list { padding: 4px 20px; }
+.nx-mission-list ol { margin: 0; padding: 0; list-style: none; }
+.nx-mission-list li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--nx-line); }
+.nx-mission-list li:last-child { border-bottom: 0; }
+.nx-mission-index { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--nx-line); border-radius: 50%; color: var(--ink-muted); font-size: 14px; }
+.nx-mission-index svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nx-mission-list li.is-done .nx-mission-index { border-color: var(--brand); background: var(--brand); color: var(--brand-ink); }
+.nx-mission-copy h2 { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
+.nx-mission-copy p { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 1.55; }
+.nx-mission-list li.is-done .nx-mission-copy h2 { color: var(--ink-muted); }
+.nx-mission-reward { color: var(--ink); font-size: 15px; font-weight: 600; }
+.nx-mission-list li.is-done .nx-mission-reward { color: var(--ink-muted); }
+.nx-mission-state { min-width: 64px; color: var(--ink-muted); font-size: 13px; text-align: center; }
+
+/* ───────── 칭호 ───────── */
+
+.nx-titles-total { color: var(--ink-muted); font-size: 22px; font-weight: 500; }
+.nx-titles-hero .nx-meter { width: min(320px, 70vw); margin-top: 14px; }
+.nx-nameplate { display: grid; gap: 2px; min-width: 240px; padding: 16px 20px; border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-panel); }
+.nx-nameplate-label { margin-bottom: 6px; color: var(--ink-muted); font-size: 11px; }
+.nx-nameplate-title { color: var(--ink-muted); font-size: 13px; }
+.nx-nameplate-name { font-size: 18px; }
+
+.nx-titles-board { padding: 0 20px 16px; }
+.nx-titles-board > .nx-tabs { margin: 0 -20px 16px; padding: 0 10px; border-bottom: 1px solid var(--nx-line); }
+.nx-title-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.nx-title {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+button.nx-title { cursor: pointer; }
+button.nx-title:hover:not(:disabled) { background: var(--nx-tint); }
+.nx-title.is-equipped { border-color: var(--brand); background: var(--brand-wash); }
+/* 미획득 칭호는 이름과 자물쇠를 옅게 눌러 획득한 칭호와 한눈에 갈린다. 조건 글은 읽어야 하니 그대로 둔다. */
+.nx-title.is-locked { color: var(--nx-locked-ink); }
+.nx-title-name { font-size: 16px; }
+.nx-title-crown { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--amber-wash); color: var(--amber-deep); font-size: 11px; }
+.nx-title-cond { color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
+.nx-title.is-locked .nx-title-state { color: var(--nx-locked-ink); }
+.nx-title-state { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); font-size: 12px; }
+.nx-title.is-equipped .nx-title-state { color: var(--ink); }
+.nx-title-state svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.nx-titles-foot { margin: 16px 0 0; font-size: 12px; }
+
+/* ───────── 설정 ───────── */
+
+.nx-settings-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: start; gap: 16px; }
+.nx-settings-main { display: grid; gap: 16px; }
+.nx-profile-card { position: sticky; top: 72px; display: grid; justify-items: center; gap: 4px; padding: 28px 20px; text-align: center; }
+.nx-profile-card img { width: 96px; height: 96px; margin-bottom: 10px; border: 1px solid var(--nx-line); border-radius: 50%; background: var(--nx-raised); object-fit: cover; }
+.nx-profile-name { margin: 0; font-size: 18px; }
+.nx-profile-card .nx-muted { margin: 0; overflow-wrap: anywhere; }
+
+.nx-avatar-picker { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.nx-avatar-current { display: flex; align-items: center; gap: 8px; margin: 0; }
+.nx-avatar-current img { width: 28px; height: 28px; border-radius: 50%; }
+.nx-avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+.nx-avatar-option { display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border: 1px solid var(--nx-line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.nx-avatar-option:hover { background: var(--nx-tint); }
+.nx-avatar-option.is-active { border-color: var(--brand); background: var(--brand-wash); }
+.nx-avatar-option img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
+.nx-avatar-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.nx-danger-zone { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid color-mix(in oklab, var(--up) 30%, transparent); }
+.nx-danger-title { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
+.nx-danger-zone p { margin: 0; }
+
+/* ───────── 로그인 ───────── */
+
+.nx-login { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); align-items: center; gap: 48px; min-height: calc(100vh - 56px - 48px); }
+.nx-login-market { display: grid; gap: 6px; }
+.nx-login-index { margin: 4px 0 0; font-size: 64px; font-weight: 700; line-height: 1; letter-spacing: -0.035em; }
+.nx-login-change { margin: 0 0 18px; font-size: 20px; font-weight: 600; }
+.nx-login-change.is-up,
+.nx-login-movers .is-up { color: var(--up-deep); }
+.nx-login-change.is-down,
+.nx-login-movers .is-down { color: var(--down-deep); }
+.nx-login-movers { display: grid; max-width: 420px; margin: 0; padding: 0; border-top: 1px solid var(--nx-line); list-style: none; }
+.nx-login-movers li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--nx-line); font-size: 14px; }
+.nx-login-movers .game-icon { width: 24px; height: 24px; border-radius: 6px; }
+.nx-login-copy { max-width: 46ch; margin: 18px 0 0; color: var(--ink-muted); font-size: 14px; line-height: 1.7; }
+
+/* 로그인 카드(모달과 같은 부품)를 새 면에 맞춘다. */
+html[data-nx] .login-panel { border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-panel); box-shadow: none; }
+html[data-nx] .login-button { min-height: 48px; border: 1px solid var(--nx-line); border-radius: 8px; background: transparent; color: var(--ink); }
+html[data-nx] .login-button:hover { border-color: var(--ink-faint); background: var(--nx-tint); }
+html[data-nx] .login-button.is-primary { border-color: var(--ink); background: var(--ink); color: var(--nx-stage); }
+html[data-nx] .login-field input { border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-raised); color: var(--ink); }
+html[data-nx] .login-field input:focus { border-color: var(--brand); outline: 0; }
+html[data-nx] .login-close { border-radius: 8px; color: var(--ink-muted); }
+html[data-nx] .login-message.is-error { color: var(--up-deep); }
+
+/* ───────── 관리자 ───────── */
+
+.nx-admin-nav { border-bottom: 1px solid var(--nx-line); }
+.nx-admin-body { min-width: 0; }
+
+/*
+ * 회원을 고르면 목록과 상세를 반씩 나눈다. 목록은 고르는 데 필요한 칸(계정·닉네임·현금·이용)만
+ * 한 줄로 남기고, 긴 이메일은 줄여 쓴다. 번호·이메일 전체는 상세 머리에 있다.
+ */
+/* 1100px 이하에서는 shell.css가 목록과 상세를 위아래로 쌓으므로 그 위에서만 나눈다. */
+@media (min-width: 1101px) {
+  .nx-admin .account-settings.admin-page:has(#admin-user-actions) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-table { min-width: 0; }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-table td { white-space: nowrap; }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-email { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-table :is(th, td):is(:nth-child(2), :nth-child(5)),
+  .nx-admin .admin-page:has(#admin-user-actions) .admin-uid { display: none; }
+}
+/* 상세 칸 안에서는 보유 주식과 최근 주문을 위아래로 쌓아 주문 시각이 꺾이지 않게 한다. */
+.nx-admin [aria-labelledby="admin-user-actions"] .member-columns { grid-template-columns: minmax(0, 1fr); }
+.nx-admin .member-order-time { white-space: nowrap; }
+
+/* 관리 구획은 기존 부품을 그대로 쓰므로 공통 면만 맞춘다. */
+html[data-nx] .nx-admin .panel { padding: 18px 20px; border: 0; border-radius: 8px; background: var(--nx-panel); box-shadow: none; }
+html[data-nx] .nx-admin .panel-head { margin-bottom: 12px; border: 0; }
+html[data-nx] .nx-admin .panel-title { color: var(--ink-muted); font-size: 13px; font-weight: 500; }
+html[data-nx] .nx-admin .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+html[data-nx] .nx-admin .table thead th { border-bottom: 1px solid var(--nx-line); background: transparent; color: var(--ink-muted); font-size: 12px; font-weight: 500; }
+html[data-nx] .nx-admin .table tbody th,
+html[data-nx] .nx-admin .table tbody td { border-bottom: 1px solid var(--nx-line); border-radius: 0; }
+html[data-nx] .nx-admin .table tbody tr:hover,
+html[data-nx] .nx-admin .table tbody tr.is-selected { background: var(--nx-tint); }
+html[data-nx] .nx-admin .account-button { min-height: 36px; padding: 0 14px; border: 1px solid var(--nx-line); border-radius: 8px; background: transparent; color: var(--ink); font-weight: 500; }
+html[data-nx] .nx-admin .account-button:hover:not(:disabled) { background: var(--nx-tint); filter: none; }
+html[data-nx] .nx-admin .account-button.is-primary { border-color: var(--ink); background: var(--ink); color: var(--nx-stage); }
+html[data-nx] .nx-admin .account-button.is-danger { border-color: color-mix(in oklab, var(--up) 45%, transparent); color: var(--up-deep); }
+html[data-nx] .nx-admin .account-form input,
+html[data-nx] .nx-admin .account-form select,
+html[data-nx] .nx-admin textarea { border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-raised); color: var(--ink); }
+html[data-nx] .nx-admin .admin-badge { border-color: var(--nx-line); }
+html[data-nx] .nx-admin .empty { color: var(--ink-muted); }
+
+/* 프로모션 코드: 공지 편집과 같은 틀. 코드는 사용자가 그대로 따라 쳐야 하므로 숫자 글꼴로 또박또박. */
+.promo-code-text { font-family: var(--nx-num); font-weight: 700; letter-spacing: 0.02em; }
+.promo-list .notice-list-item { align-items: center; }
+.promo-list-main { display: grid; gap: 2px; min-width: 0; }
+.promo-list-reward { overflow: hidden; color: var(--ink-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.promo-list .notice-state.is-full,
+.promo-list .notice-state.is-ended,
+.promo-list .notice-state.is-off { color: var(--ink-muted); }
+
+.promo-titles { display: grid; gap: 12px; min-width: 0; margin: 4px 0 0; padding: 0; border: 0; }
+.promo-titles legend { margin-bottom: 8px; padding: 0; color: var(--ink); font-size: 14px; }
+.promo-titles legend .num { margin-left: 6px; color: var(--ink-muted); font-size: 12px; }
+.promo-title-group { display: grid; gap: 6px; }
+.promo-title-category { margin: 0; color: var(--ink-muted); font-size: 12px; }
+.promo-title-options { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 고른 칭호는 테두리와 바탕으로 바로 보인다. 체크 상자는 그대로 두어 상태를 두 번 알린다. */
+.promo-title-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--nx-line);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.promo-title-option:hover { background: var(--nx-tint); }
+.promo-title-option.is-picked { border-color: var(--brand); background: var(--brand-wash); }
+.promo-title-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; background: none; accent-color: var(--brand); }
+
+.promo-preview-card { display: grid; gap: 14px; margin: 0; padding: 18px 20px; border: 1px solid var(--nx-line); border-radius: 8px; }
+.promo-preview-card div { display: grid; gap: 4px; }
+.promo-preview-card dt { color: var(--ink-muted); font-size: 12px; }
+.promo-preview-card dd { margin: 0; color: var(--ink); font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.promo-preview-card .promo-code-text { font-size: 22px; }
+.promo-preview-card .promo-preview-empty { color: var(--ink-muted); }
+.promo-usage { margin-top: 12px; }
+.promo-usage-list { margin: 0; padding: 0; list-style: none; }
+.promo-usage-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--nx-line); font-size: 13px; }
+.promo-usage-list .num { color: var(--ink-muted); }
+@media (max-width: 760px) {
+  .promo-title-option { min-height: 44px; }
+}
+
+/* ───────── 좁은 화면 ───────── */
+
+@media (max-width: 1080px) {
+  .nx-news-layout { grid-template-columns: minmax(0, 1fr); }
+  .nx-news-screen.has-article .nx-news-list,
+  .nx-news-hint { display: none; }
+  .nx-news-list,
+  .nx-news-article { max-height: none; }
+  .nx-news-article { padding: 18px 16px; }
+  .nx-mypage-board,
+  .nx-loan-forms { grid-template-columns: minmax(0, 1fr); }
+  .nx-mypage-holdings,
+  .nx-mypage-orders,
+  .nx-mypage-fills,
+  .nx-mypage-watch { grid-column: 1; grid-row: auto; }
+  .nx-settings-layout,
+  .nx-login { grid-template-columns: minmax(0, 1fr); }
+  .nx-profile-card { position: static; }
+  .nx-login { gap: 24px; }
+  .nx-login-index { font-size: 48px; }
+}
+
+@media (max-width: 520px) {
+  .nx-article-stats { grid-template-columns: minmax(0, 1fr); }
+  .nx-mission-list { padding: 4px 14px; }
+  .nx-mission-list li { grid-template-columns: 32px minmax(0, 1fr); }
+  .nx-mission-reward,
+  .nx-mission-list li > :last-child { grid-column: 2; justify-self: start; }
+  .nx-inline-form { flex-direction: column; }
+  .nx-mission-steps li { width: 40px; }
+}
+
+/* ───────── 출석체크 ───────── */
+
+.nx-att-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  align-items: end;
+  gap: 24px 40px;
+  padding: 24px;
+  border: 1px solid var(--nx-line);
+  border-radius: var(--nx-radius);
+}
+.nx-att-state { margin: 0; color: var(--ink-muted); font-size: 14px; }
+/* 연속 일수는 리듬게임 콤보 숫자처럼 크게. */
+.nx-att-combo { margin: 6px 0 0; font-size: 72px; font-weight: 800; line-height: 1; letter-spacing: -0.04em; }
+.nx-att-combo span { margin-left: 6px; color: var(--ink-muted); font-family: var(--font-ui); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.nx-att-pay { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 20px 0 0; }
+.nx-att-pay div { display: grid; gap: 4px; }
+.nx-att-pay dt { color: var(--ink-muted); font-size: 12px; }
+.nx-att-pay dd { margin: 0; font-size: 20px; font-weight: 700; }
+
+/* 보상 레인: 다섯 칸, 아래쪽 판정선. 노트는 남은 일수(--away)만큼 위에 떠 있다. */
+.nx-att-lane {
+  --line: 132px;
+  --step: 26px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  height: calc(var(--line) + 52px);
+}
+.nx-att-col {
+  position: relative;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(to top, var(--nx-lane), transparent);
+}
+.nx-att-note {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% - var(--line) + var(--away) * var(--step));
+  height: calc(8px + var(--weight) * 18px);
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 4px;
+}
+.nx-att-col.is-passed .nx-att-note { border-color: transparent; background: var(--nx-guide); }
+.nx-att-col.is-hit .nx-att-note {
+  border-color: var(--brand);
+  background: var(--brand);
+  box-shadow: 0 0 0 4px var(--brand-wash);
+  animation: nx-att-drop 520ms cubic-bezier(0.3, 1.4, 0.5, 1) 120ms both;
+}
+.nx-att-judge {
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: calc(var(--line) - 1.5px);
+  height: 3px;
+  border-radius: 3px;
+  background: var(--brand);
+}
+.nx-att-reward,
+.nx-att-day { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; }
+.nx-att-reward { top: calc(var(--line) + 10px); color: var(--ink-muted); font-size: 14px; font-weight: 600; }
+.nx-att-day { top: calc(var(--line) + 30px); color: var(--ink-muted); font-size: 11px; }
+.nx-att-col.is-hit .nx-att-reward { color: var(--ink); }
+.nx-att-col.is-hit .nx-att-day { color: var(--brand-deep); }
+@keyframes nx-att-drop {
+  from { transform: translateY(calc(var(--step) * -2)); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nx-att-col.is-hit .nx-att-note { animation: none; }
+}
+
+/* 달력 */
+.nx-att-month { display: grid; gap: 16px; padding: 20px 24px; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); }
+.nx-att-month-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.nx-att-month-title { min-width: 104px; margin: 0; font-size: 18px; font-weight: 700; text-align: center; }
+.nx-att-month-count { margin: 0 0 0 auto; color: var(--ink-muted); font-size: 13px; }
+.nx-att-month-count .nx-num { color: var(--ink); font-weight: 700; }
+.nx-att-nav {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--nx-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.nx-att-nav svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nx-att-nav:hover:not(:disabled) { background: var(--nx-tint); }
+.nx-att-nav:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.nx-att-nav:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nx-att-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.nx-att-cal { width: 100%; border-collapse: separate; border-spacing: 0 6px; table-layout: fixed; }
+.nx-att-cal th { padding-bottom: 2px; color: var(--ink-muted); font-size: 12px; font-weight: 500; }
+.nx-att-cal td { position: relative; height: 56px; padding: 6px 8px; vertical-align: top; }
+.nx-att-cal td::before { content: ""; position: absolute; inset: 0 3px; border-radius: 6px; }
+.nx-att-cal td.is-on::before { background: var(--brand-wash); }
+/* 이어진 날은 오른쪽 틈을 메워 하나의 띠가 된다. */
+.nx-att-cal td.is-joined::before { right: -3px; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.nx-att-cal td.is-joined + td.is-on::before { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.nx-att-cal td.is-joined + td.is-on::before { left: 0; }
+.nx-att-cal td.is-today::before { box-shadow: inset 0 0 0 1.5px var(--brand); }
+.nx-att-date,
+.nx-att-cell-reward { position: relative; display: block; }
+.nx-att-date { color: var(--ink-muted); font-size: 13px; }
+.nx-att-cal td.is-on .nx-att-date { color: var(--ink); font-weight: 600; }
+.nx-att-cell-reward { margin-top: 6px; color: var(--brand-deep); font-size: 12px; font-weight: 600; }
+.nx-att-totals { padding-top: 16px; border-top: 1px solid var(--nx-line); }
+
+@media (max-width: 760px) {
+  .nx-att-hero { grid-template-columns: minmax(0, 1fr); padding: 20px 16px; }
+  .nx-att-combo { font-size: 56px; }
+  .nx-att-lane { --line: 112px; --step: 22px; }
+  .nx-att-reward { font-size: 12px; }
+  .nx-att-month { padding: 16px 12px; }
+  .nx-att-month-count { flex-basis: 100%; margin-left: 0; }
+  .nx-att-cal td { height: 48px; padding: 4px; }
+  .nx-att-cell-reward { font-size: 10px; }
+}

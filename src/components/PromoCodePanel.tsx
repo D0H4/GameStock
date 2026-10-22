@@ -4,8 +4,8 @@ import { Panel } from "./Panel";
 import { firebaseAuth } from "../lib/firebase";
 import { redeemPromoCode } from "../lib/titles";
 
-/** 프로모션 코드를 입력해 특별 칭호를 받는다. */
-export function PromoCodePanel() {
+/** 프로모션 코드 입력 상태와 제출. 기존 화면과 새 화면이 같이 쓴다. */
+export function usePromoCode() {
   const [user, setUser] = useState<User | null>(firebaseAuth.currentUser);
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
@@ -24,8 +24,12 @@ export function PromoCodePanel() {
     setMessage(null);
     try {
       const status = await redeemPromoCode(trimmed);
-      const special = status.newlyAwarded.filter((title) => title.category === "특별").map((title) => title.name);
-      setMessage({ text: special.length > 0 ? `특별 칭호 ${special.join(", ")}을(를) 획득했어요.` : "프로모션 코드를 사용했어요.", ok: true });
+      const named = status.newlyAwarded.map((title) => title.name);
+      const parts = [
+        status.rewardCash > 0 ? `현금 ${status.rewardCash.toLocaleString("ko-KR")}원` : "",
+        named.length > 0 ? `칭호 ${named.join(", ")}` : "",
+      ].filter(Boolean);
+      setMessage({ text: parts.length > 0 ? `${parts.join("과 ")}을(를) 받았어요.` : "프로모션 코드를 사용했어요.", ok: true });
       setCode("");
     } catch (failure) {
       setMessage({ text: failure instanceof Error ? failure.message : "프로모션 코드를 사용하지 못했습니다.", ok: false });
@@ -34,6 +38,11 @@ export function PromoCodePanel() {
     }
   };
 
+  return { user, code, setCode, pending, message, submit };
+}
+
+export function PromoCodePanel() {
+  const { user, code, setCode, pending, message, submit } = usePromoCode();
   return (
     <Panel id="promo-code" title="프로모션 코드">
       <form className="account-form promo-form" onSubmit={submit}>

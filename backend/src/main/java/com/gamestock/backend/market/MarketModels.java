@@ -54,19 +54,15 @@ public final class MarketModels {
      * profitLoss/profitLossPercent are the unrealized (valuation) result kept
      * under the original field names for web/mobile compatibility.  realized
      * results are accumulated independently as shares are sold.
+     * availableQuantity is what a new sell order may use: settled shares minus
+     * shares already held by open sell orders.
      */
     public record Position(String stockCode, int quantity, int settledQuantity, int unsettledQuantity,
-                           long averagePrice, long marketValue, long profitLoss, double profitLossPercent,
-                           long realizedProfitLoss, int availableQuantity) {
-        public Position(String stockCode, int quantity, int settledQuantity, int unsettledQuantity,
-                        long averagePrice, long marketValue, long profitLoss, double profitLossPercent,
-                        long realizedProfitLoss) {
-            this(stockCode, quantity, settledQuantity, unsettledQuantity, averagePrice, marketValue,
-                    profitLoss, profitLossPercent, realizedProfitLoss, settledQuantity);
-        }
+                           int availableQuantity, long averagePrice, long marketValue, long profitLoss,
+                           double profitLossPercent, long realizedProfitLoss) {
         public Position(String stockCode, int quantity, long averagePrice, long marketValue,
                         long profitLoss, double profitLossPercent) {
-            this(stockCode, quantity, quantity, 0, averagePrice, marketValue, profitLoss,
+            this(stockCode, quantity, quantity, 0, quantity, averagePrice, marketValue, profitLoss,
                     profitLossPercent, 0);
         }
     }

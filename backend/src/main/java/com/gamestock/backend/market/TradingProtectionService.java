@@ -179,16 +179,46 @@ public class TradingProtectionService {
         List<TradingRestriction> rows = jdbc.query("""
                 SELECT p.* FROM stock_protection_state p JOIN stocks s ON s.id = p.stock_id
                 WHERE s.stock_code = ? AND p.vi_type IS NOT NULL
-                """, (rs, row) -> {
-            String kind = rs.getString("vi_type");
-            boolean dynamic = "DYNAMIC_VI".equals(kind);
-            return new TradingRestriction(kind, dynamic ? "동적 VI" : "정적 VI", "AUCTION", 0,
-                    dynamic ? "직전 체결가 또는 VI 재개 기준가 대비 예상 체결가가 ±" + Math.round(PriceLimitPolicy.dynamicViRate(code)*100) + "% 이상 변동했습니다."
-                            : "당일 시작가 또는 직전 단일가 대비 가격이 ±10% 이상 변동했습니다.",
-                    "2분간 즉시 체결을 멈추고 지정가 주문을 모아 하나의 가격으로 체결합니다. 지정가 접수·취소는 가능하며 시장가 주문은 제한됩니다.",
-                    instant(rs.getTimestamp("started_at")), instant(rs.getTimestamp("ends_at")), true, false);
-        }, code);
+                """, (rs, row) -> volatilityInterruption(code, rs.getString("vi_type"),
+                rs.getTimestamp("started_at"), rs.getTimestamp("ends_at")), code);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * restriction(code) for every listing with the same precedence (manual halt, market-wide
+     * breaker, then VI), from one read per table instead of four reads per code. The public
+     * quote cache refreshes every listing each second, so the per-code form multiplied its cost.
+     */
+    public java.util.Map<String, TradingRestriction> restrictions() {
+        java.util.Map<String, String> viTypes = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Timestamp[]> viTimes = new java.util.HashMap<>();
+        jdbc.query("""
+                SELECT s.stock_code, p.vi_type, p.started_at, p.ends_at
+                FROM stocks s LEFT JOIN stock_protection_state p ON p.stock_id = s.id
+                """, rs -> {
+            viTypes.put(rs.getString(1), rs.getString(2));
+            viTimes.put(rs.getString(1), new Timestamp[]{rs.getTimestamp(3), rs.getTimestamp(4)});
+        });
+        java.util.Map<String, TradingRestriction> manual = adminRuntime == null ? java.util.Map.of() : adminRuntime.restrictions(viTypes.keySet());
+        TradingRestriction market = marketRestriction(marketState());
+        java.util.Map<String, TradingRestriction> result = new java.util.HashMap<>();
+        viTypes.forEach((code, kind) -> {
+            TradingRestriction restriction = manual.get(code);
+            if (restriction == null) restriction = market;
+            if (restriction == null && kind != null)
+                restriction = volatilityInterruption(code, kind, viTimes.get(code)[0], viTimes.get(code)[1]);
+            if (restriction != null) result.put(code, restriction);
+        });
+        return result;
+    }
+
+    private TradingRestriction volatilityInterruption(String code, String kind, Timestamp startedAt, Timestamp endsAt) {
+        boolean dynamic = "DYNAMIC_VI".equals(kind);
+        return new TradingRestriction(kind, dynamic ? "동적 VI" : "정적 VI", "AUCTION", 0,
+                dynamic ? "직전 체결가 또는 VI 재개 기준가 대비 예상 체결가가 ±" + Math.round(PriceLimitPolicy.dynamicViRate(code)*100) + "% 이상 변동했습니다."
+                        : "당일 시작가 또는 직전 단일가 대비 가격이 ±10% 이상 변동했습니다.",
+                "2분간 즉시 체결을 멈추고 지정가 주문을 모아 하나의 가격으로 체결합니다. 지정가 접수·취소는 가능하며 시장가 주문은 제한됩니다.",
+                instant(startedAt), instant(endsAt), true, false);
     }
 
     public boolean continuous(String code) { return restriction(code) == null; }

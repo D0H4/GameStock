@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
 import { apiFetch } from "../lib/api";
+import { classifyNewsSource } from "./newsSource";
 import { openMarketStream } from "./stream";
 import { requireSignIn } from "../lib/auth";
 import { announceMissionReward } from "../components/MissionRewardToast";
@@ -64,7 +65,7 @@ type BackendEvent = {
   excerpt?: string[];
   articleUrl?: string | null;
 };
-type BackendPosition = { stockCode: string; quantity: number; averagePrice: number };
+type BackendPosition = { stockCode: string; quantity: number; averagePrice: number; availableQuantity?: number };
 type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number; loanBalance?: number };
 type BackendSettlement = { id: number; stockCode: string; side: string; quantity: number; grossAmount: number; createdAt: string };
 type BackendActiveOrder = { id: number; stockCode: string; status: string };
@@ -96,7 +97,7 @@ function toPortfolio(value?: BackendPortfolio): Portfolio {
   const positions: Record<string, Position> = {};
   for (const item of value.positions ?? []) {
     if (!LISTING_BY_CODE[item.stockCode] || item.quantity < 1) continue;
-    positions[item.stockCode] = { code: item.stockCode, qty: item.quantity, avgCost: item.averagePrice };
+    positions[item.stockCode] = { code: item.stockCode, qty: item.quantity, avgCost: item.averagePrice, availableQty: item.availableQuantity };
   }
   return {
     cash: value.cash,
@@ -175,7 +176,7 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
       id: newsIds.next(event),
       at: event.publishedAt ? serverTimestamp(event.publishedAt) || Date.now() : Date.now(),
       code: event.stockCode,
-      source: event.source === "업데이트 노트" ? "업데이트 노트" as const : "미디어 보도" as const,
+      source: classifyNewsSource(event),
       title: event.title,
       description: event.description,
       excerpt: event.excerpt?.length ? event.excerpt : undefined,
@@ -520,7 +521,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     orderable: (code, side) => {
       const quote = snapshot.quotes[code];
       if (!quote) return 0;
-      return side === "buy" ? Math.floor(snapshot.portfolio.cash / quote.price) : snapshot.portfolio.positions[code]?.qty ?? 0;
+      if (side === "buy") return Math.floor(snapshot.portfolio.cash / quote.price);
+      // 서버가 미정산분과 대기 중인 매도 주문을 뺀 수량을 준다. 예전 서버 응답이면 보유 수량을 쓴다.
+      const position = snapshot.portfolio.positions[code];
+      return position?.availableQty ?? position?.qty ?? 0;
     },
     placeOrder: async (request) => {
       if (!requireSignIn(`/market/${request.code}`)) return { ok: false, message: "로그인 후 주문할 수 있습니다." };

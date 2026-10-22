@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "씹덕주식",
+    "name": "슈엔증권",
     "slug": "gamestock-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#12101C",
     "scheme": "gamestock",
     "icon": "./assets/app-icon.png",
     "android": {
@@ -15,7 +16,9 @@
     },
     "plugins": [
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font",
+      "expo-status-bar"
     ]
   }
 }

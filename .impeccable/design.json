@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T16:00:00+09:00",
+  "title": "Design System: 슈엔증권",
+  "extensions": {
+    "colorMeta": {
+      "stage": { "role": "neutral", "displayName": "무대", "canonical": "#12101c", "tonalRamp": ["#12101c", "#1a1726", "#241f34", "#2e2942"] },
+      "brand": { "role": "primary", "displayName": "판정 핑크", "canonical": "#fd5886", "tonalRamp": ["#3a1d2c", "#c8285a", "#fd5886", "#ff7aa2", "#ffc6d6"] },
+      "up": { "role": "secondary", "displayName": "상승 적색", "canonical": "#ff4d5e", "tonalRamp": ["#3a1823", "#c01f34", "#ff4d5e", "#ff6b79"] },
+      "down": { "role": "secondary", "displayName": "하락 청색", "canonical": "#4f7cff", "tonalRamp": ["#1b2445", "#1f3f9e", "#4f7cff", "#8aa8ff"] },
+      "guard": { "role": "tertiary", "displayName": "보호 노랑", "canonical": "#ffc83d", "tonalRamp": ["#3a3014", "#8a6100", "#ffc83d", "#ffd66e"] },
+      "news-bg": { "role": "neutral", "displayName": "뉴스 면", "canonical": "#f1eef8" }
+    },
+    "typographyMeta": {
+      "price": { "displayName": "현재가", "purpose": "종목 머리의 큰 현재가. 고정폭 숫자." },
+      "display": { "displayName": "종목 이름", "purpose": "종목 이름과 화면 제목." },
+      "judge": { "displayName": "판정선 가격", "purpose": "호가 사다리 가운데 현재가." },
+      "body": { "displayName": "본문", "purpose": "뉴스 제목, 메뉴, 설명." },
+      "number": { "displayName": "숫자", "purpose": "호가, 잔량, 표의 모든 숫자." },
+      "label": { "displayName": "라벨", "purpose": "패널 제목, 통계 이름." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "note-drop", "value": "420ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "새 체결 노트가 판정선으로 떨어진다." },
+      { "name": "note-hit", "value": "520ms ease-out, 300ms delay", "purpose": "노트가 꽂힐 때 핑크 테두리가 한 번 퍼진다." },
+      { "name": "note-shift", "value": "260ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "앞선 노트가 위로 밀려 올라간다." },
+      { "name": "price-flash", "value": "460ms ease-out", "purpose": "가격이 바뀐 칸이 상승·하락색으로 한 번 번쩍인다." }
+    ],
+    "breakpoints": [
+      { "name": "compact-desktop", "value": "1360px" },
+      { "name": "stack", "value": "1080px" },
+      { "name": "phone", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "매수 버튼",
+      "kind": "button",
+      "refersTo": "button-buy",
+      "description": "주문서의 실행 버튼. 매도는 같은 모양에 하락 청색.",
+      "html": "<button class=\"ds-btn-buy\">40주 매수</button>",
+      "css": ".ds-btn-buy { background: #ff4d5e; color: #fff; border: 0; border-radius: 8px; padding: 12px 16px; font: 500 15px GyeonggiTitle, sans-serif; cursor: pointer; transition: filter .15s; } .ds-btn-buy:hover { filter: brightness(1.08); } .ds-btn-buy:focus-visible { outline: 2px solid #fd5886; outline-offset: 2px; }"
+    },
+    {
+      "name": "고스트 버튼",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "관심 등록, 테마 전환 같은 보조 동작.",
+      "html": "<button class=\"ds-btn-ghost\">관심 등록</button>",
+      "css": ".ds-btn-ghost { height: 40px; padding: 0 14px; background: transparent; color: #aaa4be; border: 1px solid #2e2942; border-radius: 8px; font: 500 13px GyeonggiTitle, sans-serif; cursor: pointer; } .ds-btn-ghost:hover { color: #f1eef8; background: #241f34; } .ds-btn-ghost:focus-visible { outline: 2px solid #fd5886; outline-offset: 2px; }"
+    },
+    {
+      "name": "상단 메뉴",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "현재 탭은 잉크색과 핑크 밑줄.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\">홈</a><a href=\"#\" class=\"is-active\">시장</a><a href=\"#\">속보</a><a href=\"#\">랭킹</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 4px; background: #12101c; padding: 0 12px; } .ds-nav a { display: inline-flex; align-items: center; height: 44px; padding: 0 12px; color: #aaa4be; text-decoration: none; font: 500 15px GyeonggiTitle, sans-serif; } .ds-nav a:hover { color: #f1eef8; } .ds-nav a.is-active { color: #f1eef8; box-shadow: inset 0 -2px #fd5886; }"
+    },
+    {
+      "name": "종목 목록 행",
+      "kind": "custom",
+      "refersTo": "watch-row-active",
+      "description": "현재 종목은 돋움 바탕에 핑크 1px 테두리.",
+      "html": "<a class=\"ds-watch is-active\" href=\"#\"><span class=\"n\">우마무스메 프리티더비</span><span class=\"p\">₩10,590</span><span class=\"r\">+0.09%</span></a>",
+      "css": ".ds-watch { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'n n' 'p r'; gap: 2px 10px; width: 220px; padding: 6px 8px; border-radius: 8px; background: #1a1726; color: #f1eef8; text-decoration: none; font: 500 13px GyeonggiTitle, sans-serif; } .ds-watch:hover { background: #241f34; } .ds-watch.is-active { background: #241f34; box-shadow: inset 0 0 0 1px #fd5886; } .ds-watch .n { grid-area: n; } .ds-watch .p { grid-area: p; color: #aaa4be; font: 500 12px 'Pretendard Variable', sans-serif; font-feature-settings: 'tnum' 1; } .ds-watch .r { grid-area: r; color: #ff6b79; font: 500 13px 'Pretendard Variable', sans-serif; font-feature-settings: 'tnum' 1; }"
+    },
+    {
+      "name": "뉴스 띠",
+      "kind": "card",
+      "refersTo": "news-strip",
+      "description": "차트 아래, 가격을 움직인 이유가 들어오는 가장 밝은 면.",
+      "html": "<a class=\"ds-news\" href=\"#\"><span class=\"t\">뉴스</span><span class=\"h\">'우마무스메' 신규 육성 시나리오 공개</span><span class=\"m\">미디어 보도 · 14:02</span><span class=\"e\">+0.31%</span></a>",
+      "css": ".ds-news { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: 't h e' 't m e'; align-items: center; column-gap: 14px; padding: 12px 16px; border-radius: 8px; background: #f1eef8; color: #12101c; text-decoration: none; font: 500 15px GyeonggiTitle, sans-serif; } .ds-news:hover .h { text-decoration: underline; text-underline-offset: 3px; } .ds-news .t { grid-area: t; background: #fd5886; color: #fff; border-radius: 4px; padding: 3px 8px; font-size: 12px; } .ds-news .h { grid-area: h; } .ds-news .m { grid-area: m; color: #4f4963; font-size: 12px; } .ds-news .e { grid-area: e; color: #e0263c; font: 600 18px 'Pretendard Variable', sans-serif; }"
+    },
+    {
+      "name": "보호 배지",
+      "kind": "chip",
+      "refersTo": "guard-badge",
+      "description": "VI·서킷브레이커 상태. 노랑은 이 뜻 하나만.",
+      "html": "<button class=\"ds-guard\">정적 VI</button>",
+      "css": ".ds-guard { padding: 3px 10px; border: 0; border-radius: 4px; background: #ffc83d; color: #241a00; font: 500 12px GyeonggiTitle, sans-serif; cursor: pointer; } .ds-guard:focus-visible { outline: 2px solid #fd5886; outline-offset: 2px; }"
+    },
+    {
+      "name": "판정선과 체결 노트",
+      "kind": "custom",
+      "refersTo": "judge-row",
+      "description": "체결 하이웨이의 노트가 꽂히는 현재가 줄.",
+      "html": "<div class=\"ds-hw\"><div class=\"lane\"><i class=\"b\" style=\"height:22px;bottom:0\"></i><i class=\"b\" style=\"height:10px;bottom:26px;opacity:.8\"></i><i class=\"s\" style=\"height:14px;bottom:40px;opacity:.6\"></i></div><div class=\"judge\">₩10,590</div></div>",
+      "css": ".ds-hw { width: 320px; background: #1a1726; } .ds-hw .lane { position: relative; width: 112px; height: 90px; background: #221d31; border-radius: 6px 6px 0 0; } .ds-hw i { position: absolute; width: 44px; border-radius: 3px; } .ds-hw i.b { left: 6px; background: #ff4d5e; } .ds-hw i.s { right: 6px; background: #4f7cff; } .ds-hw .judge { height: 52px; display: flex; align-items: center; padding-left: 122px; border-top: 2px solid #fd5886; background: #3a1d2c; color: #f1eef8; font: 700 22px 'Pretendard Variable', sans-serif; font-feature-settings: 'tnum' 1; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "판정선",
+    "overview": "리듬게임에서 노트가 판정선에 꽂히는 순간처럼, 체결이 현재가라는 줄에 꽂히는 거래소다. 배치는 해외 거래소 표준을 따르고, 세계관은 색과 숫자의 밀도, 판정선 하나로만 드러난다. 화려함은 장식이 아니라 데이터에서 나온다.",
+    "keyCharacteristics": ["다크 기본, 라이트 전환", "1px 간격의 패널 격자", "숫자는 tnum 고정폭, 글은 경기천년제목", "상승 적색·하락 청색", "판정선과 체결 노트가 서명"],
+    "rules": [
+      { "name": "판정색 규칙", "body": "핑크는 지금 여기(현재가, 현재 탭, 현재 종목, 포커스)에만 쓴다.", "section": "colors" },
+      { "name": "보호색 규칙", "body": "노랑은 거래 보호 상태 하나만 뜻한다.", "section": "colors" },
+      { "name": "무채 틀 규칙", "body": "데이터가 아닌 틀은 무채색이다.", "section": "colors" },
+      { "name": "고정폭 숫자 규칙", "body": "가격·수량·비율은 Pretendard tnum으로 쓴다.", "section": "typography" },
+      { "name": "평평한 무대 규칙", "body": "그림자·유리·그라데이션 장식 없이 명도 세 단계로만 깊이를 만든다.", "section": "elevation" }
+    ],
+    "dos": ["가격 옆에 이유(뉴스 점, 뉴스 띠)를 둔다.", "숫자는 tnum 고정폭으로 쓴다.", "움직임은 값이 바뀔 때만, 움직임 줄이기를 따른다.", "토큰은 html[data-nx] 범위 안에서만 바꾼다."],
+    "donts": ["서버에 없는 값을 지어서 보여 주지 않는다.", "핑크·노랑을 장식에 쓰지 않는다.", "그림자, 유리, 그라데이션 글자, 카드 속 카드를 쓰지 않는다.", "노트 같은 움직임을 하이웨이 밖으로 퍼뜨리지 않는다.", "모의 시세 안내를 없애지 않는다."]
+  }
+}

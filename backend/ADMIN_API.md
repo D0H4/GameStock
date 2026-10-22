@@ -115,6 +115,17 @@
 
 미션은 현재 클라이언트가 이해하는 기존 ID만 수정한다. 현재 날짜의 일일 추첨은 유지하며 중지된 미션은 목록·수령에서 제외한다. 임의의 신규 미션 ID나 새 행동 추적을 만들지는 않는다. 관심종목 조건은 서버에서 검증하며, 페이지 열람형 미션의 기존 검증 한계는 유지한다. 설정된 보상액은 실제 지급 경로에 적용되지만 기존 클라이언트의 고정 보상 표시는 후속 연결이 필요하다.
 
+## 프로모션 코드
+
+| 요청 | 권한 | 내용 |
+|---|---|---|
+| GET `/api/admin/promos` | READ | `{codes,titles}`. 코드마다 보상·제한·`used_count`·`last_used_at`, 그리고 보상으로 고를 수 있는 칭호(주간 칭호 제외) |
+| GET `/api/admin/promos/{code}/redemptions` | READ | 최근 사용 50건(회원·닉네임·받은 보상·시각) |
+| POST `/api/admin/promos` | REWARDS | `{code,rewardCash,titleIds,maxUses,startsAt,endsAt,active,memo,reason}` |
+| PUT `/api/admin/promos/{code}` | REWARDS | 같은 본문. 코드 문자열은 바꿀 수 없다 |
+
+코드는 소문자로 저장하고 영문·숫자·`_`·`-` 2~40자다. 현금 보상은 0~1억원, 칭호는 0개 이상이며 둘 중 하나는 있어야 한다. `maxUses`가 `null`이면 인원 제한이 없다. 한 계정은 코드 하나를 한 번만 쓴다. 사용자는 POST `/api/titles/promo` `{code}`로 쓰고, 응답은 칭호 목록에 `rewardCash`가 더해진다. 현금 보상은 `admin_cash_adjustments`에 `promo:<code>:<userId>`로 남아 랭킹 수익률에서 빠진다. 끄기는 `active:false`로 하고 삭제는 없다.
+
 ## 신고·커뮤니티
 
 | 메서드·경로 | 권한 | 입력·동작 |

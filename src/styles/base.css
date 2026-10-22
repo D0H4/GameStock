@@ -157,7 +157,9 @@
     text-underline-offset: 3px;
   }
 
+  /* 기준 위치를 잡아야 표 안의 숨김 글자(.vh)도 스크롤 상자 안에 갇힌다. 없으면 폰에서 페이지 폭이 늘어난다. */
   .table-scroll {
+    position: relative;
     overflow-x: auto;
   }
 

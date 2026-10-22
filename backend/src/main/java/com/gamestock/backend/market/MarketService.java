@@ -181,6 +181,14 @@ public class MarketService {
     Map<String,Long> bookCacheStats(){return Map.of("hits",botLanes.stream().mapToLong(l->l.cache.hits()).sum(),"misses",botLanes.stream().mapToLong(l->l.cache.misses()).sum());}
     private final List<BotLane> botLanes=new ArrayList<>();
     private long activityLpId;
+    private static final long TRADER_CAPITAL_INTERVAL_MS=30_000;
+    // Bot indicators look 5 s to 5 min back; refreshing them every 2 s keeps that resolution at a quarter of the queries.
+    private static final long OBSERVATION_INTERVAL_MS=2_000;
+    private static final long NEWS_BIAS_TTL_MS=30_000;
+    private final Map<String,double[]> observedNewsBias=new java.util.concurrent.ConcurrentHashMap<>();
+    /** Trader id to the one symbol it trades; the capital pool prices each trader's lots by it. */
+    private final Map<Long,Long> traderStocks=new HashMap<>();
+    private long nextTraderCapitalRebalance;
     private static final class BotLane {
         final Set<Long> stocks,users;
         final BotActivityEngine engine;
@@ -320,6 +328,7 @@ public class MarketService {
             BotProfile profile=traderProfiles.get(i);
             participants.add(new BotActivityEngine.Participant(ids.get(profile.username()),profile,stocks.get(i%stocks.size())));
         }
+        traderStocks.clear();participants.forEach(p->traderStocks.put(p.id(),p.stock()));
         activityLpId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,LP_USERNAME);
         botLanes.clear();
         int count=Math.min(4,stocks.size());
@@ -375,12 +384,17 @@ public class MarketService {
             if(moved>0)pipelineMetrics.add("bot.liquidity.cashRebalanced",moved);
         }
         long loaded=System.nanoTime();
-        if(lane.lastObservation==0 || now-lane.lastObservation>=500) {
+        if(lane.lastObservation==0 || now-lane.lastObservation>=OBSERVATION_INTERVAL_MS) {
+            Map<Long,Double> fundamentals=new HashMap<>();
+            jdbc.query("SELECT stock_id,hidden_fundamental FROM market_price_metrics WHERE stock_id IN ("
+                    +book.stocks.keySet().stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","))+")",
+                    rs->{fundamentals.put(rs.getLong(1),rs.getDouble(2));});
             for(var stock:book.stocks.values()) {
                 priceMetrics.project(stock.id,now);
-                double fundamental=jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,stock.id);
+                Double fundamental=fundamentals.get(stock.id);
+                if(fundamental==null)throw new org.springframework.dao.EmptyResultDataAccessException(1);
                 var observed=priceMetrics.read(stock.id,stock.last,now,0);
-                lane.observations.put(stock.id,new BotActivityEngine.Observation(observed,environment(stock.code),fundamental,recentNewsBias(stock.code).rate(),
+                lane.observations.put(stock.id,new BotActivityEngine.Observation(observed,environment(stock.code),fundamental,observedNewsRate(stock.code,now),
                         StockMarketProfile.liquidityScale(stock.code,.65)));
                 jdbc.update("UPDATE market_price_metrics SET mark_price=?,mark_updated_at=? WHERE stock_id=?",Math.round(observed.markPrice()),new Timestamp(now),stock.id);
             }
@@ -485,29 +499,34 @@ public class MarketService {
                 rs.getLong("current_price"),
                 changePercent(rs.getLong("current_price"), rs.getLong("day_reference")),
                 rs.getLong("total_volume"), null,rs.getLong("day_reference")));
-        return rows.stream().map(this::withRestriction).toList();
-    }
-
-    /**
-     * Restrictions are looked up after the stock query has released its connection.
-     * Querying inside a row mapper holds two pooled connections per caller, which
-     * exhausts the pool once several requests run in parallel.
-     */
-    private Stock withRestriction(Stock stock) {
-        return new Stock(stock.code(), stock.name(), stock.genre(), stock.price(), stock.changePercent(),
-                stock.volume(), protection.restriction(stock.code()),stock.referencePrice());
+        // Restrictions are looked up after the stock query has released its connection.
+        // Querying inside a row mapper holds two pooled connections per caller, which
+        // exhausts the pool once several requests run in parallel.
+        Map<String,TradingRestriction> restrictions=protection.restrictions();
+        return rows.stream().map(stock->new Stock(stock.code(), stock.name(), stock.genre(), stock.price(), stock.changePercent(),
+                stock.volume(), restrictions.get(stock.code()),stock.referencePrice())).toList();
     }
 
     public List<MarketEvent> marketEvents() {
+        Map<String, Long> prices = new HashMap<>();
+        jdbc.query("SELECT stock_code, current_price FROM stocks", rs -> { prices.put(rs.getString(1), rs.getLong(2)); });
+        return repriceNews(latestNews(), prices);
+    }
+
+    /**
+     * The expensive half of {@link #marketEvents()}. Its rows change only when news or excerpts
+     * are written, so the public cache keeps them and reprices with {@link #repriceNews}.
+     * priceAtPublish is 0 where no publish-time price is known.
+     */
+    public List<MarketEvent> latestNews() {
         List<MarketEvent> relevant = jdbc.query("""
                 SELECT s.stock_code, e.title, e.impact, e.source, e.description, e.published_at, e.excerpt,
-                       s.current_price, s.previous_price,
                        COALESCE(e.price_at_publish, (
                            SELECT h.price FROM stock_price_history h
                            WHERE h.stock_id = e.stock_id
                              AND h.recorded_at <= COALESCE(e.published_at, e.created_at)
                            ORDER BY h.recorded_at DESC, h.id DESC LIMIT 1
-                       ), s.current_price) AS price_at_publish
+                       )) AS price_at_publish
                 FROM (
                     SELECT ranked.* FROM (
                         SELECT events.*, ROW_NUMBER() OVER (
@@ -518,7 +537,7 @@ public class MarketService {
                     ) ranked WHERE ranked.news_rank <= 50
                 ) e LEFT JOIN stocks s ON s.id = e.stock_id
             ORDER BY COALESCE(e.published_at, e.created_at) DESC, e.id DESC
-                """, this::toMarketEvent).stream()
+                """, this::newsRow).stream()
                 .filter(this::isRelevantNews)
                 .toList();
         List<MarketEvent> updates = relevant.stream()
@@ -603,20 +622,34 @@ public class MarketService {
     }
 
     private MarketEvent toMarketEvent(ResultSet rs, int rowNumber) throws SQLException {
+        return pricedNews(newsRow(rs, rowNumber), rs.getLong("current_price"));
+    }
+
+    /** A stored news row before its price comparison is filled in. */
+    private MarketEvent newsRow(ResultSet rs, int rowNumber) throws SQLException {
         double rawImpact = rs.getDouble("impact");
         int impact = (int) Math.round(rawImpact);
         String sentiment = impact > 0 ? "positive" : impact < 0 ? "negative" : "neutral";
-        long currentPrice = rs.getLong("current_price");
-        long priceAtPublish = rs.getLong("price_at_publish");
-        double priceChangePercent = changePercent(currentPrice, priceAtPublish);
-        String priceDirection = priceChangePercent > 0 ? "up" : priceChangePercent < 0 ? "down" : "flat";
-        String reason = priceReason(priceChangePercent, impact);
         var publishedAt = rs.getTimestamp("published_at");
         String published = publishedAt == null ? null : databaseInstant(publishedAt).toString();
         NewsExcerptService.Excerpt excerpt = NewsExcerptService.readStored(rs.getString("excerpt"));
         return new MarketEvent(rs.getString("stock_code"), rs.getString("title"), impact,
-                sentiment, rs.getString("source"), rs.getString("description"), published, priceAtPublish, priceChangePercent,
-                priceDirection, reason, excerpt == null ? List.of() : excerpt.paragraphs(), excerpt == null ? null : excerpt.url());
+                sentiment, rs.getString("source"), rs.getString("description"), published, rs.getLong("price_at_publish"), 0,
+                "flat", null, excerpt == null ? List.of() : excerpt.paragraphs(), excerpt == null ? null : excerpt.url());
+    }
+
+    /** Compares each event with the current quote; one without a publish-time price compares with itself. */
+    public List<MarketEvent> repriceNews(List<MarketEvent> news, Map<String, Long> prices) {
+        return news.stream().map(event -> pricedNews(event, prices.getOrDefault(event.stockCode(), 0L))).toList();
+    }
+
+    private MarketEvent pricedNews(MarketEvent event, long currentPrice) {
+        long priceAtPublish = event.priceAtPublish() == 0 ? currentPrice : event.priceAtPublish();
+        double priceChangePercent = changePercent(currentPrice, priceAtPublish);
+        String priceDirection = priceChangePercent > 0 ? "up" : priceChangePercent < 0 ? "down" : "flat";
+        return new MarketEvent(event.stockCode(), event.title(), event.impact(), event.sentiment(), event.source(),
+                event.description(), event.publishedAt(), priceAtPublish, priceChangePercent, priceDirection,
+                priceReason(priceChangePercent, event.impact()), event.excerpt(), event.articleUrl());
     }
 
     private String priceReason(double priceChangePercent, int impact) {
@@ -1319,9 +1352,62 @@ public class MarketService {
         expireOrders();
         advanceTradingProtections();
         if (protection.marketStatus().open()) refreshEnvironments();
+        if (protection.marketStatus().open()) rebalanceTraderCapital();
         for (String code : botStockCodes()) refreshMarkPrice(code);
         if(botJournal!=null)botJournal.retain(clock.millis(),Math.max(15,detailRetentionMinutes));
         events.publishEvent(new MarketChangedEvent());
+    }
+
+    /**
+     * Runs under the exclusive market lock after expired orders are refunded. That lock also
+     * invalidates every lane's cached book, so the next batch plans against the moved cash.
+     */
+    private void rebalanceTraderCapital() {
+        long now=clock.millis();
+        if(traderStocks.isEmpty()||now<nextTraderCapitalRebalance)return;
+        nextTraderCapitalRebalance=now+TRADER_CAPITAL_INTERVAL_MS;
+        if(adminRuntime!=null&&adminRuntime.settings().tradersStopped())return;
+        Map<Long,Long> prices=new HashMap<>();
+        jdbc.query("SELECT id,current_price FROM stocks",rs->{prices.put(rs.getLong(1),rs.getLong(2));});
+        List<TraderCapitalPool.Trader> traders=new ArrayList<>();
+        long[] lpCash={0};
+        // One ordered lock pass over the LP and every trader, the same order batch persistence uses.
+        jdbc.query("SELECT id,cash FROM users WHERE password_hash='TRADER' OR id=? ORDER BY id FOR UPDATE",rs->{
+            if(rs.getLong(1)==activityLpId){lpCash[0]=rs.getLong(2);return;}
+            Long stock=traderStocks.get(rs.getLong(1));
+            if(stock!=null)traders.add(new TraderCapitalPool.Trader(rs.getLong(1),rs.getLong(2),prices.getOrDefault(stock,0L)));
+        },activityLpId);
+        // The LP sells newly issued refill shares for trader cash. Its net gain over the opening
+        // budgets goes back to the pool, taken from the symbols that earned it.
+        Map<Long,Long> surplus=new java.util.LinkedHashMap<>();long net=0;
+        if(activityLpId>0) {
+            for(long stock:prices.keySet())refreshLiquidityProjection(stock,activityLpId);
+            for(var row:jdbc.queryForList("""
+                    SELECT r.stock_id,c.cash+COALESCE(b.lp_cash_delta,0)-r.opening_cash AS gain FROM lp_risk_books r
+                    JOIN lp_cash_projection c ON c.stock_id=r.stock_id LEFT JOIN bot_ledger_totals b ON b.stock_id=r.stock_id
+                    """)) {
+                long gain=((Number)row.get("gain")).longValue();net+=gain;
+                if(gain>0)surplus.put(((Number)row.get("stock_id")).longValue(),gain);
+            }
+        }
+        long external=traders.isEmpty()?0:Math.max(0,Math.min(net,lpCash[0]/2));
+        var deltas=TraderCapitalPool.plan(traders,external);
+        if(deltas.isEmpty())return;
+        long returned=deltas.values().stream().mapToLong(Long::longValue).sum();
+        jdbc.batchUpdate("UPDATE users SET cash=cash+? WHERE id=?",
+                deltas.entrySet().stream().map(e->new Object[]{e.getValue(),e.getKey()}).toList());
+        if(returned>0) {
+            jdbc.update("UPDATE users SET cash=cash-? WHERE id=?",returned,activityLpId);
+            long gains=surplus.values().stream().mapToLong(Long::longValue).sum(),charged=0;
+            Long largest=surplus.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElseThrow();
+            for(var e:surplus.entrySet()) {
+                long share=(long)Math.floor(returned*(e.getValue()/(double)gains));
+                if(share>0)jdbc.update("UPDATE lp_cash_projection SET cash=cash-? WHERE stock_id=?",share,e.getKey());
+                charged+=share;
+            }
+            if(returned>charged)jdbc.update("UPDATE lp_cash_projection SET cash=cash-? WHERE stock_id=?",returned-charged,largest);
+        }
+        log.debug("Rebalanced trader capital across {} accounts, {} returned from the LP",deltas.size(),returned);
     }
 
     public synchronized List<String> botStockCodes() {
@@ -2386,7 +2472,11 @@ public class MarketService {
                 WHERE s.stock_code=?
                 """,(rs,n)->new Stock(rs.getString(1),rs.getString(2),rs.getString(3),rs.getLong(4),
                 changePercent(rs.getLong(4),rs.getLong(5)),rs.getLong(6),null,rs.getLong(5)),code);
-        return rows.isEmpty()?null:withRestriction(rows.get(0));
+        if(rows.isEmpty())return null;
+        // Looked up after the stock query has released its connection, as in stocks().
+        Stock stock=rows.get(0);
+        return new Stock(stock.code(),stock.name(),stock.genre(),stock.price(),stock.changePercent(),
+                stock.volume(),protection.restriction(stock.code()),stock.referencePrice());
     }
 
     /** The JDBC timestamp already carries the normalized instant from the UTC DB session. */
@@ -2459,6 +2549,22 @@ public class MarketService {
 
     private NewsBias recentNewsBias(String code) { return recentNewsBias(code, 0); }
 
+    /**
+     * Batch bots observe every listing each OBSERVATION_INTERVAL_MS, but headlines arrive every ten
+     * minutes and their weight decays over a day. A rate read within NEWS_BIAS_TTL_MS is reused until
+     * news is stored again.
+     */
+    private double observedNewsRate(String code, long now) {
+        double[] cached = observedNewsBias.get(code);
+        if (cached != null && now >= cached[1] && now - cached[1] < NEWS_BIAS_TTL_MS) return cached[0];
+        double rate = recentNewsBias(code).rate();
+        observedNewsBias.put(code, new double[]{rate, now});
+        return rate;
+    }
+
+    @org.springframework.context.event.EventListener
+    public void newsChanged(NewsChangedEvent event) { observedNewsBias.clear(); }
+
     private NewsBias recentNewsBias(String code, long latency) {
         List<RecentNews> recentNews = jdbc.query("""
                 SELECT e.title, e.description, e.impact,
@@ -2505,6 +2611,9 @@ public class MarketService {
         long cash = jdbc.queryForObject("SELECT cash FROM users WHERE id = ?", Long.class, userId);
         List<Position> positions = jdbc.query("""
                 SELECT s.stock_code, p.quantity, COALESCE(p.settled_quantity, p.quantity) AS settled_quantity,
+                       COALESCE((SELECT SUM(o.reserved_quantity) FROM orders o
+                                 WHERE o.user_id = p.user_id AND o.stock_id = p.stock_id
+                                   AND o.side = 'SELL' AND o.status = 'OPEN'), 0) AS reserved_quantity,
                        p.average_price, COALESCE(p.realized_profit_loss, 0) AS realized_profit_loss,
                        p.quantity * COALESCE(pm.mark_price,s.current_price) AS market_value,
                        GREATEST(0, COALESCE(p.settled_quantity,p.quantity) - COALESCE((
@@ -2519,11 +2628,12 @@ public class MarketService {
                 """, (rs, row) -> new Position(rs.getString("stock_code"),
                 rs.getInt("quantity"), rs.getInt("settled_quantity"),
                 Math.max(0, rs.getInt("quantity") - rs.getInt("settled_quantity")),
+                Math.max(0, rs.getInt("settled_quantity") - rs.getInt("reserved_quantity")),
                 rs.getLong("average_price"), rs.getLong("market_value"), rs.getLong("profit_loss"),
                 rs.getLong("average_price") == 0 ? 0 :
                         Math.round(rs.getLong("profit_loss") * 10000.0 /
                                 (rs.getInt("quantity") * rs.getLong("average_price"))) / 100.0,
-                rs.getLong("realized_profit_loss"), rs.getInt("available_quantity")), userId);
+                rs.getLong("realized_profit_loss")), userId);
         long reservedCash = jdbc.queryForObject("SELECT COALESCE(SUM(reserved_cash), 0) FROM orders WHERE user_id = ? AND status = 'OPEN'", Long.class, userId);
         long unsettledCash = jdbc.queryForObject("""
                 SELECT COALESCE(SUM(gross_amount - seller_fee), 0)

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { apiFetch } from "./api";
 
 export type UserTitle = {
@@ -93,6 +94,15 @@ export function titleColor(label: string): string | undefined {
   return TITLE_COLORS[label] ?? TITLE_COLORS[label.replace(/\s+\d+관왕$/, "")];
 }
 
+/**
+ * 새 화면용. 색표는 흰 바탕 기준이라 그대로 쓰면 다크 바탕에서 읽히지 않는다.
+ * 원래 색은 --title-ink로만 넘기고, 테마별로 밝히거나 어둡게 섞는 일은 CSS(.has-title-ink)가 한다.
+ */
+export function titleInkStyle(label: string | null | undefined): CSSProperties | undefined {
+  const color = label ? titleColor(label) : undefined;
+  return color ? ({ "--title-ink": color } as CSSProperties) : undefined;
+}
+
 /** 주간 칭호는 "주간 수익률 1위 2관왕"처럼 횟수를 붙여 보여 준다. */
 export function titleLabel(title: UserTitle): string {
   return title.weekly && title.owned ? `${title.name} ${title.count}관왕` : title.name;
@@ -111,12 +121,14 @@ export async function checkTitles(signal?: AbortSignal): Promise<TitleStatus> {
 }
 
 /** 프로모션 코드로 특별 칭호를 받는다. 새로 받은 칭호는 바로 알림 이벤트로 내보낸다. */
-export async function redeemPromoCode(code: string): Promise<TitleStatus> {
-  const status = withSpecialTitles(await apiFetch<TitleStatus>("/api/titles/promo", { method: "POST", body: JSON.stringify({ code }) }));
+/** 코드에 걸린 현금(rewardCash)과 칭호를 받는다. 현금이 없는 코드면 0이다. */
+export async function redeemPromoCode(code: string): Promise<TitleStatus & { rewardCash: number }> {
+  const result = await apiFetch<TitleStatus & { rewardCash?: number }>("/api/titles/promo", { method: "POST", body: JSON.stringify({ code }) });
+  const status = withSpecialTitles(result);
   if (status.newlyAwarded.length > 0) {
     window.dispatchEvent(new CustomEvent<UserTitle[]>(AWARD_EVENT, { detail: status.newlyAwarded }));
   }
-  return status;
+  return { ...status, rewardCash: result.rewardCash ?? 0 };
 }
 
 /** 보유한 칭호를 장착한다. 빈 값을 보내면 장착을 해제한다. */

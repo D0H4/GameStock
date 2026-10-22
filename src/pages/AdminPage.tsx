@@ -10,6 +10,7 @@ import { AdminNotices } from "./admin/AdminNotices";
 import { AdminMemberDetail, CashAdjustment, MissionRecovery } from "./admin/AdminMember";
 import { AdminRuntime } from "./admin/AdminRuntime";
 import { AdminOrders } from "./admin/AdminOrders";
+import { AdminPromos } from "./admin/AdminPromos";
 
 type AdminUser = {
   id: number;
@@ -24,10 +25,11 @@ type AdminUser = {
   tradeBanReason: string | null;
 };
 
-const SECTIONS: { section: AdminSection; label: string; to: string }[] = [
+export const ADMIN_SECTIONS: { section: AdminSection; label: string; to: string }[] = [
   { section: "users", label: "회원", to: "/admin" },
   { section: "orders", label: "주문", to: "/admin/orders" },
   { section: "notices", label: "공지", to: "/admin/notices" },
+  { section: "promos", label: "프로모션 코드", to: "/admin/promos" },
   { section: "audit", label: "감사 기록", to: "/admin/audit" },
 ];
 
@@ -50,7 +52,7 @@ export function AdminPage() {
       <h1 className="page-title">관리자</h1>
       <AdminRuntime />
       <nav className="admin-nav" aria-label="관리 메뉴">
-        {SECTIONS.map((item) => (
+        {ADMIN_SECTIONS.map((item) => (
           <Link key={item.section} to={item.to} className={`admin-nav-link${item.section === section ? " is-active" : ""}`}
             aria-current={item.section === section ? "page" : undefined}>
             {item.label}
@@ -60,12 +62,13 @@ export function AdminPage() {
       {section === "users" && <AdminUsers />}
       {section === "orders" && <AdminOrders />}
       {section === "notices" && <AdminNotices />}
+      {section === "promos" && <AdminPromos />}
       {section === "audit" && <AdminAudit />}
     </div>
   );
 }
 
-function AdminUsers() {
+export function AdminUsers() {
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -104,18 +107,25 @@ function AdminUsers() {
           <table className="table admin-table">
             <thead>
               <tr>
+                <th scope="col"><span className="vh">관리</span></th>
                 <th scope="col">번호</th>
                 <th scope="col">로그인 계정</th>
                 <th scope="col">닉네임</th>
                 <th scope="col">가입</th>
-                <th scope="col" className="num">현금</th>
+                <th scope="col" className="cell-num">현금</th>
                 <th scope="col">이용</th>
-                <th scope="col"><span className="vh">관리</span></th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
                 <tr key={user.id} className={user.id === selectedId ? "is-selected" : undefined}>
+                  {/* 이 표에서 하는 일은 회원을 골라 조치하는 것이므로, 폰에서 가로로 밀지 않아도 보이게 맨 앞에 둔다. */}
+                  <td>
+                    <button type="button" className="text-button" aria-expanded={user.id === selectedId}
+                      onClick={() => setSelectedId(user.id === selectedId ? null : user.id)}>
+                      {user.id === selectedId ? "닫기" : "관리"}
+                    </button>
+                  </td>
                   <td className="num">{user.id}</td>
                   <td>
                     <span className="admin-email">{user.email || "(이메일 없음)"}</span>
@@ -126,17 +136,11 @@ function AdminUsers() {
                     {user.role === "ADMIN" && <span className="admin-badge">관리자</span>}
                   </td>
                   <td className="num">{formatTime(user.createdAt)}</td>
-                  <td className="num admin-cash">{won(user.cash)}</td>
+                  <td className="cell-num num admin-cash">{won(user.cash)}</td>
                   <td>
                     {user.tradeBannedUntil
                       ? <span className="admin-banned" title={user.tradeBanReason ?? ""}>~{formatTime(user.tradeBannedUntil)}</span>
                       : <span className="admin-ok">정상</span>}
-                  </td>
-                  <td>
-                    <button type="button" className="text-button" aria-expanded={user.id === selectedId}
-                      onClick={() => setSelectedId(user.id === selectedId ? null : user.id)}>
-                      {user.id === selectedId ? "닫기" : "관리"}
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -154,7 +158,8 @@ function AdminUsers() {
 
 function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user: AdminUser) => void }) {
   const [days, setDays] = useState("7");
-  const [reason, setReason] = useState("부계정 의심");
+  // 사유는 정지당한 사용자에게 그대로 보이므로 미리 채우지 않는다. 관리자가 직접 적어야 정지할 수 있다.
+  const [reason, setReason] = useState("");
   const [nickname, setNickname] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -243,8 +248,9 @@ function AdminUserActions({ user, onChange }: { user: AdminUser; onChange: (user
           <input id="admin-ban-days" type="number" min={1} max={365} value={days} onChange={(event) => setDays(event.target.value)} />
           <label htmlFor="admin-ban-reason">사유 (사용자에게 표시됨)</label>
           <div className="account-input-row">
-            <input id="admin-ban-reason" value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} />
-            <button type="button" className="account-button is-danger" disabled={busy || user.role === "ADMIN"} onClick={ban}>
+            <input id="admin-ban-reason" value={reason} maxLength={200} required placeholder="사용자에게 보일 정지 사유"
+              onChange={(event) => setReason(event.target.value)} />
+            <button type="button" className="account-button is-danger" disabled={busy || user.role === "ADMIN" || !reason.trim()} onClick={ban}>
               {user.tradeBannedUntil ? "기간 다시 설정" : "이용 정지"}
             </button>
           </div>

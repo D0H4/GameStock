@@ -12,6 +12,13 @@ public class AuthController {
         return auth.login(authorization);
     }
 
+    /** 로그인 확인 과정에서 오늘 출석이 먼저 처리되므로 응답에는 오늘 기록이 들어 있다. */
+    @GetMapping("/attendance")
+    public AuthService.Attendance attendance(@RequestParam(value = "month", required = false) String month,
+                                             @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return auth.attendance(auth.requireUser(authorization).id(), month);
+    }
+
     @PostMapping("/mobile/issue")
     public AuthService.MobileCode issueMobileCode(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return auth.issueMobileCode(authorization);

@@ -91,6 +91,24 @@ final class AdminSchema {
               reward_cash BIGINT NOT NULL DEFAULT 0, PRIMARY KEY(season_id,user_id),
               FOREIGN KEY(season_id) REFERENCES admin_seasons(id), FOREIGN KEY(user_id) REFERENCES users(id))
             """);
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS promo_codes (
+              code VARCHAR(40) PRIMARY KEY, reward_cash BIGINT NOT NULL DEFAULT 0,
+              title_ids VARCHAR(500) NOT NULL DEFAULT '', max_uses INT NULL,
+              starts_at TIMESTAMP(3) NULL, ends_at TIMESTAMP(3) NULL,
+              active BOOLEAN NOT NULL DEFAULT TRUE, memo VARCHAR(200) NOT NULL DEFAULT '',
+              created_by BIGINT NULL, created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+              updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))
+            """);
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS promo_redemptions (
+              id BIGINT AUTO_INCREMENT PRIMARY KEY, code VARCHAR(40) NOT NULL, user_id BIGINT NOT NULL,
+              reward_cash BIGINT NOT NULL, title_ids VARCHAR(500) NOT NULL,
+              redeemed_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+              UNIQUE KEY uq_promo_user(code,user_id), FOREIGN KEY(user_id) REFERENCES users(id))
+            """);
+        // 코드에 고정돼 있던 첫 프로모션 코드. 관리자 화면에서 끄거나 고칠 수 있다.
+        db.update("INSERT IGNORE INTO promo_codes(code,title_ids,memo) VALUES('syuen','special_syuangel,special_misilis_holder,special_syuaga','처음부터 있던 특별 칭호 코드')");
     }
     private static void addRuntimeColumn(JdbcTemplate db,String column,String definition){
         Integer count=db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='admin_runtime' AND column_name=?",Integer.class,column);

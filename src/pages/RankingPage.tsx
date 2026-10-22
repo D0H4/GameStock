@@ -4,7 +4,7 @@ import { useAuthUser } from "../lib/auth";
 import { DEFAULT_PROFILE_AVATAR } from "../lib/profileAvatars";
 import { titleColor } from "../lib/titles";
 
-type RankingEntry = {
+export type RankingEntry = {
   rank: number;
   nickname: string;
   profileImageUrl?: string | null;
@@ -15,10 +15,10 @@ type RankingEntry = {
   equippedTitleWeekly?: boolean;
 };
 
-type WeeklyRankingEntry = Omit<RankingEntry, "changePercent"> & { weeklyReturnPercent: number };
+export type WeeklyRankingEntry = Omit<RankingEntry, "changePercent"> & { weeklyReturnPercent: number };
 
 /** 이번 주(월~일, 한국 시간) 수익률 순위. 월요일 0시 칭호 지급과 같은 기준으로 계산된다. */
-type WeeklyRanking = {
+export type WeeklyRanking = {
   weekStart: string;
   weekEnd: string;
   /** 다음 칭호 지급 시각(ISO). */
@@ -29,11 +29,11 @@ type WeeklyRanking = {
   me: WeeklyRankingEntry | null;
 };
 
-type RankingTab = "total" | "weekly";
+export type RankingTab = "total" | "weekly";
 
-const RANKING_CACHE_KEY = "gamestock-ranking-cache";
-const WEEKLY_RANKING_CACHE_KEY = "gamestock-weekly-ranking-cache";
-const RANKING_TAB_KEY = "gamestock-ranking-tab";
+export const RANKING_CACHE_KEY = "gamestock-ranking-cache";
+export const WEEKLY_RANKING_CACHE_KEY = "gamestock-weekly-ranking-cache";
+export const RANKING_TAB_KEY = "gamestock-ranking-tab";
 
 function readCache<T>(key: string, valid: (value: unknown) => boolean): T | null {
   try {
@@ -48,11 +48,11 @@ function writeCache(key: string, value: unknown) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage may be disabled */ }
 }
 
-const readRankingCache = () => readCache<RankingEntry[]>(RANKING_CACHE_KEY, Array.isArray) ?? [];
-const readWeeklyCache = () =>
+export const readRankingCache = () => readCache<RankingEntry[]>(RANKING_CACHE_KEY, Array.isArray) ?? [];
+export const readWeeklyCache = () =>
   readCache<WeeklyRanking>(WEEKLY_RANKING_CACHE_KEY, (value) => Array.isArray((value as WeeklyRanking | null)?.entries));
 
-function readTab(): RankingTab {
+export function readTab(): RankingTab {
   try { return window.localStorage.getItem(RANKING_TAB_KEY) === "weekly" ? "weekly" : "total"; } catch { return "total"; }
 }
 
@@ -67,12 +67,12 @@ const formatChange = (percent: number) => `${percent >= 0 ? "+" : ""}${percent.t
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 /** "2026-10-12" → "10.12(월)". 날짜만 다루므로 시간대 영향이 없게 UTC로 해석한다. */
-function formatWeekDay(isoDate: string) {
+export function formatWeekDay(isoDate: string) {
   const date = new Date(`${isoDate}T00:00:00Z`);
   return `${date.getUTCMonth() + 1}.${date.getUTCDate()}(${WEEKDAYS[date.getUTCDay()]})`;
 }
 
-function formatCountdown(targetIso: string, now: number) {
+export function formatCountdown(targetIso: string, now: number) {
   const remaining = Math.max(0, new Date(targetIso).getTime() - now);
   const minutes = Math.floor(remaining / 60_000);
   const days = Math.floor(minutes / 1440);
@@ -84,7 +84,7 @@ function formatCountdown(targetIso: string, now: number) {
  * 5초마다 다시 불러오는 랭킹 데이터. 지난번 값이 있으면 그것부터 보여 주고 뒤에서 갱신하므로
  * 로딩 문구는 처음 방문할 때만 보인다. 선택된 탭의 컴포넌트만 마운트되므로 숨은 탭은 요청하지 않는다.
  */
-function usePolledRanking<T>(path: string, cacheKey: string, initial: T | null) {
+export function usePolledRanking<T>(path: string, cacheKey: string, initial: T | null) {
   const [data, setData] = useState<T | null>(initial);
   const [loading, setLoading] = useState(initial === null);
   const [error, setError] = useState("");
@@ -291,7 +291,7 @@ export function RankingPage() {
   };
 
   return (
-    <div className="page-stack is-compact">
+    <div className="page-stack is-compact ranking-page">
       <h1 className="page-title">랭킹</h1>
 
       <div className="ranking-tabs" role="tablist" aria-label="랭킹 종류">

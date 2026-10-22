@@ -134,8 +134,15 @@ public class NewsFeedService {
 
     private List<String> feeds = List.of();
 
+    private org.springframework.context.ApplicationEventPublisher events;
+
     public NewsFeedService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void configureEvents(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
     }
 
     public void setEnabled(boolean enabled) {
@@ -170,6 +177,7 @@ public class NewsFeedService {
                 log.warn("뉴스 피드 수집 실패: {}", definition, error);
             }
         }
+        if (events != null) events.publishEvent(new NewsChangedEvent());
     }
 
     /** Use the live trading catalog; explicit feeds override the generated search. */

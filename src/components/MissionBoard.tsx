@@ -59,7 +59,8 @@ function normalizeMissionIds(ids: string[] | undefined): MissionId[] {
   return [...new Set(ids)].filter((id): id is MissionId => missionIdSet.has(id));
 }
 
-export function MissionBoard() {
+/** 오늘의 미션 상태와 보상 요청. 기존 화면과 새 화면이 같은 규칙을 쓰도록 화면과 분리했다. */
+export function useDailyMissions() {
   const api = useMarketApi();
   const [user, setUser] = useState<User | null>(firebaseAuth.currentUser);
   const [progress, setProgress] = useState<MissionProgress | null>(null);
@@ -194,6 +195,14 @@ export function MissionBoard() {
     }
   };
 
+  return { user, ready, error, pending, completed, count, visibleMissionIds, complete };
+}
+
+export const MISSION_REWARD = MISSION_REWARD_CASH;
+export const missionLabel = (id: string) => (labels as Record<string, { title: string; description: string; action: string; href: string }>)[id];
+
+export function MissionBoard() {
+  const { user, ready, error, pending, completed, count, visibleMissionIds, complete } = useDailyMissions();
   return (
     <Panel id="mission-board" title="오늘의 투자 미션" meta={user && !ready ? (error ? "확인 필요" : "확인 중") : `${count}/${visibleMissionIds.length} 완료`}>
       <p className="mission-reset-note">오늘 배정된 {visibleMissionIds.length}개 미션을 완료하면 하루 최대 {(visibleMissionIds.length * MISSION_REWARD_CASH).toLocaleString("ko-KR")}원 획득 가능</p>

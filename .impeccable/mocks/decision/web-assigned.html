@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>리듬게임 판정선</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#12101C;--p1:#1C1929;--p2:#25213A;--line:#2E2944;--ink:#F1EEF8;--mute:#A9A3BD;--pink:#FD5886;--up:#FF4D5E;--dn:#5B86FF;--warn:#FFC83D}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font:500 13px/1.4 "Noto Sans KR",sans-serif;font-variant-numeric:tabular-nums}
+.top{height:52px;display:flex;align-items:center;gap:28px;padding:0 20px;border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:900;font-size:17px}
+.logo i{width:22px;height:22px;border-radius:6px;background:var(--pink);display:block}
+.nav a{color:var(--mute);margin-right:20px;text-decoration:none}.nav a.on{color:var(--ink);box-shadow:inset 0 -2px var(--pink);padding-bottom:16px}
+.idx{margin-left:auto;display:flex;gap:18px;align-items:baseline}.idx b{font-size:15px}
+.btn{background:var(--pink);color:#1A0A10;border-radius:8px;padding:8px 14px;font-weight:700}
+.grid{display:grid;grid-template-columns:232px 1fr 430px;grid-template-rows:1fr 196px;gap:1px;background:var(--line);height:848px}
+.pane{background:var(--bg);padding:14px 16px;overflow:hidden}
+h3{font-size:12px;color:var(--mute);font-weight:500;margin-bottom:10px}
+.wl div{display:grid;grid-template-columns:1fr auto;padding:7px 0;border-bottom:1px solid #1E1B2C}
+.wl div.on{background:var(--p2);margin:0 -16px;padding:7px 16px;box-shadow:inset 2px 0 var(--pink)}
+.wl em{font-style:normal;text-align:right}.u{color:var(--up)}.d{color:var(--dn)}
+.wl small{grid-column:1/-1;color:var(--mute);font-size:11px}
+.hd{display:flex;align-items:flex-end;gap:22px;margin-bottom:12px}
+.hd .nm{font-size:20px;font-weight:700;white-space:nowrap}.hd .px{font-size:44px;font-weight:900;letter-spacing:-.02em;line-height:1}
+.hd .ch{font-size:22px;font-weight:700}
+.stat{display:flex;gap:26px;color:var(--mute);font-size:12px;margin-bottom:10px}.stat b{color:var(--ink);font-weight:500;margin-left:6px}
+.vi{background:var(--warn);color:#241A00;font-weight:700;border-radius:4px;padding:2px 8px;font-size:12px}
+.tabs{display:flex;gap:4px;margin-bottom:8px}.tabs span{padding:4px 10px;border-radius:6px;color:var(--mute)}.tabs span.on{background:var(--p2);color:var(--ink)}
+.fever{margin-top:10px;display:flex;align-items:center;gap:14px;background:var(--ink);color:#12101C;border-radius:8px;padding:10px 14px}
+.fever b{background:var(--pink);color:#fff;border-radius:4px;padding:2px 8px;font-size:12px}
+.fever strong{font-size:15px}.fever em{margin-left:auto;font-style:normal;font-weight:900;color:#C4232B;font-size:22px}
+.right{display:grid;grid-template-columns:118px 1fr;gap:0}
+.hw{position:relative;border-right:1px solid var(--line);background:linear-gradient(90deg,transparent 39px,#221E33 39px,#221E33 40px,transparent 40px,transparent 79px,#221E33 79px,#221E33 80px,transparent 80px)}
+.n{position:absolute;height:6px;border-radius:3px}.n.b{background:var(--up)}.n.s{background:var(--dn)}
+.judge{position:absolute;left:0;width:430px;top:241px;z-index:1;height:2px;background:var(--pink)}
+.ob div{display:grid;grid-template-columns:1fr 1fr;padding:3px 10px;position:relative;font-size:12px}
+.ob i{position:absolute;right:0;top:2px;bottom:2px;opacity:.22}
+.ob .a i{background:var(--dn)}.ob .bb i{background:var(--up)}
+.ob .cur{padding:8px 10px;font-size:20px;font-weight:900;color:var(--up)}
+.ob span:last-child{text-align:right;color:var(--mute)}
+.combo{position:absolute;left:8px;bottom:8px;font-weight:900;font-size:26px;color:var(--up);line-height:1}.combo small{display:block;font-size:10px;color:var(--mute);font-weight:500}
+.order{grid-column:3;grid-row:2}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--p1);border-radius:8px;padding:3px;margin-bottom:10px}
+.seg span{text-align:center;padding:7px;border-radius:6px}.seg .on{background:var(--up);color:#fff;font-weight:700}
+.fld{display:flex;justify-content:space-between;background:var(--p1);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:8px}
+.go{background:var(--up);color:#fff;text-align:center;border-radius:8px;padding:11px;font-weight:700;font-size:15px}
+.pos{grid-column:1/3;grid-row:2}
+table{width:100%;border-collapse:collapse}th{color:var(--mute);font-weight:500;text-align:right;padding:6px 8px;font-size:12px}th:first-child,td:first-child{text-align:left}
+td{padding:7px 8px;text-align:right;border-top:1px solid #1E1B2C}
+td s{color:var(--mute)}.stamp{border:1px solid var(--mute);color:var(--mute);border-radius:3px;padding:0 5px;font-size:11px;margin-left:6px}
+</style></head><body>
+<div class="top"><div class="logo"><i></i>슈엔증권</div>
+<nav class="nav"><a>홈</a><a class="on">거래</a><a>속보</a><a>랭킹</a><a>내 계좌</a></nav>
+<div class="idx"><span style="color:var(--mute)">게임주 지수</span><b>1,013.73</b><span class="u">▲ 1.37%</span></div><span class="btn">로그인</span></div>
+<div class="grid">
+<section class="pane wl" style="grid-column:1;grid-row:1"><h3>종목 15</h3>
+<div class="on"><span>우마무스메</span><em class="u">+0.09%</em><small>₩10,590</small></div>
+<div><span>발로란트</span><em class="u">+17.09%</em><small>₩7,330</small></div>
+<div><span>쿠키런: 킹덤</span><em class="u">+15.90%</em><small>₩5,830</small></div>
+<div><span>에픽세븐</span><em class="u">+17.85%</em><small>₩7,130</small></div>
+<div><span>트릭컬 리바이브</span><em class="u">+17.85%</em><small>₩5,480</small></div>
+<div><span>붕괴: 스타레일</span><em class="u">+1.20%</em><small>₩11,810</small></div>
+<div><span>블루 아카이브</span><em class="u">+0.09%</em><small>₩11,480</small></div>
+<div><span>명조</span><em class="u">+0.19%</em><small>₩10,700</small></div>
+<div><span>오버워치</span><em class="u">+1.64%</em><small>₩10,520</small></div>
+<div><span>승리의 여신: 니케</span><em class="d">-1.19%</em><small>₩10,220</small></div>
+<div><span>팰월드</span><em class="u">+17.40%</em><small>₩7,760</small></div>
+</section>
+<section class="pane" style="grid-column:2;grid-row:1">
+<div class="hd"><div><div style="color:var(--mute);font-size:12px">UMA · 사이게임즈</div><div class="nm">우마무스메 프리티더비</div></div><div class="px">₩10,590</div><div class="ch u">+0.09%</div><span class="vi">VI 해제 3분 전</span></div>
+<div class="stat"><span>전일<b>₩10,580</b></span><span>고가<b>₩10,840</b></span><span>저가<b>₩10,300</b></span><span>거래량<b>911.1만주</b></span><span>상한가<b>₩13,754</b></span></div>
+<div class="tabs"><span>1시간</span><span class="on">1일</span><span>1주</span><span>1개월</span></div>
+<svg width="100%" height="372" viewBox="0 0 740 372" preserveAspectRatio="none">
+<line x1="0" y1="190" x2="740" y2="190" stroke="#3A3456" stroke-dasharray="4 4"/>
+<polyline fill="none" stroke="#FF4D5E" stroke-width="2" points="0,70 30,60 60,150 90,175 120,168 150,182 180,176 210,300 240,290 270,284 300,296 330,270 360,262 390,250 420,238 450,226 480,214 510,196 540,182 570,170 600,152 630,140 660,128 690,118 740,108"/>
+<circle cx="210" cy="300" r="7" fill="#fff" stroke="#12101C" stroke-width="3"/><circle cx="510" cy="196" r="7" fill="#fff" stroke="#12101C" stroke-width="3"/>
+</svg>
+<div class="fever"><b>뉴스</b><strong>'우마무스메' 신규 육성 시나리오 공개, 사전 예약 개시</strong><span style="color:#5A5470">게임메카 · 14:02</span><em>영향 +0.8</em></div>
+</section>
+<section class="pane right" style="grid-column:3;grid-row:1;padding:0;position:relative">
+<div class="hw">
+<span class="n b" style="left:6px;width:28px;top:40px"></span><span class="n b" style="left:46px;width:28px;top:92px;height:34px"></span><span class="n s" style="left:86px;width:26px;top:130px"></span>
+<span class="n b" style="left:6px;width:28px;top:180px"></span><span class="n b" style="left:46px;width:28px;top:214px"></span><span class="n s" style="left:86px;width:26px;top:22px"></span>
+<span class="judge"></span><div class="combo">12<small>연속 매수</small></div></div>
+<div class="ob" style="padding:12px 0"><h3 style="padding:0 10px">호가</h3>
+<div class="a"><i style="width:30%"></i><span>10,640</span><span>1,204</span></div><div class="a"><i style="width:52%"></i><span>10,630</span><span>2,881</span></div>
+<div class="a"><i style="width:18%"></i><span>10,620</span><span>740</span></div><div class="a"><i style="width:64%"></i><span>10,610</span><span>3,412</span></div>
+<div class="a"><i style="width:41%"></i><span>10,600</span><span>2,105</span></div>
+<div class="cur">10,590 <small style="font-size:12px;color:var(--mute);font-weight:500">체결 강도 128%</small></div>
+<div class="bb"><i style="width:58%"></i><span>10,580</span><span>3,020</span></div><div class="bb"><i style="width:72%"></i><span>10,570</span><span>3,880</span></div>
+<div class="bb"><i style="width:35%"></i><span>10,560</span><span>1,760</span></div><div class="bb"><i style="width:22%"></i><span>10,550</span><span>990</span></div>
+<div class="bb"><i style="width:47%"></i><span>10,540</span><span>2,410</span></div></div>
+</section>
+<section class="pane pos"><div class="tabs"><span class="on">미체결 · 내역</span><span>보유 종목</span><span>체결</span></div>
+<table><tr><th>종목</th><th>구분</th><th>가격</th><th>수량</th><th>상태</th></tr>
+<tr><td>우마무스메</td><td class="u">매수</td><td>10,570</td><td>40</td><td>대기</td></tr>
+<tr><td>발로란트</td><td class="u">매수</td><td>7,300</td><td>15</td><td>체결</td></tr>
+<tr><td><s>블루 아카이브</s></td><td><s>매도</s></td><td><s>11,600</s></td><td><s>8</s></td><td>취소<span class="stamp">취소</span></td></tr></table></section>
+<section class="pane order"><div class="seg"><span class="on">매수</span><span>매도</span></div>
+<div class="fld"><span style="color:var(--mute)">가격</span><b>10,570 원</b></div><div class="fld"><span style="color:var(--mute)">수량</span><b>40 주</b></div>
+<div class="go">매수 · ₩422,800</div></section>
+</div></body></html>

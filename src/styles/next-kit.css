@@ -1,0 +1,242 @@
+/*
+ * 판정선 체계의 공통 부품. 새 화면(?ui=next)의 모든 화면이 이 부품만으로 짜인다.
+ * 규칙은 DESIGN.md: 색 면은 매수·매도만, 핑크는 현재 위치·포커스, 노랑은 거래 보호.
+ */
+
+/* ───────── 버튼 ───────── */
+
+.nx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease-out, border-color 120ms ease-out, opacity 120ms ease-out;
+}
+
+.nx-btn:hover:not(:disabled) { border-color: var(--ink-faint); background: var(--nx-tint); }
+.nx-btn:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.nx-btn.is-primary { border-color: var(--ink); background: var(--ink); color: var(--nx-stage); }
+.nx-btn.is-primary:hover:not(:disabled) { border-color: var(--ink); background: var(--ink); opacity: 0.88; }
+.nx-btn.is-primary:disabled { border-color: var(--nx-line); background: var(--nx-raised); color: var(--ink-faint); }
+.nx-btn.is-buy { border-color: var(--up-fill); background: var(--up-fill); color: #fff; }
+.nx-btn.is-sell { border-color: var(--down-fill); background: var(--down-fill); color: #fff; }
+.nx-btn.is-danger { border-color: color-mix(in oklab, var(--up) 45%, transparent); color: var(--up-deep); }
+.nx-btn.is-small { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.nx-btn.is-wide { width: 100%; }
+.nx-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.nx-link-button {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-color: var(--nx-line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.nx-link-button:hover:not(:disabled) { color: var(--ink); text-decoration-color: currentColor; }
+.nx-link-button:disabled { color: var(--ink-faint); cursor: not-allowed; }
+
+/* ───────── 세그먼트·탭 ───────── */
+
+.nx-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--nx-raised); }
+.nx-seg button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.nx-seg button:hover:not(:disabled) { color: var(--ink); }
+.nx-seg button.is-active { background: var(--nx-panel); color: var(--ink); }
+.nx-seg button:disabled { color: var(--ink-faint); cursor: not-allowed; }
+
+.nx-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.nx-tabs button,
+.nx-tabs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: inset 0 -2px transparent;
+  cursor: pointer;
+}
+.nx-tabs button:hover,
+.nx-tabs a:hover { color: var(--ink); }
+.nx-tabs .is-active { color: var(--ink); box-shadow: inset 0 -2px var(--brand); }
+.nx-tab-count { padding: 0 6px; border-radius: 4px; background: var(--nx-raised); color: var(--ink); font-size: 11px; line-height: 18px; }
+
+.nx-check { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--ink-muted); font-size: 13px; cursor: pointer; }
+.nx-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }
+
+/* ───────── 입력 ───────── */
+
+/* 열을 minmax(0, 1fr)로 두어 숫자 입력칸의 기본 폭이 패널 밖으로 밀어내지 않게 한다. */
+.nx-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
+.nx-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nx-field-head label,
+.nx-field > label { color: var(--ink-muted); font-size: 13px; }
+.nx-field-note { color: var(--ink-muted); font-size: 12px; }
+.nx-field-hint { min-height: 16px; margin: 0; color: var(--ink-muted); font-size: 12px; }
+.nx-field-hint.is-error { color: var(--up-deep); }
+
+.nx-input,
+.nx-select {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+.nx-input:focus,
+.nx-select:focus { border-color: var(--brand); outline: 0; }
+.nx-input::placeholder { color: var(--ink-faint); }
+
+/* 숫자 입력: [−] 값 단위 [+] 한 줄. */
+.nx-stepper {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 48px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-raised);
+}
+.nx-stepper:focus-within { border-color: var(--brand); }
+.nx-stepper.is-disabled { opacity: 0.6; }
+.nx-stepper input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 12px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.nx-stepper input::-webkit-outer-spin-button,
+.nx-stepper input::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
+.nx-stepper input::placeholder { color: var(--ink-faint); }
+.nx-stepper-unit { padding: 0 12px 0 4px; color: var(--ink-muted); font-size: 14px; }
+.nx-stepper button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.nx-stepper button:first-child { border-right: 1px solid var(--nx-line); border-radius: 8px 0 0 8px; }
+.nx-stepper button:last-child { border-left: 1px solid var(--nx-line); border-radius: 0 8px 8px 0; }
+.nx-stepper button:hover:not(:disabled) { background: var(--nx-line); color: var(--ink); }
+.nx-stepper button:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.nx-stepper svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+/* ───────── 표 ───────── */
+
+.nx-grid-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.nx-grid-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nx-line);
+  background: var(--nx-panel);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+.nx-grid-table thead th:first-child,
+.nx-grid-table tbody th { text-align: left; }
+.nx-grid-table tbody th,
+.nx-grid-table tbody td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: right; white-space: nowrap; }
+.nx-grid-table tbody tr:last-child > * { border-bottom: 0; }
+.nx-grid-table tbody tr:hover > * { background: var(--nx-tint); }
+.nx-grid-table a { color: var(--ink); text-decoration: none; }
+.nx-grid-table a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.nx-grid-table .is-up { color: var(--up-deep); }
+.nx-grid-table .is-down { color: var(--down-deep); }
+.nx-grid-table tr.is-mine > * { background: var(--brand-wash); }
+
+.nx-side { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; }
+.nx-side.is-buy { background: var(--up-wash); color: var(--up-deep); }
+.nx-side.is-sell { background: var(--down-wash); color: var(--down-deep); }
+
+/* ───────── 화면 머리·요약 숫자 ───────── */
+
+.nx-screen { display: flex; flex-direction: column; gap: 16px; }
+.nx-screen-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
+.nx-screen-sub { margin: 6px 0 0; max-width: 68ch; color: var(--ink-muted); font-size: 14px; line-height: 1.6; }
+
+.nx-figures { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0; }
+.nx-figures div { display: grid; gap: 4px; }
+.nx-figures dt { color: var(--ink-muted); font-size: 12px; }
+.nx-figures dd { margin: 0; font-size: 18px; font-weight: 600; }
+.nx-figures .is-up { color: var(--up-deep); }
+.nx-figures .is-down { color: var(--down-deep); }
+
+.nx-big { display: block; font-size: 48px; font-weight: 700; line-height: 1; letter-spacing: -0.035em; }
+
+.nx-board { display: grid; gap: 1px; overflow: hidden; border-radius: 8px; background: var(--nx-line); }
+.nx-board > .nx-panel { border-radius: 0; }
+
+.nx-note { margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--nx-raised); color: var(--ink-muted); font-size: 13px; line-height: 1.6; }
+.nx-note.is-guard { background: var(--amber-wash); color: var(--amber-deep); }
+.nx-note.is-error { background: var(--up-wash); color: var(--up-deep); }
+.nx-msg { min-height: 18px; margin: 0; color: var(--ink-muted); font-size: 13px; }
+.nx-msg.is-error { color: var(--up-deep); }
+.nx-msg.is-success { color: var(--ink); }
+
+.nx-meter { position: relative; height: 8px; overflow: hidden; border-radius: 4px; background: var(--nx-raised); }
+.nx-meter > span { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--brand); }
+
+.nx-skeleton { display: grid; gap: 10px; }
+.nx-skeleton span { height: 14px; border-radius: 4px; background: var(--nx-raised); }
+.nx-skeleton span:nth-child(2n) { width: 82%; }
+
+@media (max-width: 1080px) {
+  .nx-big { font-size: 36px; }
+}

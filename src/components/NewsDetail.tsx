@@ -14,10 +14,10 @@ interface Props {
   item: NewsItem;
 }
 
-const EXCERPT_PARAGRAPHS = 2;
+export const EXCERPT_PARAGRAPHS = 2;
 
 /** 저장된 설명에서 원문 링크와 글을 나눈다. 미디어 보도는 RSS의 HTML 조각에 "출처: 주소" 줄이 붙어 온다. */
-function readDescription(raw: string | undefined, title: string): { paragraphs: string[]; link: string | null } {
+export function readDescription(raw: string | undefined, title: string): { paragraphs: string[]; link: string | null } {
   if (!raw?.trim()) return { paragraphs: [], link: null };
   let link: string | null = null;
   let source = raw.replace(/출처:\s*(https?:\/\/\S+)/gi, (_, url: string) => {
@@ -43,11 +43,11 @@ function readDescription(raw: string | undefined, title: string): { paragraphs: 
   return { paragraphs, link };
 }
 
-type Excerpt = { paragraphs: string[]; url: string | null };
+export type Excerpt = { paragraphs: string[]; url: string | null };
 const excerptCache = new Map<string, Excerpt>();
 
 /** 서버가 원문 기사에서 뽑은 첫 두 문단. 목록에 미리 실려 왔으면 그대로 쓰고, 아니면 Google News 링크가 있는 소식만 묻는다. */
-function useExcerpt(link: string | null, preloaded: Excerpt | null): { excerpt: Excerpt | null; loading: boolean } {
+export function useExcerpt(link: string | null, preloaded: Excerpt | null): { excerpt: Excerpt | null; loading: boolean } {
   const [state, setState] = useState<{ link: string | null; excerpt: Excerpt | null }>(() => ({
     link,
     excerpt: link ? excerptCache.get(link) ?? null : null,
@@ -80,7 +80,7 @@ function useExcerpt(link: string | null, preloaded: Excerpt | null): { excerpt: 
   return { excerpt: current, loading: remote && current === null };
 }
 
-function hostOf(url: string): string {
+export function hostOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -88,7 +88,7 @@ function hostOf(url: string): string {
   }
 }
 
-/** 속보 오른쪽 단. 고른 소식의 원문과 발행 이후 시세 반영을 보여 준다. */
+/** 뉴스 오른쪽 단. 고른 소식의 원문과 발행 이후 시세 반영을 보여 준다. */
 export function NewsDetail({ item }: Props) {
   const snapshot = useMarket();
   const api = useMarketApi();

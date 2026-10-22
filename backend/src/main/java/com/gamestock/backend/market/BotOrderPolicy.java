@@ -2,6 +2,7 @@ package com.gamestock.backend.market;
 
 /** Keep price-time priority until the thesis changes, a meaningful repricing is needed, or TTL expires. */
 public final class BotOrderPolicy {
+    static final long SAME_PRICE_REPRICE_COOLDOWN_MS=6_000L;
     public record RestingOrder(long id, String side, long price, long cash, long createdAt) {}
 
     public boolean shouldReplace(BotProfile profile, RestingOrder order, BotStrategyEngine.Decision decision,
@@ -15,6 +16,11 @@ public final class BotOrderPolicy {
         double directedScore = "BUY".equals(order.side()) ? decision.score() : -decision.score();
         if (directedScore < -profile.confidenceThreshold() * 1.5) return true;
         if (!order.side().equals(decision.side()) || decision.quantity() == 0) return false;
+        // A scheduler wake-up must not cancel and reinsert an unchanged quote merely because
+        // the book was quiet. Keep queue priority for a short cooldown; a real thesis change
+        // above still takes precedence through the directed-score guard above.
+        if (!decision.market() && sameTick(order.price(),decision.limitPrice(),tick)
+                && now-order.createdAt()<SAME_PRICE_REPRICE_COOLDOWN_MS)return false;
         boolean patient = profile.strategy().family() == BotProfile.Family.VALUE
                 || profile.strategy().family() == BotProfile.Family.SWING;
         long minimumAge = patient ? 15_000 : 2_000;
@@ -29,5 +35,9 @@ public final class BotOrderPolicy {
         return now - order.createdAt() >= ageFloor
                 && lostPricePriority >= priceFloor
                 && Math.abs(order.price() - decision.limitPrice()) >= priceFloor;
+    }
+
+    static boolean sameTick(long price,double proposal,long tick) {
+        return Math.abs(price-proposal)<Math.max(1,tick);
     }
 }

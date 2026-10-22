@@ -41,7 +41,7 @@ class AdminAccessTest {
     @Test void realHttpMappingsDenyUnauthenticatedReadAndFinancialWrites() throws Exception {
         var access=mock(AdminSupport.class);var operations=mock(AdminOperationsService.class);
         when(access.require(isNull(),anyString())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED));when(access.root(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
-        MockMvc mvc=MockMvcBuilders.standaloneSetup(new AdminOperationsController(access,operations,mock(AdminContentService.class),mock(AdminSeasonService.class),new MarketMetrics())).build();
+        MockMvc mvc=MockMvcBuilders.standaloneSetup(new AdminOperationsController(access,operations,mock(AdminContentService.class),mock(AdminSeasonService.class),new MarketMetrics(),mock(AdminPromoService.class))).build();
         mvc.perform(get("/api/admin/dashboard")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/admin/users/1/cash-adjustments").contentType("application/json").content("{\"requestKey\":\"x\",\"amount\":100,\"reason\":\"test\"}")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/admin/seasons/1/reset").contentType("application/json").content("{\"reason\":\"test\"}")).andExpect(status().isUnauthorized());

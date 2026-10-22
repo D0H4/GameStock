@@ -32,7 +32,7 @@
     gap: var(--space-5);
   }
 
-  /* 목록 화면(속보·랭킹)은 상단 바와 같은 폭을 채운다. 좁은 단을 왼쪽에 두면 오른쪽이 비어 미완성처럼 보인다. */
+  /* 목록 화면(뉴스·랭킹)은 상단 바와 같은 폭을 채운다. 좁은 단을 왼쪽에 두면 오른쪽이 비어 미완성처럼 보인다. */
   .page-stack.is-compact {
     gap: var(--space-5);
   }
@@ -64,9 +64,8 @@
     align-items: center;
     gap: var(--space-5);
     width: 100%;
-    max-width: var(--page);
-    margin: 0 auto;
-    padding: 0 var(--space-5);
+    /* 상단 바만 창 양끝까지 편다. 본문은 --page 폭 그대로다. */
+    padding: 0 clamp(var(--space-5), 2.5vw, 48px);
     height: var(--bar);
   }
 
@@ -621,12 +620,15 @@
     justify-items: end;
     align-content: start;
     gap: var(--space-2);
-    max-width: 260px;
+    max-width: 340px;
   }
 
+  /* 두 줄로 넘어갈 때 마지막 줄에 한 단어만 남지 않게 줄 길이를 고른다. */
   .head-guest {
     font-size: var(--step-1);
     color: var(--ink-muted);
+    text-wrap: balance;
+    word-break: keep-all;
   }
 
   .head-me.is-guest .account-button {
@@ -731,9 +733,11 @@
     opacity: 0.88;
   }
 
+  /* 인기 종목·뉴스 목록의 이름(.name-text, .news-title)과 같은 크기·굵기로 맞춘다. */
   .spot-name {
-    font-size: var(--step-1);
-    font-weight: 600;
+    font-size: var(--step-2);
+    font-weight: 700;
+    letter-spacing: var(--tracking);
     line-height: 1.35;
   }
 
@@ -829,10 +833,11 @@
     text-underline-offset: 3px;
   }
 
+  /* 누를 수 있는 아이콘이므로 배경 대비 3:1 이상인 --ink-muted를 쓴다(--ink-faint는 2.9:1). */
   .watch-button {
     font-size: var(--step-2);
     line-height: 1;
-    color: var(--ink-faint);
+    color: var(--ink-muted);
   }
 
   .watch-button:hover {
@@ -928,7 +933,7 @@
     top: calc(var(--bar) + var(--space-4));
   }
 
-  /* ---------------------------------------------------------------- 속보 */
+  /* ---------------------------------------------------------------- 뉴스 */
 
   .news-list {
     display: flex;
@@ -1370,6 +1375,12 @@
       font-size: var(--step-1);
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    /* 폰에서는 표 종목명이 14px로 줄어드니 카드 이름·뉴스 제목도 함께 줄인다. */
+    .spot-name,
+    .news-title {
+      font-size: var(--step-1);
     }
 
     .watch-button {

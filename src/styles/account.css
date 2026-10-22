@@ -137,10 +137,9 @@
   .title-copy { display: grid; min-width: 0; }
   .title-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--step-2); font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
   .title-condition { display: block; margin-top: 2px; font-size: var(--step-0); color: var(--ink-muted); }
+  /* 미획득 칭호는 고유 색 없이 회색으로 둔다. 획득 조건은 읽어야 하는 정보라 흐리게 하지 않는다(4.5:1 이상). */
   .title-row.is-locked .title-name { color: var(--ink-muted); }
-  /* 미획득 칭호도 고유 색을 보여 주되 흐리게 둔다. */
-  .title-row.is-locked .title-name-text { opacity: 0.55; }
-  .title-row.is-locked .title-condition { color: var(--ink-faint); }
+  .title-row.is-locked .title-condition { color: var(--ink-muted); }
   .title-crown {
     padding: 1px 7px; border-radius: var(--radius-pill); font-size: var(--step--1); font-weight: 700;
     color: var(--amber-deep); background: var(--amber-wash); border: 1px solid color-mix(in oklab, var(--amber) 45%, transparent);
@@ -199,6 +198,7 @@
   .loan-gauge-scale { position: relative; height: 16px; font-size: var(--step--2); color: var(--ink-muted); }
   .loan-gauge-scale span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
   .loan-gauge-scale span:first-child { left: 0; transform: none; }
+  .loan-blocked { margin-top: var(--space-3); font-size: var(--step-0); color: var(--ink); }
   .loan-rules { display: grid; gap: 2px; padding-left: 1.1em; list-style: disc; font-size: var(--step-0); color: var(--ink-muted); }
   .loan-message.is-ok { color: var(--brand-deep); }
   .loan-message.is-error, .loan-form .is-error { color: var(--up-deep); }
@@ -206,6 +206,11 @@
   .loan-form { gap: var(--space-2); }
   .loan-form label small { margin-left: 4px; font-size: var(--step--1); }
   .loan-form > .account-button { margin-top: var(--space-2); }
+  /* 빌리기에만 비율 버튼 줄이 있어도 두 칸의 실행 버튼이 같은 높이에 오도록 버튼을 칸 바닥에 붙인다. */
+  .loan-forms > .panel { display: flex; flex-direction: column; }
+  .loan-forms .loan-form { display: flex; flex: 1; flex-direction: column; }
+  .loan-forms .loan-form > .account-price-input { flex: none; }
+  .loan-forms .loan-form > .account-button:last-child { margin-top: auto; }
   .loan-ratios { display: flex; gap: var(--space-1); }
   .loan-ratios .loan-chip { flex: 1; min-height: 32px; padding: 4px 8px; font-size: var(--step-0); font-weight: 600; }
   .head-me .loan-debt { color: var(--up-deep); }
@@ -217,5 +222,10 @@
     .loan-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .loan-figures dd { font-size: var(--step-3); }
     .loan-forms { grid-template-columns: minmax(0, 1fr); }
+    .loan-forms .loan-form > .account-button:last-child { margin-top: var(--space-2); }
+    /* 좁은 막대에서는 눈금 이름이 서로 겹치므로 반대매매 이름만 윗줄, 나머지는 아랫줄에 둔다. */
+    .loan-gauge-scale { height: 32px; }
+    .loan-gauge-scale span:first-child,
+    .loan-gauge-scale span:last-child { top: 16px; }
   }
 }

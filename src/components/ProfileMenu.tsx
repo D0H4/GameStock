@@ -24,6 +24,13 @@ const ITEMS = [
     icon: "M12 3.5l2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z",
   },
   {
+    label: "출석체크",
+    hint: "연속 출석 일수 · 날짜별 보상",
+    to: "/attendance",
+    match: "attendance",
+    icon: "M4.5 6.5h15v13h-15zM4.5 10.5h15M8.5 4v4M15.5 4v4M9 15l2 2 4-4",
+  },
+  {
     label: "충전하기",
     hint: "모의 자금 채우기",
     to: "/charge",
@@ -85,6 +92,7 @@ export function ProfileMenu({ route }: { route: Route }) {
   if (!auth.ready) return <span className="profile-menu" aria-hidden="true" />;
 
   if (!auth.user) {
+    /* 홈에도 같은 자리에 둔다. 화면마다 상단 바 오른쪽이 비었다 찼다 하면 메뉴 위치를 다시 찾게 된다. */
     return (
       <div className="profile-menu">
         <button type="button" className="nav-link profile-login" onClick={() => openLoginPrompt(window.location.pathname)}>
@@ -96,7 +104,7 @@ export function ProfileMenu({ route }: { route: Route }) {
 
   const nickname = profile?.nickname ?? auth.user.displayName ?? "내 계정";
   const avatar = profile?.profileImageUrl || DEFAULT_PROFILE_AVATAR;
-  const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "charge" || route.name === "admin";
+  const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "attendance" || route.name === "charge" || route.name === "loan" || route.name === "admin";
   const items = profile?.admin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
 
   const logout = async () => {

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>e스포츠 중계 화면</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0E1116;--p1:#161B22;--p2:#1F262F;--line:#2A323C;--ink:#F2F4F7;--mute:#9AA4B2;--pink:#FD5886;--up:#FF4D5E;--dn:#5B86FF;--warn:#FFC83D}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font:500 13px/1.4 "Noto Sans KR",sans-serif;font-variant-numeric:tabular-nums}
+.top{height:50px;display:flex;align-items:center;gap:28px;padding:0 24px;background:var(--p1)}
+.logo{font-weight:900;font-size:17px;display:flex;gap:8px;align-items:center}.logo i{width:22px;height:22px;background:var(--pink);border-radius:5px}
+.nav span{color:var(--mute);margin-right:22px}.nav .on{color:var(--ink)}
+.login{margin-left:auto;border:1px solid var(--line);border-radius:6px;padding:6px 12px}
+.strip{display:flex;gap:2px;padding:0 24px;background:var(--p1);border-top:1px solid var(--line);height:44px;align-items:stretch}
+.strip div{display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--p2);font-size:12px}
+.strip div.on{background:var(--pink);color:#fff}.strip b{font-weight:700}
+.u{color:var(--up)}.d{color:var(--dn)}.strip .on .u{color:#fff}
+.score{display:grid;grid-template-columns:auto auto 1fr auto;align-items:stretch;margin:16px 24px 0;height:96px}
+.team{background:var(--pink);color:#fff;padding:14px 22px;display:flex;flex-direction:column;justify-content:center;clip-path:polygon(0 0,100% 0,94% 100%,0 100%);padding-right:44px}
+.team small{opacity:.85}.team b{font-size:24px;font-weight:900}
+.pts{background:var(--p2);padding:0 30px;display:flex;align-items:center;gap:18px}
+.pts .px{font-size:56px;font-weight:900;letter-spacing:-.02em}.pts .ch{font-size:24px;font-weight:900}
+.meta{background:var(--p1);display:flex;gap:30px;align-items:center;padding:0 26px;color:var(--mute);font-size:12px}.meta b{display:block;color:var(--ink);font-size:16px}
+.vi{background:var(--warn);color:#211800;font-weight:900;display:flex;align-items:center;padding:0 18px}
+.main{display:grid;grid-template-columns:1fr 360px;gap:16px;margin:16px 24px 0;height:600px}
+.chart{background:var(--p1);border-radius:6px;position:relative;padding:14px 18px;overflow:hidden}
+.tabs span{padding:4px 10px;color:var(--mute);margin-right:4px}.tabs .on{color:var(--ink);box-shadow:inset 0 -2px var(--pink)}
+.l3{position:absolute;left:18px;right:18px;bottom:150px;display:grid;grid-template-columns:auto 1fr auto}
+.l3 .tag{background:var(--pink);color:#fff;font-weight:900;padding:12px 16px;font-size:16px}
+.l3 .hl{background:#fff;color:#0E1116;padding:10px 18px}.l3 .hl b{font-size:18px;display:block}
+.l3 .imp{background:#0E1116;border:2px solid #fff;padding:8px 16px;text-align:center}.l3 .imp b{font-size:24px;font-weight:900;color:var(--up);display:block;line-height:1.1}
+.tape{position:absolute;left:0;right:0;bottom:0;height:128px;border-top:1px solid var(--line);padding:10px 18px}
+.tape h4{font-size:12px;color:var(--mute);font-weight:500;margin-bottom:6px}
+.row{display:grid;grid-template-columns:60px 64px 1fr 90px 70px;padding:4px 0;font-size:12px;border-bottom:1px solid #1C222A}
+.row.nw{color:var(--ink);background:#20161C;margin:0 -18px;padding:4px 18px}
+.side{display:flex;flex-direction:column;gap:16px}
+.box{background:var(--p1);border-radius:6px;padding:14px 16px}
+.box h4{font-size:12px;color:var(--mute);font-weight:500;margin-bottom:8px}
+.ob div{display:grid;grid-template-columns:1fr 1fr;padding:3px 0;position:relative;font-size:12px}.ob i{position:absolute;right:0;top:2px;bottom:2px;opacity:.25}
+.ob span:last-child{text-align:right}
+.seg{display:grid;grid-template-columns:1fr 1fr;margin-bottom:10px}.seg span{text-align:center;padding:8px;background:var(--p2)}.seg .on{background:var(--up);font-weight:700}
+.fld{display:flex;justify-content:space-between;border:1px solid var(--line);border-radius:6px;padding:9px 12px;margin-bottom:8px}
+.go{background:var(--up);text-align:center;padding:12px;border-radius:6px;font-weight:900;font-size:15px}
+</style></head><body>
+<div class="top"><div class="logo"><i></i>슈엔증권</div><div class="nav"><span>홈</span><span class="on">거래</span><span>속보</span><span>랭킹</span><span>내 계좌</span></div><span class="login">로그인</span></div>
+<div class="strip"><div class="on"><b>UMA</b><span class="u">+0.09%</span></div><div><b>VR</b><span class="u">+17.09%</span></div><div><b>CRK</b><span class="u">+15.90%</span></div><div><b>ES</b><span class="u">+17.85%</span></div><div><b>TR</b><span class="u">+17.85%</span></div><div><b>PW</b><span class="u">+17.40%</span></div><div><b>SR</b><span class="u">+1.20%</span></div><div><b>BA</b><span class="u">+0.09%</span></div><div><b>WH</b><span class="u">+0.19%</span></div><div><b>OW</b><span class="u">+1.64%</span></div><div><b>GOV</b><span class="d">-1.19%</span></div><div><b>AK</b><span class="u">+16.96%</span></div><div><b>KRP</b><span class="u">+16.94%</span></div></div>
+<div class="score"><div class="team"><small>UMA · 사이게임즈</small><b>우마무스메 프리티더비</b></div>
+<div class="pts"><span class="px">₩10,590</span><span class="ch u">▲ 0.09%</span></div>
+<div class="meta"><span>고가<b>10,840</b></span><span>저가<b>10,300</b></span><span>거래량<b>911.1만</b></span><span>시가총액<b>₩3,000억</b></span></div><div class="vi">VI 발동</div></div>
+<div class="main"><div class="chart"><div class="tabs"><span>1시간</span><span class="on">1일</span><span>1주</span></div>
+<svg width="100%" height="300" viewBox="0 0 860 300" preserveAspectRatio="none"><polyline fill="none" stroke="#FF4D5E" stroke-width="2.5" points="0,60 50,50 90,130 140,150 190,140 240,260 290,250 340,236 390,220 440,206 490,190 540,170 590,150 640,132 690,116 740,100 860,84"/><circle cx="240" cy="260" r="7" fill="#fff" stroke="#0E1116" stroke-width="3"/><circle cx="540" cy="170" r="7" fill="#fff" stroke="#0E1116" stroke-width="3"/></svg>
+<div class="l3"><span class="tag">속보</span><div class="hl"><b>'우마무스메' 신규 육성 시나리오 공개</b>게임메카 · 14:02 · 영향 종목 UMA</div><div class="imp"><b>+0.8</b>영향 점수</div></div>
+<div class="tape"><h4>이유 테이프</h4>
+<div class="row nw"><span>14:02</span><span style="color:var(--pink)">뉴스</span><span>신규 육성 시나리오 공개</span><span>UMA</span><span class="u">+0.8</span></div>
+<div class="row"><span>14:02</span><span class="u">매수</span><span>봇 · 추세 추종</span><span>10,590</span><span>1,204주</span></div>
+<div class="row"><span>14:01</span><span class="u">매수</span><span>사용자</span><span>10,580</span><span>40주</span></div>
+<div class="row"><span>14:01</span><span class="d">매도</span><span>봇 · 차익 실현</span><span>10,570</span><span>620주</span></div></div></div>
+<div class="side"><div class="box ob"><h4>호가</h4>
+<div><i style="width:40%;background:var(--dn)"></i><span>10,620</span><span>740</span></div><div><i style="width:64%;background:var(--dn)"></i><span>10,610</span><span>3,412</span></div><div><i style="width:41%;background:var(--dn)"></i><span>10,600</span><span>2,105</span></div>
+<div style="font-size:20px;font-weight:900;color:var(--up);padding:6px 0">10,590</div>
+<div><i style="width:58%;background:var(--up)"></i><span>10,580</span><span>3,020</span></div><div><i style="width:72%;background:var(--up)"></i><span>10,570</span><span>3,880</span></div><div><i style="width:35%;background:var(--up)"></i><span>10,560</span><span>1,760</span></div></div>
+<div class="box"><div class="seg"><span class="on">매수</span><span>매도</span></div><div class="fld"><span style="color:var(--mute)">가격</span><b>10,570 원</b></div><div class="fld"><span style="color:var(--mute)">수량</span><b>40 주</b></div><div class="go">매수 · ₩422,800</div></div></div></div>
+</body></html>

@@ -1,6 +1,6 @@
 import { INITIAL_CASH } from "./engine";
 import { LISTING_BY_CODE } from "./universe";
-import type { Listing, MarketSnapshot, Position, Quote } from "./types";
+import type { Listing, MarketSnapshot, NewsItem, Position, Quote } from "./types";
 
 export interface Totals {
   cash: number;
@@ -77,15 +77,30 @@ export function turnover(snapshot: MarketSnapshot): number {
   return total;
 }
 
-/** 체결강도: 매수 체결량 ÷ 매도 체결량 × 100. 100이 균형이다. */
-export function strengthRatio(quote: Quote): number {
-  return quote.sellVolume > 0 ? quote.buyVolume / quote.sellVolume : 1;
+/**
+ * 최근 체결 내역의 매수·매도 수량. 서버 시세의 누적 buyVolume·sellVolume은 거래량을 반씩 나눈 값이라
+ * 쏠림이 보이지 않아서, 매수·매도가 표시된 체결 내역으로 센다.
+ */
+function printVolumes(quote: Quote): { bought: number; sold: number } {
+  let bought = 0;
+  let sold = 0;
+  for (const print of quote.prints) {
+    if (print.side === "buy") bought += print.qty;
+    else sold += print.qty;
+  }
+  return { bought, sold };
 }
 
-/** 매수 체결 비중(0~1). 체결 흐름 막대에 쓴다. */
+/** 체결강도: 최근 매수 체결량 ÷ 매도 체결량 × 100. 100이 균형이다. 매도 체결이 없으면 셀 수 없어 null. */
+export function strengthRatio(quote: Quote): number | null {
+  const { bought, sold } = printVolumes(quote);
+  return sold > 0 ? bought / sold : null;
+}
+
+/** 최근 체결에서 매수가 차지하는 수량 비중(0~1). 체결이 없으면 0.5. */
 export function buyShare(quote: Quote): number {
-  const total = quote.buyVolume + quote.sellVolume;
-  return total > 0 ? quote.buyVolume / total : 0.5;
+  const { bought, sold } = printVolumes(quote);
+  return bought + sold > 0 ? bought / (bought + sold) : 0.5;
 }
 
 /** 등락 상위·하위 종목. */
@@ -112,12 +127,61 @@ export function busiest(snapshot: MarketSnapshot): string | null {
 }
 
 /** 소식 발행 시점 대비 현재까지의 시세 반영률. */
+export type OpinionTone = "buy" | "sell" | "neutral" | "caution";
+
+export interface MarketOpinion {
+  tone: OpinionTone;
+  /** 최근 체결 내역에서 매수 체결이 차지하는 수량 비율. 체결이 없으면 0.5. */
+  buyShare: number;
+  printCount: number;
+  /** 시가 대비 현재가 변화율. */
+  fromOpen: number;
+  /** 최근 24시간 뉴스의 호재 수 - 악재 수. */
+  newsBalance: number;
+  newsCount: number;
+  /** 각 신호를 -1·0·+1로 매긴 값과 그 합. */
+  strengthScore: number;
+  openScore: number;
+  newsScore: number;
+  score: number;
+  /** 변동성 주의를 띄운 까닭. 있으면 점수보다 먼저 보여 준다. */
+  caution: string | null;
+}
+
+// 매수 55%는 체결강도 약 122, 45%는 약 82에 해당한다.
+const OPINION_BUY_SHARE_HIGH = 0.55;
+const OPINION_BUY_SHARE_LOW = 0.45;
+const OPINION_OPEN_MOVE = 0.01;
+const OPINION_NEWS_WINDOW_MS = 24 * 60 * 60 * 1000;
+const OPINION_LIMIT_GAP = 0.03;
+
+/**
+ * 지금 어느 쪽 힘이 센지 보여 주는 화면용 지표. 앞으로의 가격을 예측하지 않고, 봇 주문에도 쓰지 않는다.
+ * 최근 체결의 매수 비율·시가 대비·최근 뉴스 방향을 각각 -1·0·+1로 매겨 더하고, +2 이상이면 매수 우위, -2 이하면 매도 우위다.
+ */
+export function marketOpinion(quote: Quote, news: NewsItem[], now: number): MarketOpinion {
+  const share = buyShare(quote);
+  const fromOpen = quote.open > 0 ? (quote.price - quote.open) / quote.open : 0;
+  const recent = news.filter((item) => item.code === quote.code && now - item.at <= OPINION_NEWS_WINDOW_MS);
+  const newsBalance = recent.reduce((sum, item) => sum + item.direction, 0);
+  const strengthScore = share >= OPINION_BUY_SHARE_HIGH ? 1 : share <= OPINION_BUY_SHARE_LOW ? -1 : 0;
+  const openScore = fromOpen >= OPINION_OPEN_MOVE ? 1 : fromOpen <= -OPINION_OPEN_MOVE ? -1 : 0;
+  const newsScore = Math.sign(newsBalance);
+  const score = strengthScore + openScore + newsScore;
+  const caution = quote.restriction ? `${quote.restriction.kind === "CIRCUIT_BREAKER" ? "CB" : "VI"} 발동 중`
+    : quote.limitUp - quote.price <= quote.price * OPINION_LIMIT_GAP ? "상한가까지 3% 이내"
+    : quote.price - quote.limitDown <= quote.price * OPINION_LIMIT_GAP ? "하한가까지 3% 이내"
+    : null;
+  const tone: OpinionTone = caution ? "caution" : score >= 2 ? "buy" : score <= -2 ? "sell" : "neutral";
+  return { tone, buyShare: share, printCount: quote.prints.length, fromOpen, newsBalance, newsCount: recent.length, strengthScore, openScore, newsScore, score, caution };
+}
+
 export function newsEffect(priceAtPublish: number, quote: Quote | undefined): number {
   if (!quote || priceAtPublish <= 0) return 0;
   return (quote.price - priceAtPublish) / priceAtPublish;
 }
 
-export type SortKey = "name" | "price" | "rate" | "volume";
+export type SortKey = "name" | "price" | "rate" | "volume" | "open";
 export type SortDirection = "asc" | "desc";
 
 export function sortCodes(
@@ -136,6 +200,8 @@ export function sortCodes(
         return sessionRate(quote);
       case "volume":
         return quote.volume;
+      case "open":
+        return quote.open;
       case "name":
         return LISTING_BY_CODE[code]?.name ?? code;
     }

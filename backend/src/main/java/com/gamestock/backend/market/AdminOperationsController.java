@@ -13,7 +13,8 @@ public class AdminOperationsController {
     private final AdminContentService content;
     private final AdminSeasonService seasons;
     private final MarketMetrics metrics;
-    public AdminOperationsController(AdminSupport access,AdminOperationsService operations,AdminContentService content,AdminSeasonService seasons,MarketMetrics metrics){this.access=access;this.operations=operations;this.content=content;this.seasons=seasons;this.metrics=metrics;}
+    private final AdminPromoService promos;
+    public AdminOperationsController(AdminSupport access,AdminOperationsService operations,AdminContentService content,AdminSeasonService seasons,MarketMetrics metrics,AdminPromoService promos){this.access=access;this.operations=operations;this.content=content;this.seasons=seasons;this.metrics=metrics;this.promos=promos;}
 
     @GetMapping("/dashboard") public Map<String,Object> dashboard(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");var result=operations.dashboard();result.put("metrics",metrics.snapshot());return result;}
     @GetMapping("/users/{id}") public Map<String,Object> user(@PathVariable long id,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return operations.user(id);}
@@ -46,6 +47,10 @@ public class AdminOperationsController {
     @GetMapping("/reports") public List<Map<String,Object>> reports(@RequestParam(required=false) String status,@RequestParam(defaultValue="0") long before,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return content.reports(status,before,limit);}
     @PutMapping("/reports/{id}") public void report(@PathVariable long id,@RequestBody AdminContentService.Resolution request,@RequestHeader(value="Authorization",required=false) String auth){content.resolve(access.require(auth,"USERS"),id,request);}
     @DeleteMapping("/comments/{id}") public void comment(@PathVariable long id,@RequestBody Reason request,@RequestHeader(value="Authorization",required=false) String auth){content.deleteComment(access.require(auth,"USERS"),id,request.reason());}
+    @GetMapping("/promos") public Map<String,Object> promos(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return promos.promos();}
+    @GetMapping("/promos/{code}/redemptions") public List<Map<String,Object>> promoRedemptions(@PathVariable String code,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return promos.redemptions(code);}
+    @PostMapping("/promos") public Map<String,Object> createPromo(@RequestBody AdminPromoService.Promo request,@RequestHeader(value="Authorization",required=false) String auth){return promos.create(access.require(auth,"REWARDS"),request);}
+    @PutMapping("/promos/{code}") public Map<String,Object> updatePromo(@PathVariable String code,@RequestBody AdminPromoService.Promo request,@RequestHeader(value="Authorization",required=false) String auth){return promos.update(access.require(auth,"REWARDS"),code,request);}
     @GetMapping("/seasons") public List<Map<String,Object>> seasons(@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return seasons.seasons();}
     @GetMapping("/seasons/{id}/ranking") public List<Map<String,Object>> ranking(@PathVariable long id,@RequestParam(defaultValue="50") int limit,@RequestHeader(value="Authorization",required=false) String auth){access.require(auth,"READ");return seasons.ranking(id,limit);}
     @PostMapping("/seasons") public Map<String,Object> createSeason(@RequestBody AdminSeasonService.Create request,@RequestHeader(value="Authorization",required=false) String auth){return seasons.create(access.require(auth,"SEASONS"),request);}

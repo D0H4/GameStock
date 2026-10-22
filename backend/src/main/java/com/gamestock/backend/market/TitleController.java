@@ -52,9 +52,9 @@ public class TitleController {
         return titles.equip(auth.requireUser(authorization).id(), request == null ? null : request.titleId());
     }
 
-    /** Redeems a promotion code for its special titles. */
+    /** Redeems a promotion code for the cash and titles an admin attached to it. */
     @PostMapping("/promo")
-    public TitleService.TitleStatus redeem(@RequestBody PromoRequest request,
+    public TitleService.PromoResult redeem(@RequestBody PromoRequest request,
                                            @RequestHeader(value = "Authorization", required = false) String authorization) {
         return titles.redeem(auth.requireUser(authorization).id(), request == null ? null : request.code());
     }

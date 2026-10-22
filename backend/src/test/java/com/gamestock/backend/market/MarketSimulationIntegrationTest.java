@@ -240,6 +240,9 @@ class MarketSimulationIntegrationTest {
         assertEquals(List.of(10000L,10010L,10020L),jdbc.queryForList("SELECT price FROM trades WHERE stock_id=? ORDER BY id",Long.class,stock));
         assertEquals(15,jdbc.queryForObject("SELECT remaining_quantity FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,seller));
         assertEquals(30,market.portfolio(buyer).positions().get(0).quantity());
+        var sellerPosition=market.portfolio(seller).positions().get(0);
+        assertEquals(970,sellerPosition.quantity());
+        assertEquals(955,sellerPosition.availableQuantity(),"Shares held by the open 15-share sell are not sellable again");
         assertEquals(10020,market.stocks().stream().filter(s->s.code().equals("UMA")).findFirst().orElseThrow().price());
     }
     @Test @Order(1) void equalPricesRespectTimeAndSelfTradesArePrevented() {
