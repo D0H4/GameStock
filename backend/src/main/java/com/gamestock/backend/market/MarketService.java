@@ -2589,6 +2589,9 @@ public class MarketService {
         long cash = jdbc.queryForObject("SELECT cash FROM users WHERE id = ?", Long.class, userId);
         List<Position> positions = jdbc.query("""
                 SELECT s.stock_code, p.quantity, COALESCE(p.settled_quantity, p.quantity) AS settled_quantity,
+                       COALESCE((SELECT SUM(o.reserved_quantity) FROM orders o
+                                 WHERE o.user_id = p.user_id AND o.stock_id = p.stock_id
+                                   AND o.side = 'SELL' AND o.status = 'OPEN'), 0) AS reserved_quantity,
                        p.average_price, COALESCE(p.realized_profit_loss, 0) AS realized_profit_loss,
                        p.quantity * COALESCE(pm.mark_price,s.current_price) AS market_value,
                        p.quantity * (COALESCE(pm.mark_price,s.current_price) - p.average_price) AS profit_loss
@@ -2599,6 +2602,7 @@ public class MarketService {
                 """, (rs, row) -> new Position(rs.getString("stock_code"),
                 rs.getInt("quantity"), rs.getInt("settled_quantity"),
                 Math.max(0, rs.getInt("quantity") - rs.getInt("settled_quantity")),
+                Math.max(0, rs.getInt("settled_quantity") - rs.getInt("reserved_quantity")),
                 rs.getLong("average_price"), rs.getLong("market_value"), rs.getLong("profit_loss"),
                 rs.getLong("average_price") == 0 ? 0 :
                         Math.round(rs.getLong("profit_loss") * 10000.0 /

@@ -28,6 +28,7 @@
 .nx-ticket-power div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .nx-ticket-power dt { color: var(--ink-muted); font-size: 13px; }
 .nx-ticket-power dd { margin: 0; font-size: 15px; font-weight: 600; text-align: right; }
+.nx-ticket-held { margin-left: 4px; color: var(--ink-muted); font-size: 13px; font-weight: 500; }
 .nx-ticket-loan dd { color: var(--ink-muted); font-size: 13px; font-weight: 500; }
 .nx-ticket-loan-link { margin-left: 8px; color: var(--brand-deep); font-family: var(--font-ui); }
 

@@ -136,6 +136,8 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   const executionPrice = orderType === "MARKET" ? quote.price : (validLimitPrice ? parsedLimitPrice : suggestedLimit);
   const amount = valid ? parsed * executionPrice : 0;
   const maxQty = snapshot.portfolioError ? 0 : side === "buy" ? affordableQuantity(snapshot.portfolio.cash, executionPrice) : Math.min(1000, api.orderable(code, side));
+  // 대기 중인 매도 주문이나 미정산분 때문에 매도 가능 수량이 보유 수량보다 적을 때만 보유 수량을 함께 보인다.
+  const heldQty = snapshot.portfolio.positions[code]?.qty ?? 0;
   const affordable = parsed <= maxQty;
   const quantityError = qty === "" ? "" : !valid ? "수량은 1~1,000주 사이의 정수로 입력해 주세요." : !affordable ? `주문 가능 수량은 최대 ${maxQty.toLocaleString()}주입니다.` : "";
   const priceError = orderType === "LIMIT" && !validLimitPrice ? "단가를 해당 가격대의 호가 단위에 맞춰 입력해 주세요." : "";
@@ -208,7 +210,10 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
       <dl className="nx-ticket-power">
         <div>
           <dt>{side === "buy" ? "주문 가능 금액" : "매도 가능 수량"}</dt>
-          <dd className="nx-num">{user ? (side === "buy" ? won(snapshot.portfolio.cash) : `${maxQty.toLocaleString()}주`) : "로그인 필요"}</dd>
+          <dd className="nx-num">
+            {user ? (side === "buy" ? won(snapshot.portfolio.cash) : `${maxQty.toLocaleString()}주`) : "로그인 필요"}
+            {user && side === "sell" && heldQty > maxQty && <>{" "}<span className="nx-ticket-held">보유 {heldQty.toLocaleString()}주</span></>}
+          </dd>
         </div>
         {user && side === "buy" && (loanRoom >= 10_000 || money.loan > 0) && (
           <div className="nx-ticket-loan">
