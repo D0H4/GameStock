@@ -169,3 +169,8 @@ include-message=never를 적용하고 격리 HTTP 서버에서 처리되지 않�
 - 최초 감사의 뉴스 지연 테스트 실패 원인은 캐시가 아니라 JDBC/세션 시간대 불일치였다. UTC 설정 후 원래 assertion이 통과했다.
 - 과거 버그의 재현 증거, 기존 감사 수치, 현재 클래스별 테스트 수와 수정 근거는 동명 JSON에 있다.
 - 가격/정산/배포 규칙: docs/price-formation-model.md
+
+PR 병합 검증
+- main 67602d8 병합 후 인증·계정 초기화·DB 동시성 41개와 프론트엔드 17개 통과. 앞선 407개와 중복 합산하지 않는다.
+- TypeScript와 Vite 빌드 통과. envDir=false로 환경 파일은 읽지 않았다. 번들 500 kB 초과 경고는 남아 있다.
+- JSON의 로컬 DB 버전 표기를 서버 로그에 맞게 정정했다. CI MySQL 8.4 실행은 별도다.

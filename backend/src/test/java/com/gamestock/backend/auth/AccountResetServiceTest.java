@@ -14,6 +14,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class AccountResetServiceTest {
+    private final AuthService auth = mock(AuthService.class);
+
     private JdbcTemplate database(Timestamp usedAt) throws Exception {
         return mock(JdbcTemplate.class, call -> {
             String method = call.getMethod().getName();
@@ -35,29 +37,40 @@ class AccountResetServiceTest {
 
     @Test void clearsOnlyTheResetUsersMissionsTogetherWithPortfolio() throws Exception {
         JdbcTemplate jdbc = database(null);
-        var result = new AccountResetService(jdbc).reset(7L);
+        when(auth.generateNickname()).thenReturn("슈엔단1234");
+        var result = new AccountResetService(jdbc, auth).reset(7L);
         assertNotNull(result.resetAt());
         var order = inOrder(jdbc);
         order.verify(jdbc).update("DELETE FROM portfolios WHERE user_id = ?", 7L);
         order.verify(jdbc).update("DELETE FROM attendance_rewards WHERE user_id = ?", 7L);
         order.verify(jdbc).update("DELETE FROM mission_rewards WHERE user_id = ?", 7L);
-        verify(jdbc).update(contains("reset_used_at = CURRENT_TIMESTAMP"), eq(1_000_000L), eq(7L));
+        verify(jdbc).update(contains("reset_used_at = CURRENT_TIMESTAMP"), eq(1_000_000L), eq("슈엔단1234"), eq(7L));
     }
 
     @Test void resetInvalidatesTheMatchingCacheAndClearsTheNicknameCooldown() throws Exception {
         JdbcTemplate jdbc = database(null);
-        new AccountResetService(jdbc).reset(7L);
+        when(auth.generateNickname()).thenReturn("슈엔단5678");
+        new AccountResetService(jdbc, auth).reset(7L);
         var order = inOrder(jdbc);
         order.verify(jdbc).queryForObject(contains("market_locks"), eq(Integer.class));
         // 봇 매칭 캐시가 취소된 주문과 지운 보유 수량을 다시 쓰지 않도록 같은 트랜잭션에서 버전을 올린다.
         order.verify(jdbc).update("UPDATE market_book_revisions SET revision=revision+1");
         order.verify(jdbc).update(contains("DELETE FROM portfolios"), eq(7L));
-        verify(jdbc).update(contains("nickname_changed_at = NULL"), eq(1_000_000L), eq(7L));
+        verify(jdbc).update(contains("nickname_changed_at = NULL"), eq(1_000_000L), eq("슈엔단5678"), eq(7L));
     }
 
     @Test void alreadyUsedResetDoesNotDeleteMissions() throws Exception {
         JdbcTemplate jdbc = database(Timestamp.from(Instant.parse("2026-10-01T03:00:00Z")));
-        assertThrows(IllegalArgumentException.class, () -> new AccountResetService(jdbc).reset(7L));
+        assertThrows(IllegalArgumentException.class, () -> new AccountResetService(jdbc, auth).reset(7L));
         verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void resetUsesTheDefaultNicknameFormat() throws Exception {
+        JdbcTemplate jdbc = database(null);
+        when(auth.generateNickname()).thenReturn("슈엔단0420");
+
+        new AccountResetService(jdbc, auth).reset(7L);
+
+        verify(jdbc).update(contains("nickname = ?"), eq(1_000_000L), eq("슈엔단0420"), eq(7L));
     }
 }

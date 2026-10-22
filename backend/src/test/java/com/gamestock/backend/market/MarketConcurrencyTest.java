@@ -87,7 +87,7 @@ class MarketConcurrencyTest {
             repository.persist(book,now);cache.saved(now);return book;
         });
         db.update("UPDATE users SET nickname_changed_at=CURRENT_TIMESTAMP WHERE id=?",seller);
-        tx.execute(s->new com.gamestock.backend.auth.AccountResetService(db).reset(seller));
+        tx.execute(s->new com.gamestock.backend.auth.AccountResetService(db,new com.gamestock.backend.auth.AuthService(db)).reset(seller));
         tx.executeWithoutResult(s->{
             var repository=new BatchMarketRepository(db);long now=System.currentTimeMillis();
             var book=cache.borrow(repository,now,Set.of(stock),Set.of(buyer,seller));
@@ -109,7 +109,7 @@ class MarketConcurrencyTest {
         assertEquals("FILLED",first.order(new OrderRequest("UMA","BUY",1,"MARKET",null),buyer).status());
         assertThrows(IllegalArgumentException.class,()->first.order(new OrderRequest("UMA","BUY",1,"MARKET",null),buyer));
         assertEquals(1,first.settlements(buyer).size());
-        tx.execute(s->new com.gamestock.backend.auth.AccountResetService(db).reset(buyer));
+        tx.execute(s->new com.gamestock.backend.auth.AccountResetService(db,new com.gamestock.backend.auth.AuthService(db)).reset(buyer));
         assertTrue(first.settlements(buyer).isEmpty());
     }
 

@@ -2055,7 +2055,7 @@
       "failures": 0
     },
     "counting": "전체 verify 실행과 마지막 마이그레이션 변경의 관련 클래스 재실행을 이름으로 합쳤다. 반복 실행은 중복 합산하지 않는다.",
-    "environment": "로컬 MySQL 8.4, loopback 13367, UUID 임시 스키마. JDBC connectionTimeZone=UTC와 forceConnectionTimeZoneToSession=true. 실제 Firebase 대신 합성 인증을 사용했다.",
+    "environment": "격리된 로컬 MySQL, loopback 13367, UUID 임시 스키마. 서버 로그 버전 표기는 26.7.0이며 이전 8.4 표기를 정정한다. CI 서비스의 MySQL 8.4는 원격 CI에서 별도 검증해야 한다. JDBC connectionTimeZone=UTC와 forceConnectionTimeZoneToSession=true. 실제 Firebase 대신 합성 인증을 사용했다.",
     "commands": [
       "mvn -o -B -Daether.syncContext.named.factory=rwlock-local -DargLine=<local Mockito javaagent> -Dmarket.test.jdbc=<isolated UTC MySQL> -Dloan.test.jdbc=<isolated UTC MySQL> -Dloan.test.user=root -Dloan.test.password= -Dmarket.activity=true verify",
       "마지막 업그레이드 변경 뒤 AdminOperationsIntegrationTest, DerivativeServiceIntegrationTest, MarketSimulationIntegrationTest, MarketConcurrencyTest, OrderPipelineIntegrationTest 재실행",
@@ -2067,6 +2067,27 @@
       "status": "통과",
       "command": "mvn -o -B -Daether.syncContext.named.factory=rwlock-local -DskipTests package",
       "note": "407개 고유 Java 테스트 검증 후 마지막 소스로 JAR를 다시 패키징했다."
+    },
+    "pr_merge_validation": {
+      "base": "67602d8",
+      "backend": {
+        "classes": [
+          "AccountResetServiceTest",
+          "AuthServiceTest",
+          "MarketConcurrencyTest"
+        ],
+        "passed": 41,
+        "failures": 0,
+        "skipped": 0
+      },
+      "frontend": {
+        "typescript_build": "통과",
+        "vite_build": "통과; envDir=false로 환경 파일 로딩 비활성화",
+        "tests_passed": 17,
+        "failures": 0,
+        "warning": "기존 번들 500 kB 초과 경고"
+      },
+      "note": "main 병합의 초기화 생성자·캐시 무효화·거래 화면 import 충돌을 해결한 뒤 관련 검증을 실행했다. 앞선 전체 백엔드 407개 집계와 중복 합산하지 않는다."
     }
   },
   "performance": {
