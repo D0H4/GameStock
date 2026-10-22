@@ -22,6 +22,11 @@ function tone(value: number): string {
   return value > 0 ? "is-up" : value < 0 ? "is-down" : "";
 }
 
+/** 공식 공지와 언론 기사를 목록에서 한눈에 가르는 표시. */
+function SourceTag({ source }: { source: NewsSource }) {
+  return <span className={`nx-news-kind${source === "업데이트 노트" ? " is-official" : ""}`}>{source}</span>;
+}
+
 function NewsRow({ item, selected, now }: { item: NewsItem; selected: boolean; now: number }) {
   const effect = useEffectRatio(item);
   return (
@@ -30,7 +35,10 @@ function NewsRow({ item, selected, now }: { item: NewsItem; selected: boolean; n
         <GameIcon code={item.code} size="small" />
         <span className="nx-news-row-body">
           <span className="nx-news-row-title">{item.title}</span>
-          <span className="nx-news-row-meta">{LISTING_BY_CODE[item.code]?.name ?? item.code} · {item.source} · {since(item.at, now)}</span>
+          <span className="nx-news-row-meta">
+            <SourceTag source={item.source} />
+            <span>{LISTING_BY_CODE[item.code]?.name ?? item.code} · {since(item.at, now)}</span>
+          </span>
         </span>
         <span className={`nx-num nx-news-row-effect ${tone(effect)}`}>{rate(effect)}</span>
       </Link>
@@ -69,7 +77,7 @@ function Article({ item }: { item: NewsItem }) {
           <GameIcon code={item.code} size="small" />
           <span>{name}</span>
         </Link>
-        <span className="nx-article-source">{item.source}</span>
+        <SourceTag source={item.source} />
         <Link to={NEWS_PATH(null)} className="nx-icon-link" aria-label="본문 닫기">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </Link>
@@ -89,7 +97,8 @@ function Article({ item }: { item: NewsItem }) {
       </dl>
 
       <div className="nx-chart nx-article-chart integration-tools">
-        <SeriesChart code={item.code} markers={[{ at: item.at, label: item.title }]} />
+        {/* 기본은 6시간, 그보다 오래된 뉴스면 발행 시점의 흰 점이 보이는 가장 짧은 기간까지 넓힌다. */}
+        <SeriesChart key={item.id} code={item.code} markers={[{ at: item.at, label: item.title }]} fitMarkers />
       </div>
 
       <section className="nx-article-body" aria-label="기사 첫 문단" aria-busy={loading}>
@@ -120,12 +129,21 @@ export function NxNewsPage({ id }: { id: number | null }) {
   const list = useRef<HTMLOListElement>(null);
   const [source, setSource] = useState<SourceFilter>("all");
   const [watchOnly, setWatchOnly] = useState(false);
+  const [game, setGame] = useState<string>("all");
   /* 실시간 갱신으로 목록에서 밀려난 기사도 읽던 중이면 계속 보여 준다. */
   const lastSeen = useRef<NewsItem | null>(null);
   const found = id === null ? null : snapshot.news.find((item) => item.id === id) ?? null;
   if (found) lastSeen.current = found;
   const selected = id === null ? null : found ?? (lastSeen.current?.id === id ? lastSeen.current : null);
-  const items = snapshot.news.filter((item) => (source === "all" || item.source === source) && (!watchOnly || snapshot.watch.includes(item.code)));
+  /* 출처 버튼의 건수는 종목·관심 조건을 먼저 적용한 뒤 센다. 눌렀을 때 보일 개수와 같아야 한다. */
+  const scoped = snapshot.news.filter((item) => (game === "all" || item.code === game) && (!watchOnly || snapshot.watch.includes(item.code)));
+  const counts: Record<SourceFilter, number> = { all: scoped.length, "업데이트 노트": 0, "미디어 보도": 0, "퍼블리셔 공지": 0, "커뮤니티 집계": 0, "스토어 지표": 0 };
+  for (const item of scoped) counts[item.source] += 1;
+  const items = scoped.filter((item) => source === "all" || item.source === source);
+  const games = [...new Set(snapshot.news.map((item) => item.code))]
+    .map((code) => ({ code, name: LISTING_BY_CODE[code]?.name ?? code }))
+    .sort((left, right) => left.name.localeCompare(right.name, "ko"));
+  const resetFilters = () => { setSource("all"); setWatchOnly(false); setGame("all"); };
   const now = snapshot.updatedAt || Date.now();
 
   /* Esc로 닫고, ↑↓로 이웃 기사로 옮긴다. 입력칸에서는 가로채지 않는다. */
@@ -168,9 +186,17 @@ export function NxNewsPage({ id }: { id: number | null }) {
             {(["all", ...VISIBLE_NEWS_SOURCES] as SourceFilter[]).map((value) => (
               <button key={value} type="button" className={source === value ? "is-active" : undefined} aria-pressed={source === value} onClick={() => setSource(value)}>
                 {value === "all" ? "전체" : value}
+                <span className="nx-seg-count nx-num">{counts[value]}</span>
               </button>
             ))}
           </div>
+          <label className="nx-news-game">
+            <span className="vh">종목</span>
+            <select className="nx-select" value={game} onChange={(event) => setGame(event.target.value)}>
+              <option value="all">모든 종목</option>
+              {games.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
+            </select>
+          </label>
           <label className="nx-check">
             <input type="checkbox" checked={watchOnly} onChange={(event) => setWatchOnly(event.target.checked)} />
             <span>관심 종목만</span>
@@ -182,8 +208,8 @@ export function NxNewsPage({ id }: { id: number | null }) {
         <section className="nx-panel nx-news-list" aria-label="뉴스 목록">
           {items.length === 0 ? (
             <div className="nx-empty-state">
-              <p>{snapshot.news.length === 0 ? "아직 들어온 뉴스가 없어요." : "조건에 맞는 뉴스가 없어요."}</p>
-              {snapshot.news.length > 0 && <button type="button" className="nx-link-button" onClick={() => { setSource("all"); setWatchOnly(false); }}>필터 초기화</button>}
+              <p>{snapshot.news.length === 0 ? "아직 들어온 뉴스가 없어요." : source === "업데이트 노트" ? "이 조건에는 게임사가 직접 올린 공지가 없어요." : "조건에 맞는 뉴스가 없어요."}</p>
+              {snapshot.news.length > 0 && <button type="button" className="nx-link-button" onClick={resetFilters}>필터 초기화</button>}
             </div>
           ) : (
             <ol ref={list}>

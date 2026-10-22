@@ -9,7 +9,6 @@ import { useMarket, useMarketApi } from "../../market/MarketProvider";
 import { holdings, sessionRate, totals } from "../../market/selectors";
 import { LISTING_BY_CODE } from "../../market/universe";
 import { TRADE_PATH } from "../../router";
-import { NxAccountNav } from "./NxAccountNav";
 
 type ActiveOrder = {
   id: number; stockCode: string; side: string; quantity: number; remainingQuantity: number;
@@ -85,7 +84,6 @@ export function NxMyPage() {
 
   return (
     <div className="nx-screen nx-mypage">
-      <NxAccountNav />
       <h1 className="vh">내 계좌</h1>
       {snapshot.portfolioError && <p className="nx-note is-error" role="status">{snapshot.portfolioError}</p>}
 

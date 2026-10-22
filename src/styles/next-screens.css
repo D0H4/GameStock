@@ -22,6 +22,9 @@
 /* ───────── 속보 ───────── */
 
 .nx-news-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+/* 건수는 버튼 글자색을 그대로 따른다. 더 흐린 색은 대비 기준(4.5:1)을 넘지 못했다. */
+.nx-news-filters .nx-seg-count { margin-left: 6px; font-size: 12px; }
+.nx-news-game .nx-select { width: auto; min-width: 150px; }
 .nx-news-layout {
   display: grid;
   grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
@@ -49,7 +52,7 @@
 .nx-news-row .game-icon { width: 28px; height: 28px; border-radius: 6px; }
 .nx-news-row-body { display: grid; gap: 4px; min-width: 0; }
 .nx-news-row-title { display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.nx-news-row-meta { color: var(--ink-muted); font-size: 12px; }
+.nx-news-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--ink-muted); font-size: 12px; }
 .nx-news-row-effect { min-width: 60px; padding-top: 2px; font-size: 13px; text-align: right; }
 .nx-news-row-effect.is-up,
 .nx-article-stats .is-up { color: var(--up-deep); }
@@ -64,7 +67,9 @@
 .nx-article-game { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; text-decoration: none; }
 .nx-article-game:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nx-article-game .game-icon { width: 28px; height: 28px; border-radius: 6px; }
-.nx-article-source { padding: 1px 8px; border: 1px solid var(--nx-line); border-radius: 4px; color: var(--ink-muted); font-size: 12px; }
+/* 출처 표시: 게임사 공지는 브랜드 색 테두리, 언론 기사는 무채색. 목록과 본문이 같은 표시를 쓴다. */
+.nx-news-kind { flex: none; padding: 1px 7px; border: 1px solid var(--nx-line); border-radius: 4px; color: var(--ink-muted); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.nx-news-kind.is-official { border-color: var(--brand); color: var(--brand-deep); }
 .nx-article-head .nx-icon-link { margin-left: auto; }
 .nx-article-title { margin: 16px 0 6px; font-size: 22px; font-weight: 500; line-height: 1.4; letter-spacing: -0.02em; outline: 0; }
 .nx-article-time { margin: 0; color: var(--ink-muted); font-size: 12px; }
@@ -136,7 +141,6 @@ html[data-nx-theme="light"] .has-title-ink[style*="--title-ink"] { color: color-
 
 /* ───────── 계좌 공통 ───────── */
 
-.nx-account-nav { margin-top: -8px; border-bottom: 1px solid var(--nx-line); }
 
 .nx-account-hero,
 .nx-loan-hero,

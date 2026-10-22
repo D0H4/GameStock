@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
 import { apiFetch } from "../lib/api";
+import { classifyNewsSource } from "./newsSource";
 import { openMarketStream } from "./stream";
 import { requireSignIn } from "../lib/auth";
 import { announceMissionReward } from "../components/MissionRewardToast";
@@ -175,7 +176,7 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
       id: newsIds.next(event),
       at: event.publishedAt ? serverTimestamp(event.publishedAt) || Date.now() : Date.now(),
       code: event.stockCode,
-      source: event.source === "업데이트 노트" ? "업데이트 노트" as const : "미디어 보도" as const,
+      source: classifyNewsSource(event),
       title: event.title,
       description: event.description,
       excerpt: event.excerpt?.length ? event.excerpt : undefined,

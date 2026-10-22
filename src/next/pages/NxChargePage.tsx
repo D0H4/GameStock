@@ -2,7 +2,6 @@ import { Link } from "../../components/Link";
 import { missionLabel, MISSION_REWARD, useDailyMissions } from "../../components/MissionBoard";
 import { usePromoCode } from "../../components/PromoCodePanel";
 import { won } from "../../market/format";
-import { NxAccountNav } from "./NxAccountNav";
 
 function Missions() {
   const { user, ready, error, pending, completed, count, visibleMissionIds, complete } = useDailyMissions();
@@ -80,7 +79,6 @@ function PromoCode() {
 export function NxChargePage() {
   return (
     <div className="nx-screen nx-charge">
-      <NxAccountNav />
       <header className="nx-screen-head">
         <div>
           <h1 className="nx-page-title">충전하기</h1>

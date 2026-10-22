@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "../../lib/profile";
 import { checkTitles, equipTitle, titleInkStyle, type TitleStatus, type UserTitle } from "../../lib/titles";
-import { NxAccountNav } from "./NxAccountNav";
 
 const CATEGORY_ORDER = ["자산", "수익률", "보유", "거래", "활동", "수집", "주간", "특별"];
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
@@ -74,7 +73,6 @@ export function NxTitlesPage() {
 
   return (
     <div className="nx-screen nx-titles">
-      <NxAccountNav />
       <header className="nx-screen-head">
         <div>
           <h1 className="nx-page-title">칭호</h1>

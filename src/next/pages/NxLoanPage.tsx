@@ -4,7 +4,6 @@ import { useAuthUser } from "../../lib/auth";
 import { kstDateTime, serverTimestamp, won } from "../../market/format";
 import { useMarket, useMarketApi } from "../../market/MarketProvider";
 import type { LoanEntry, LoanStatus } from "../../market/types";
-import { NxAccountNav } from "./NxAccountNav";
 
 /* 대출 규칙과 서버 호출은 기존 대출 화면과 같다. 배치와 게이지만 새로 그렸다. */
 
@@ -122,7 +121,6 @@ export function NxLoanPage() {
 
   return (
     <div className="nx-screen nx-loan">
-      <NxAccountNav />
       <header className="nx-screen-head">
         <div>
           <h1 className="nx-page-title">대출</h1>

@@ -5,7 +5,6 @@ import { openLoginPrompt } from "../../lib/auth";
 import { firebaseAuth } from "../../lib/firebase";
 import { setProfile as shareProfile, type Profile } from "../../lib/profile";
 import { DEFAULT_PROFILE_AVATAR, isProfileAvatar, PROFILE_AVATARS } from "../../lib/profileAvatars";
-import { NxAccountNav } from "./NxAccountNav";
 
 /* 프로필 조회·저장·계좌 초기화 규칙은 기존 설정 화면(AccountSettings)과 같다. */
 export function NxSettingsPage() {
@@ -112,7 +111,6 @@ export function NxSettingsPage() {
 
   return (
     <div className="nx-screen nx-settings">
-      <NxAccountNav />
       <header className="nx-screen-head">
         <h1 className="nx-page-title">설정</h1>
       </header>

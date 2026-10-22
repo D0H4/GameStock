@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import { apiFetch } from "../lib/api";
 import { indexValue, serverTimestamp, won } from "../market/format";
@@ -6,7 +6,7 @@ import { useMarket } from "../market/MarketProvider";
 import { sessionRate } from "../market/selectors";
 
 type ChartMode = "line" | "candle";
-type ChartRange = "realtime" | "1h" | "6h" | "12h" | "1d" | "1w" | "1m" | "1y";
+export type ChartRange = "realtime" | "1h" | "6h" | "12h" | "1d" | "1w" | "1m" | "1y";
 type ChartCandle = { recordedAt: string; openPrice: number; highPrice: number; lowPrice: number; closePrice: number; volume: number };
 type PricePoint = { recordedAt: string; price: number };
 type Sample = { at: number; price: number; candle?: ChartCandle };
@@ -26,15 +26,18 @@ const axisFormatter = new Intl.DateTimeFormat("ko-KR", {
 });
 
 /** Hover and touch read the server's recorded price/time pair, never an estimated tick time. */
-export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?: "up" | "down" | "flat"; markers?: Array<{ at: number; label: string }> }) {
+export function SeriesChart({ code, tone, markers = [], fitMarkers = false }: { code: string; tone?: "up" | "down" | "flat"; markers?: Array<{ at: number; label: string }>; fitMarkers?: boolean }) {
   const snapshot = useMarket();
   const quote = snapshot.quotes[code];
   const [mode, setMode] = useState<ChartMode>("line");
-  const [range, setRange] = useState<ChartRange>("1d");
+  const [range, setRange] = useState<ChartRange>("6h");
   const [data, setData] = useState<{ key: string; samples: Sample[] }>({ key: "", samples: [] });
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [hoveredAt, setHoveredAt] = useState<number | null>(null);
+  /* 기간을 직접 고르기 전까지는 뉴스 시점의 흰 점이 보이도록 기간을 넓혀 간다. */
+  const autoFit = useRef(fitMarkers);
+  const earliestMarker = markers.length ? Math.min(...markers.map((marker) => marker.at)) : null;
   const dataKey = `${code}:${mode}:${range}`;
 
   useEffect(() => {
@@ -58,7 +61,14 @@ export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?:
         if (!active) return;
         // A timestamp can occur twice in the same transaction; retain its final recorded price.
         const unique = new Map(samples.filter((sample) => Number.isFinite(sample.at) && Number.isFinite(sample.price) && sample.price > 0).map((sample) => [sample.at, sample]));
-        setData({ key: dataKey, samples: [...unique.values()].sort((left, right) => left.at - right.at) });
+        const sorted = [...unique.values()].sort((left, right) => left.at - right.at);
+        /* 기간 이름이 6시간이어도 서버 기록은 더 짧게 남아 있을 수 있어, 받은 기록의 첫 시각으로 판단한다. */
+        const wider = RANGE_OPTIONS[RANGE_OPTIONS.findIndex((option) => option.value === range) + 1]?.value;
+        if (autoFit.current && earliestMarker !== null && sorted.length > 1 && earliestMarker < sorted[0].at && wider) {
+          setRange(wider);
+          return;
+        }
+        setData({ key: dataKey, samples: sorted });
         setFailed(false);
       } catch {
         if (active) setFailed(true);
@@ -70,7 +80,7 @@ export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?:
     void load();
     const timer = window.setInterval(() => void load(), range === "realtime" ? 2000 : 10_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [code, mode, range, dataKey]);
+  }, [code, mode, range, dataKey, earliestMarker]);
 
   if (!quote) return null;
   const samples = data.key === dataKey ? data.samples : [];
@@ -97,11 +107,18 @@ export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?:
   const points = samples.map((sample) => ({ x: x(sample.at), y: y(sample.price) }));
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(3)} ${point.y.toFixed(3)}`).join(" ");
   const area = points.length > 1 ? `${path} L ${points.at(-1)!.x} 100 L ${points[0].x} 100 Z` : "";
-  /* 뉴스 시점은 그 시각에 가장 가까운 기록 위에 찍는다. 기간 밖의 뉴스는 그리지 않는다. */
+  /* 뉴스 시점은 그 시각에 가장 가까운 기록 위에 찍는다. 마지막 기록 뒤에 나온 뉴스는
+     아직 버킷이 저장되지 않았을 뿐이므로 현재가 자리에 찍고, 기간보다 이전 뉴스만 뺀다. */
   const nearestSample = (at: number) => samples.reduce((best, sample) => (Math.abs(sample.at - at) < Math.abs(best.at - at) ? sample : best), samples[0]);
   const markerDots = samples.length > 1
-    ? markers.filter((marker) => marker.at >= firstAt && marker.at <= lastAt).map((marker) => ({ ...marker, sample: nearestSample(marker.at) }))
+    ? markers.filter((marker) => marker.at >= firstAt).map((marker) => {
+      if (marker.at > lastAt) return { ...marker, left: x(lastAt), price: quote.price };
+      const sample = nearestSample(marker.at);
+      return { ...marker, left: x(sample.at), price: mode === "candle" && sample.candle ? sample.candle.closePrice : sample.price };
+    })
     : [];
+  const markerOutside = samples.length > 1 && markers.length > 0 && markerDots.length === 0;
+
   const hoveredIndex = samples.findIndex((sample) => sample.at === hoveredAt);
   const hovered = samples[hoveredIndex];
   // History is intentionally persisted at bucket boundaries. The live quote
@@ -137,7 +154,7 @@ export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?:
         <div className="chart-control chart-range-control" role="group" aria-label="차트 기간">
           {RANGE_OPTIONS.map((option) => (
             <button key={option.value} type="button" className={`chart-control-button${range === option.value ? " is-active" : ""}`} aria-pressed={range === option.value}
-              onClick={() => { setRange(option.value); setHoveredAt(null); }}>{option.label}</button>
+              onClick={() => { setRange(option.value); autoFit.current = false; setHoveredAt(null); }}>{option.label}</button>
           ))}
         </div>
         <div className="chart-control chart-mode-control" role="group" aria-label="차트 표현 방식">
@@ -154,7 +171,7 @@ export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?:
             <strong className="num">{won(hovered.price)}</strong>
             {mode === "candle" && hovered.candle && <span className="chart-hover-ohlc num">시가 {won(hovered.candle.openPrice)} · 고가 {won(hovered.candle.highPrice)} · 저가 {won(hovered.candle.lowPrice)}</span>}
           </div>
-        ) : <p className="chart-status" role="status">{loading ? "차트 불러오는 중…" : failed ? "가격 기록을 불러오지 못했습니다." : samples.length ? "차트에 마우스를 올리거나 터치하면 당시 가격을 볼 수 있어요." : "이 기간에 저장된 가격 기록이 없습니다."}</p>}
+        ) : <p className="chart-status" role="status">{loading ? "차트 불러오는 중…" : failed ? "가격 기록을 불러오지 못했습니다." : markerOutside ? "뉴스가 이 기간보다 먼저 나왔어요. 더 긴 기간을 고르면 발행 시점이 흰 점으로 보여요." : samples.length ? "차트에 마우스를 올리거나 터치하면 당시 가격을 볼 수 있어요." : "이 기간에 저장된 가격 기록이 없습니다."}</p>}
       </div>
       <div className="chart-plot">
         <div className="chart-canvas" role="group" aria-label={`${code} 가격 차트 탐색`} tabIndex={samples.length ? 0 : -1}
@@ -195,7 +212,7 @@ export function SeriesChart({ code, tone, markers = [] }: { code: string; tone?:
             <span className="chart-last-dot" style={{left:`${x(lastAt)}%`,top:`${y(currentValue)}%`}} />
             {markerDots.map((marker) => (
               <span key={`${marker.at}-${marker.label}`} className="chart-news-dot" title={marker.label} aria-hidden="true"
-                style={{left:`${x(marker.sample.at)}%`,top:`${y(mode === "candle" && marker.sample.candle ? marker.sample.candle.closePrice : marker.sample.price)}%`}} />
+                style={{left:`${marker.left}%`,top:`${y(marker.price)}%`}} />
             ))}
           </>}
           {hovered && <>
