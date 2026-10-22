@@ -123,6 +123,8 @@ public class MarketService {
     private boolean bookCacheEnabled=true;
     @Value("${market.batch.compact-ledger:true}")
     private boolean compactLedger;
+    @Value("${market.batch.ledger-detail:false}")
+    private boolean ledgerDetail;
     @Value("${market.batch.detail-retention-minutes:15}")
     private int detailRetentionMinutes=15;
     private BotLedgerJournal botJournal;
@@ -235,7 +237,7 @@ public class MarketService {
         scheduleRandoms.clear();
         priceMetrics = new PriceMetricService(jdbc);
         if(!matchingEnabled()){
-            botJournal=new BotLedgerJournal(jdbc);
+            botJournal=new BotLedgerJournal(jdbc,ledgerDetail);
             demoUserId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,DEMO_USERNAME);
             simulationInitialized=true;return;
         }
@@ -254,7 +256,7 @@ public class MarketService {
         StockCatalog.ensureListings(jdbc);
         AdminSchema.restoreStockMetadata(jdbc);
         MarketBookCache.seedRevisions(jdbc);
-        botJournal=new BotLedgerJournal(jdbc);
+        botJournal=new BotLedgerJournal(jdbc,ledgerDetail);
         ensureTraderBots();
         userFeatures.ensureDefaultTags();
         seedPriceHistory();

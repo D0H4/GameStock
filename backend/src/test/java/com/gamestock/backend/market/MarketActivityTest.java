@@ -44,6 +44,7 @@ class MarketActivityTest {
             ReflectionTestUtils.setField(market,"batchParticipants",Integer.getInteger("market.activity.participants",6020));
             ReflectionTestUtils.setField(market,"bookCacheEnabled",Boolean.parseBoolean(System.getProperty("market.activity.cache","true")));
             ReflectionTestUtils.setField(market,"compactLedger",Boolean.parseBoolean(System.getProperty("market.activity.compact","true")));
+            ReflectionTestUtils.setField(market,"ledgerDetail",true);
             ReflectionTestUtils.setField(market,"adaptiveActivity",true);
             ReflectionTestUtils.setField(market,"inlineMarketMaker",Boolean.parseBoolean(System.getProperty("market.activity.inline-lp","true")));
             market.initializeData();
