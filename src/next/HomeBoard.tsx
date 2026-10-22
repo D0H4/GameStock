@@ -90,12 +90,15 @@ function Heatmap() {
     <ul className="nx-heat" aria-label="종목별 등락 지도. 칸 크기는 시가총액">
       {items.map(({ code, quote, listing }) => {
         const ratio = sessionRate(quote);
-        const level = Math.min(4, Math.ceil(Math.abs(ratio) * 100 / 4));
-        const tone = ratio > 0 ? "up" : ratio < 0 ? "down" : "flat";
+        // 칸에 찍히는 소수 둘째 자리 값으로 나눠야 "0.00%" 칸이 색을 띠지 않는다.
+        const percent = Number((ratio * 100).toFixed(2));
+        const size = Math.abs(percent);
+        const level = size === 0 ? 0 : size < 1 ? 1 : size < 3 ? 2 : size < 5 ? 3 : 4;
+        const tone = percent > 0 ? "up" : percent < 0 ? "down" : "flat";
         const share = (quote.marketCap ?? 1) / total;
         return (
           <li key={code} style={{ flexGrow: Math.max(1, Math.round(share * 100)), flexBasis: `${Math.max(9, share * 100 * 2.2)}%` }}>
-            <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${ratio === 0 ? 0 : Math.max(1, level)}${quote.restriction ? " is-guard" : ""}`}>
+            <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}${quote.restriction ? " is-guard" : ""}`}>
               <span className="nx-heat-name">{listing.name}</span>
               <span className="nx-heat-rate nx-num">{rate(ratio)}</span>
               <span className="nx-heat-price nx-num">{won(quote.price)}</span>

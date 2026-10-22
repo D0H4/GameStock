@@ -141,7 +141,8 @@ html[data-nx] .nx-heat-tile.is-l0:focus-visible { outline-color: var(--focus); }
 .nx-heat-tile.is-l0 { background: var(--nx-raised); color: var(--ink); }
 /* 밝은 테마에서는 --nx-raised가 상자와 같은 흰색이라, 보합 칸이 붙은 지도 속에서 구멍처럼 보였다. */
 html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-line); }
-/* 토스증권 다크 테마 red·blue 100~400단계. 500단계(#f04251, #3485fa)는 흰 글자 대비가 3.8:1 아래라 쓰지 않는다. */
+/* 단계는 등락률 절댓값 기준: l1 1% 미만, l2 3% 미만, l3 5% 미만, l4 5% 이상(HomeBoard.tsx).
+   토스증권 다크 테마 red·blue 100~400단계. 500단계(#f04251, #3485fa)는 흰 글자 대비가 3.8:1 아래라 쓰지 않는다. */
 .nx-heat-tile.is-up.is-l1 { background: #562025; }
 .nx-heat-tile.is-up.is-l2 { background: #7a242d; }
 .nx-heat-tile.is-up.is-l3 { background: #9e2733; }
