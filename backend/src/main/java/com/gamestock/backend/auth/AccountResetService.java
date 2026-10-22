@@ -17,9 +17,11 @@ public class AccountResetService {
     private static final long STARTING_CASH = 1_000_000L;
 
     private final JdbcTemplate jdbc;
+    private final AuthService auth;
 
-    public AccountResetService(JdbcTemplate jdbc) {
+    public AccountResetService(JdbcTemplate jdbc, AuthService auth) {
         this.jdbc = jdbc;
+        this.auth = auth;
     }
 
     @Transactional
@@ -32,6 +34,8 @@ public class AccountResetService {
                 .orElseThrow(() -> new IllegalArgumentException("계정을 찾을 수 없습니다."));
         if (state.resetUsedAt() != null)
             throw new IllegalArgumentException("인생 리셋은 계정당 한 번만 사용할 수 있습니다.");
+
+        String resetNickname = auth.generateNickname();
 
         // Pending T+1 entries are matured first, so counterparties receive the
         // money/shares they are owed before this account is cleared.
@@ -53,14 +57,14 @@ public class AccountResetService {
                 SET cash = ?,
                     loan_balance = 0,
                     loan_interest_on = NULL,
-                    nickname = LEFT(CONCAT('reset_', id, '_', UNIX_TIMESTAMP()), 50),
+                    nickname = ?,
                     profile_image_url = '',
                     profile_completed = FALSE,
                     nickname_changed_at = NULL,
                     account_reset_at = CURRENT_TIMESTAMP,
                     reset_used_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND reset_used_at IS NULL
-                """, STARTING_CASH, userId);
+                """, STARTING_CASH, resetNickname, userId);
         Timestamp resetAt = jdbc.queryForObject("SELECT account_reset_at FROM users WHERE id = ?", Timestamp.class, userId);
         return new ResetResult("계정이 초기화되었습니다. 이제 처음처럼 다시 시작할 수 있습니다.",
                 resetAt == null ? null : resetAt.toInstant().toString());
