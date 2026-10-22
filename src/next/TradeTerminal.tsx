@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
@@ -263,7 +263,8 @@ function NewsStrip({ code, quote }: { code: string; quote: Quote }) {
 
 const NOTE_LIMIT = 9;
 /** 레인 높이(호가 5줄)에서 위쪽 레인 이름 자리를 뺀 만큼만 노트를 쌓는다. */
-const LANE_ROOM = 5 * 34 - 26;
+const LANE_HEIGHT = 5 * 34;
+const LANE_ROOM = LANE_HEIGHT - 26;
 
 /** 같은 방향으로 이어진 최근 체결 수. 리듬게임의 콤보처럼 흐름의 쏠림을 센다. */
 function combo(prints: TradePrint[]): { side: "buy" | "sell"; count: number } | null {
@@ -279,12 +280,16 @@ function combo(prints: TradePrint[]): { side: "buy" | "sell"; count: number } | 
 
 type Arrival = { code: string; signature: string; fresh: Set<string>; rise: number };
 
+const RISE_MS = 260;
+const RISE_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
+
 /**
  * 호가 사다리 왼쪽의 체결 레인. 새 체결은 판정선(현재가 줄) 아래에서 한 묶음으로 올라오고
  * 앞선 체결은 같은 거리만큼 위로 밀려 올라가며 옅어진다. 긴 노트는 큰 체결이다.
  */
 function Highway({ quote }: { quote: Quote }) {
   const arrival = useRef<Arrival | null>(null);
+  const stack = useRef<HTMLDivElement>(null);
   const prints = quote.prints.slice(0, NOTE_LIMIT);
   const maxQty = Math.max(1, ...prints.map((print) => print.qty));
   let offset = 0;
@@ -324,22 +329,43 @@ function Highway({ quote }: { quote: Quote }) {
     const firstKept = notes.find(({ index }) => !fresh.has(keys[index]));
     arrival.current = { code: quote.code, signature, fresh, rise: firstKept ? firstKept.bottom : offset };
   }
-  const { fresh, rise } = arrival.current!;
+  const current = arrival.current!;
+  const { fresh, rise } = current;
+  /*
+   * 노트를 하나씩 따로 움직이면 새 노트와 밀려나는 노트의 움직임이 한 프레임만 어긋나도
+   * 같은 줄에서 서로 겹친다. 노트는 최종 자리에 바로 두고, 노트를 담은 판 전체를
+   * rise만큼 아래에서 한 번에 올린다. 판 안에서 노트끼리의 간격은 움직이는 동안에도 그대로다.
+   * 앞 묶음이 아직 올라오는 중이면 남은 거리를 이어받아 튀지 않게 한다.
+   * 숨은 탭에서는 애니메이션 시간이 멈춰 남은 거리가 계속 쌓이므로 레인 높이에서 자른다.
+   */
+  useLayoutEffect(() => {
+    const element = stack.current;
+    if (!element) return;
+    if (rise <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      for (const running of element.getAnimations()) running.cancel();
+      return;
+    }
+    const transform = getComputedStyle(element).transform;
+    const carried = transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
+    for (const running of element.getAnimations()) running.cancel();
+    element.animate(
+      [{ transform: `translateY(${Math.min(rise + carried, LANE_HEIGHT)}px)` }, { transform: "translateY(0)" }],
+      { duration: RISE_MS, easing: RISE_EASING },
+    );
+  }, [current, rise]);
   return (
     <div className="nx-lanes" aria-label={`최근 체결 ${prints.length}건 중 매수 ${buys}건, 매도 ${prints.length - buys}건`} role="img">
       <span className="nx-lane-label is-buy" aria-hidden="true">매수</span>
       <span className="nx-lane-label is-sell" aria-hidden="true">매도</span>
-      {notes.map(({ print, index, height, bottom }) => {
-        const isFresh = fresh.has(keys[index]);
-        return (
+      <div className="nx-print-stack" ref={stack} aria-hidden="true">
+        {notes.map(({ print, index, height, bottom }) => (
           <span
             key={keys[index]}
-            className={`nx-note is-${print.side}${isFresh ? " is-new" : ""}${isFresh && index === 0 ? " is-hit" : ""}`}
-            style={{ height, bottom, opacity: Math.max(0.25, 1 - index * 0.09), "--rise": `${rise}px` } as CSSProperties}
-            aria-hidden="true"
+            className={`nx-print is-${print.side}${index === 0 && fresh.has(keys[index]) ? " is-hit" : ""}`}
+            style={{ height, bottom, opacity: Math.max(0.25, 1 - index * 0.09) }}
           />
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
@@ -360,7 +386,7 @@ function Book({ quote, onPriceSelect }: { quote: Quote; onPriceSelect: (price: n
         </button>
         <span className="nx-book-qty nx-num" role="cell">
           <span className="nx-book-bar" style={{ width: `${(level.qty / depth) * 100}%` }} aria-hidden="true" />
-          {level.qty.toLocaleString("ko-KR")}
+          {level.qty.toLocaleString("ko-KR")}<span className="nx-book-unit">주</span>
         </span>
       </> : <span className="nx-book-empty" aria-hidden="true">-</span>}
     </div>

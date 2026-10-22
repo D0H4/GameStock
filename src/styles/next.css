@@ -574,27 +574,26 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 .nx-lane-label.is-buy { left: 0; }
 .nx-lane-label.is-sell { right: 0; }
 
-.nx-note {
+/*
+ * 노트를 담는 판. 새 체결 묶음이 오면 판 전체가 판정선 아래에서 한 번에 올라온다(TradeTerminal의 Highway).
+ * 노트마다 따로 움직이지 않으므로 같은 줄 노트끼리 겹칠 수 없다.
+ */
+.nx-print-stack {
+  position: absolute;
+  inset: 0;
+}
+
+.nx-print {
   position: absolute;
   width: calc(50% - 12px);
   border-radius: 3px;
-  /* 위치와 높이를 같은 곡선으로 옮겨야 움직이는 동안에도 노트 사이 간격이 유지된다. */
-  transition:
-    bottom 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    height 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 260ms ease-out;
 }
 
-.nx-note.is-buy { left: 6px; background: var(--up); }
-.nx-note.is-sell { right: 6px; background: var(--down); }
+.nx-print.is-buy { left: 6px; background: var(--up); }
+.nx-print.is-sell { right: 6px; background: var(--down); }
 
-/*
- * 새 체결 묶음: 판정선 아래에서 함께 올라와 앞선 노트를 밀어 올리고,
- * 맨 아래 노트가 자리를 잡으면 한 번 번쩍인다.
- * 위에서 떨어뜨리면 밀려 올라가는 노트들을 가로질러 겹쳐 보인다.
- */
-.nx-note.is-new { animation: nx-rise 260ms cubic-bezier(0.16, 1, 0.3, 1); }
-.nx-note.is-hit::after {
+/* 맨 아래 새 노트가 자리를 잡으면 한 번 번쩍인다. */
+.nx-print.is-hit::after {
   content: "";
   position: absolute;
   inset: -3px;
@@ -604,19 +603,13 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   animation: nx-hit 520ms ease-out 220ms;
 }
 
-/* --rise는 새 묶음 전체의 높이. 앞선 노트가 밀려 올라가는 거리와 같다. */
-@keyframes nx-rise {
-  from { transform: translateY(var(--rise)); }
-  to { transform: translateY(0); }
-}
-
 @keyframes nx-hit {
   0% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.35); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nx-note, .nx-note.is-new, .nx-note.is-hit::after { transition: none; animation: none; }
+  .nx-print.is-hit::after { animation: none; }
 }
 
 .nx-book-row {
@@ -649,6 +642,7 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 .nx-book-row.is-bid .nx-book-bar { background: var(--up-wash); }
 .nx-book-qty { isolation: isolate; }
 .nx-book-bar { z-index: -1; }
+.nx-book-unit { margin-left: 2px; color: var(--ink-muted); font-size: 11px; }
 .nx-book-empty { grid-column: 1 / -1; color: var(--ink-muted); text-align: center; }
 
 /* 판정선: 현재가 줄이 레인까지 가로지른다. */
