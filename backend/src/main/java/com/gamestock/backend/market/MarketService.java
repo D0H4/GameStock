@@ -680,6 +680,7 @@ public class MarketService {
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
                        COALESCE((SELECT SUM(mr.reward_cash) FROM mission_rewards mr WHERE mr.user_id = u.id), 0) AS mission_reward_cash,
                        COALESCE(SUM(CASE WHEN p.quantity > 0 THEN p.quantity * COALESCE(pm.mark_price,s.current_price) ELSE 0 END), 0) AS asset_value,
+                       COALESCE((SELECT SUM(dp.mark_value) FROM derivative_positions dp WHERE dp.user_id = u.id AND dp.status = 'OPEN'), 0) AS derivative_value,
                        (SELECT ut.title_id FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_title,
                        (SELECT ut.win_count FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_count
                 FROM users u
@@ -689,7 +690,7 @@ public class MarketService {
                 WHERE u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
                   AND COALESCE(u.role, 'USER') <> 'ADMIN'
                 GROUP BY u.id, u.nickname, u.profile_image_url, u.cash, u.loan_balance
-                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value - u.loan_balance) DESC, u.id ASC
+                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value + derivative_value - u.loan_balance) DESC, u.id ASC
                 LIMIT 100
                 """, (rs, row) -> {
             long assetValue = rs.getLong("asset_value");
@@ -698,8 +699,9 @@ public class MarketService {
             long unsettledCash = rs.getLong("unsettled_cash");
             long attendanceRewardCash = rs.getLong("attendance_reward_cash");
             long missionRewardCash = rs.getLong("mission_reward_cash");
+            long derivativeValue = rs.getLong("derivative_value");
             // 빌린 돈으로 순위가 오르지 않도록 랭킹 자산은 대출 잔액을 뺀 순자산이다.
-            long totalAsset = cash + reservedCash + unsettledCash + assetValue - rs.getLong("loan_balance");
+            long totalAsset = cash + reservedCash + unsettledCash + assetValue + derivativeValue - rs.getLong("loan_balance");
             // 출석·미션 보상은 투자 성과가 아니므로 수익률에서 제외한다.
             double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash - externalCash.getOrDefault(rs.getLong("id"),0L)) * 100.0 / STARTING_CASH;
             // Rows saved before image validation may hold arbitrary URLs; never expose them to other viewers.
@@ -2668,9 +2670,18 @@ public class MarketService {
         // 대출 잔액은 빌린 돈이라 화면에서 순자산과 손익을 계산할 때 뺀다.
         long loanBalance = jdbc.queryForObject("SELECT loan_balance FROM users WHERE id = ?", Long.class, userId);
         long assetValue = positions.stream().mapToLong(Position::marketValue).sum();
-        return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue,
+        // ETF·선물·옵션 평가액도 계좌 총자산에 포함한다. 저장된 마지막 평가값을 쓴다.
+        long derivativeAssetValue = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(mark_value), 0) FROM derivative_positions
+                WHERE user_id = ? AND status = 'OPEN'
+                """, Long.class, userId);
+        long derivativeRealized = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(realized_pnl), 0) FROM derivative_positions WHERE user_id = ?
+                """, Long.class, userId);
+        return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue + derivativeAssetValue,
                 positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash,
-                missionRewardCash, loanBalance,adminRuntime==null?0:adminRuntime.externalCash(userId));
+                missionRewardCash, loanBalance,adminRuntime==null?0:adminRuntime.externalCash(userId),
+                derivativeAssetValue, derivativeRealized);
     }
 
     private long currentPrice(String code) {

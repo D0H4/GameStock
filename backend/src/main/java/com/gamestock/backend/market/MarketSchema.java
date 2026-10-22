@@ -43,6 +43,7 @@ final class MarketSchema {
         priceMetrics.ensureTables();
         ensureOrderTimestampPrecision();
         ensureNewsPriceState();
+        DerivativeService.ensureTables(jdbc);
         AdminSchema.ensure(jdbc);
     }
 

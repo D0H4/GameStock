@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 export type Route =
   | { name: "home" }
   | { name: "market"; ticker: string | null }
+  | { name: "derivatives"; tab: DerivativesTab }
   | { name: "trade"; ticker: string | null }
   | { name: "news"; id: number | null }
   | { name: "ranking" }
@@ -15,6 +16,9 @@ export type Route =
   | { name: "admin"; section: AdminSection }
   | { name: "login"; method: LoginMethod }
   | { name: "notFound" };
+
+export type DerivativesTab = "etf" | "futures" | "options";
+const DERIVATIVE_TABS: readonly DerivativesTab[] = ["etf", "futures", "options"];
 
 export type AdminSection = "users" | "orders" | "notices" | "promos" | "audit";
 const ADMIN_SECTIONS: readonly AdminSection[] = ["users", "orders", "notices", "promos", "audit"];
@@ -30,6 +34,10 @@ function parse(pathname: string): Route {
     return { name: "login", method: method === "google" || method === "email" || method === "register" || method === "reset" ? method : "choose" };
   }
   if (parts[0] === "market") return { name: "market", ticker: parts[1] ? parts[1].toUpperCase() : null };
+  if (parts[0] === "derivatives") {
+    const tab = DERIVATIVE_TABS.find((name) => name === parts[1]) ?? "etf";
+    return { name: "derivatives", tab };
+  }
   if (parts[0] === "trade") return { name: "trade", ticker: parts[1] ? parts[1].toUpperCase() : null };
   if (parts[0] === "news") {
     const id = Number(parts[1]);

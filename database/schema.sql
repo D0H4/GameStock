@@ -324,3 +324,48 @@ CREATE TABLE weekly_return_snapshots (
   PRIMARY KEY (week_start, user_id),
   CONSTRAINT fk_weekly_snapshot_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+-- 모의 ETF·선물·옵션 포지션과 거래 원장. 현금은 기존 users.cash를 공유한다.
+CREATE TABLE derivative_positions (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  kind VARCHAR(12) NOT NULL,
+  symbol VARCHAR(40) NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  side VARCHAR(8) NOT NULL,
+  quantity INT NOT NULL,
+  entry_price DOUBLE NOT NULL,
+  entry_notional BIGINT NOT NULL,
+  margin BIGINT NOT NULL DEFAULT 0,
+  leverage INT NOT NULL DEFAULT 1,
+  option_type VARCHAR(4) NULL,
+  strike DOUBLE NULL,
+  expiry_at TIMESTAMP(3) NULL,
+  status VARCHAR(12) NOT NULL DEFAULT 'OPEN',
+  mark_price DOUBLE NOT NULL DEFAULT 0,
+  mark_value BIGINT NOT NULL DEFAULT 0,
+  realized_pnl BIGINT NOT NULL DEFAULT 0,
+  opened_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  closed_at TIMESTAMP(3) NULL,
+  close_reason VARCHAR(16) NULL,
+  INDEX ix_derivative_user (user_id, status),
+  INDEX ix_derivative_expiry (status, expiry_at),
+  CONSTRAINT fk_derivative_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE derivative_trades (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  position_id BIGINT NOT NULL,
+  action VARCHAR(12) NOT NULL,
+  kind VARCHAR(12) NOT NULL,
+  symbol VARCHAR(40) NOT NULL,
+  side VARCHAR(8) NOT NULL,
+  quantity INT NOT NULL,
+  price DOUBLE NOT NULL,
+  cash_flow BIGINT NOT NULL,
+  fee BIGINT NOT NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  INDEX ix_derivative_trades_user (user_id, id),
+  CONSTRAINT fk_derivative_trade_user FOREIGN KEY (user_id) REFERENCES users(id)
+);

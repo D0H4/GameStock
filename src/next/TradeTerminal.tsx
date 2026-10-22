@@ -20,6 +20,7 @@ import { NxOrderTicket } from "./trade/NxOrderTicket";
 const NAV = [
   { label: "홈", to: "/", match: "home" },
   { label: "시장", to: "/market", match: "market" },
+  { label: "ETF·파생", to: "/derivatives", match: "derivatives" },
   { label: "뉴스", to: "/news", match: "news" },
   { label: "랭킹", to: "/ranking", match: "ranking" },
 ] as const;

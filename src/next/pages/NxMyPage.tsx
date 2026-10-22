@@ -19,10 +19,13 @@ const tone = (value: number) => (value > 0 ? "is-up" : value < 0 ? "is-down" : "
 const name = (code: string) => LISTING_BY_CODE[code]?.name ?? code;
 
 /** 자산 구성: 현금과 종목별 평가액이 순자산에서 차지하는 몫. 화려함이 곧 정보인 자리. */
-function Allocation({ cash, rows, total }: { cash: number; rows: Array<{ code: string; value: number }>; total: number }) {
+function Allocation({ cash, derivative, rows, total }: { cash: number; derivative: number; rows: Array<{ code: string; value: number }>; total: number }) {
   if (total <= 0) return null;
-  const parts = [...rows.map((row) => ({ key: row.code, label: name(row.code), value: row.value })), { key: "cash", label: "현금", value: cash }]
-    .filter((part) => part.value > 0);
+  const parts = [
+    ...rows.map((row) => ({ key: row.code, label: name(row.code), value: row.value })),
+    { key: "cash", label: "현금", value: cash },
+    { key: "derivative", label: "ETF·파생", value: derivative },
+  ].filter((part) => part.value > 0);
   return (
     <figure className="nx-alloc">
       <div className="nx-alloc-bar" role="img" aria-label={parts.map((part) => `${part.label} ${Math.round((part.value / total) * 100)}%`).join(", ")}>
@@ -96,12 +99,13 @@ export function NxMyPage() {
         <dl className="nx-figures">
           <div><dt>현금</dt><dd className="nx-num">{won(money.cash)}</dd></div>
           <div><dt>주식 평가액</dt><dd className="nx-num">{won(money.stockValue)}</dd></div>
+          <div><dt>ETF·파생</dt><dd className="nx-num">{won(money.derivativeValue)} <Link to="/derivatives" className="nx-link-button">관리</Link></dd></div>
           <div><dt>실현 손익</dt><dd className={`nx-num ${tone(snapshot.portfolio.realized)}`}>{signedWon(snapshot.portfolio.realized)}</dd></div>
           {money.loan > 0 && <div><dt>대출 잔액</dt><dd className="nx-num is-up">−{won(money.loan)} <Link to="/loan" className="nx-link-button">관리</Link></dd></div>}
         </dl>
       </section>
 
-      <Allocation cash={money.cash} rows={rows.map((row) => ({ code: row.listing.code, value: row.value }))} total={money.total} />
+      <Allocation cash={money.cash} derivative={money.derivativeValue} rows={rows.map((row) => ({ code: row.listing.code, value: row.value }))} total={money.total} />
 
       {message && <p className="nx-msg" role="status">{message}</p>}
 

@@ -24,6 +24,7 @@ import { NxRankingPage } from "./next/pages/NxRankingPage";
 import { NxSettingsPage } from "./next/pages/NxSettingsPage";
 import { NxTitlesPage } from "./next/pages/NxTitlesPage";
 import { NxAttendancePage } from "./next/pages/NxAttendancePage";
+import { DerivativesPage } from "./pages/DerivativesPage";
 import type { Route } from "./router";
 
 const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "attendance", "charge", "loan", "admin"]);
@@ -36,6 +37,10 @@ function titleFor(route: Route): string {
   if (route.name === "trade") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
     return name ? `${name} · 거래 · 슈엔증권` : "거래 · 슈엔증권";
+  }
+  if (route.name === "derivatives") {
+    const label = route.tab === "etf" ? "ETF" : route.tab === "futures" ? "선물" : "옵션";
+    return `${label} · 슈엔증권`;
   }
   if (route.name === "news") return "뉴스 · 슈엔증권";
   if (route.name === "ranking") return "투자 랭킹 · 슈엔증권";
@@ -94,6 +99,7 @@ export default function App() {
         {route.name === "home" && <HomeBoard />}
         {terminal && <TradeTerminal ticker={route.name === "trade" || route.name === "market" ? route.ticker : null} />}
         {route.name === "market" && !terminal && <MarketBoard />}
+        {route.name === "derivatives" && <DerivativesPage tab={route.tab} />}
         {route.name === "news" && <NxNewsPage id={route.id} />}
         {route.name === "ranking" && <NxRankingPage />}
         {PRIVATE_ROUTES.has(route.name) && !auth.user && (auth.ready ? (
