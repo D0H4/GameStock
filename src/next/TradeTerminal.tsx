@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useId, useState, type CSSProperties } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
@@ -9,7 +9,7 @@ import { RestrictionBadge } from "../components/RestrictionBadge";
 import { SeriesChart } from "../components/SeriesChart";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { indexValue, rate, shares, since, won } from "../market/format";
-import { newsEffect, sessionRate, strengthRatio } from "../market/selectors";
+import { marketOpinion, newsEffect, sessionRate, strengthRatio, type OpinionTone } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
 import { MARKET_PATH, NEWS_PATH, TRADE_PATH, type Route } from "../router";
@@ -192,7 +192,7 @@ function StockHead({ code, quote }: { code: string; quote: Quote }) {
       </div>
       <dl className="nx-stats">
         <div><dt>전일</dt><dd className="nx-num">{won(quote.prevClose)}</dd></div>
-        <div><dt>시가</dt><dd className="nx-num">{won(quote.open)}</dd></div>
+        <OpinionStat quote={quote} />
         <div><dt>고가</dt><dd className="nx-num is-up">{won(quote.high)}</dd></div>
         <div><dt>저가</dt><dd className="nx-num is-down">{won(quote.low)}</dd></div>
         <div><dt>상한가</dt><dd className="nx-num">{won(quote.limitUp)}</dd></div>
@@ -200,6 +200,46 @@ function StockHead({ code, quote }: { code: string; quote: Quote }) {
         <div><dt>거래량</dt><dd className="nx-num">{shares(quote.volume)}</dd></div>
       </dl>
     </header>
+  );
+}
+
+const OPINION_LABEL: Record<OpinionTone, string> = {
+  buy: "매수 우위",
+  sell: "매도 우위",
+  neutral: "중립",
+  caution: "변동성 주의",
+};
+
+const signalScore = (score: number) => (score > 0 ? "+1" : score < 0 ? "-1" : "0");
+
+/** 시세 칸의 시장 의견. 누르거나 마우스를 올리면 어떤 신호로 나온 값인지 펼친다. */
+function OpinionStat({ quote }: { quote: Quote }) {
+  const snapshot = useMarket();
+  const id = useId();
+  const opinion = marketOpinion(quote, snapshot.news, snapshot.updatedAt || Date.now());
+  const goodNews = (opinion.newsCount + opinion.newsBalance) / 2;
+  const badNews = opinion.newsCount - goodNews;
+  return (
+    <div className="nx-opinion">
+      <dt>의견</dt>
+      <dd>
+        <button type="button" className={`nx-opinion-value is-${opinion.tone}`} aria-describedby={id}
+          onKeyDown={(event) => { if (event.key === "Escape") event.currentTarget.blur(); }}>
+          {OPINION_LABEL[opinion.tone]}
+        </button>
+        <div className="nx-opinion-panel" id={id} role="tooltip">
+          {opinion.caution && <p className="nx-opinion-caution">{opinion.caution}: 가격이 크게 흔들릴 수 있어 의견을 내지 않아요.</p>}
+          <table>
+            <tbody>
+              <tr><th scope="row">최근 체결 <span className="nx-num">{opinion.printCount}</span>건</th><td>매수 <span className="nx-num">{Math.round(opinion.buyShare * 100)}%</span></td><td className="nx-num">{signalScore(opinion.strengthScore)}</td></tr>
+              <tr><th scope="row">시가 대비</th><td className="nx-num">{rate(opinion.fromOpen)}</td><td className="nx-num">{signalScore(opinion.openScore)}</td></tr>
+              <tr><th scope="row">24시간 뉴스</th><td>호재 <span className="nx-num">{goodNews}</span> · 악재 <span className="nx-num">{badNews}</span></td><td className="nx-num">{signalScore(opinion.newsScore)}</td></tr>
+            </tbody>
+          </table>
+          <p className="nx-opinion-rule">합이 +2 이상이면 매수 우위, -2 이하면 매도 우위예요. 지금 거래 흐름을 요약한 값이고, 앞으로의 가격을 알려 주지는 않아요.</p>
+        </div>
+      </dd>
+    </div>
   );
 }
 
@@ -308,7 +348,7 @@ function Book({ quote, onPriceSelect }: { quote: Quote; onPriceSelect: (price: n
     <section className="nx-panel nx-book" aria-labelledby="nx-book-title">
       <header className="nx-panel-head">
         <h2 id="nx-book-title" className="nx-panel-title">호가 · 체결</h2>
-        <span className="nx-muted">체결 강도 <span className="nx-num">{Math.round(strength * 100)}%</span></span>
+        <span className="nx-muted" title={`최근 체결 ${quote.prints.length}건 기준`}>체결 강도 <span className="nx-num">{strength === null ? "-" : `${Math.round(strength * 100)}%`}</span></span>
       </header>
       <div className="nx-ladder" role="table" aria-label="매도 5단계, 현재가, 매수 5단계">
         <Highway quote={quote} />

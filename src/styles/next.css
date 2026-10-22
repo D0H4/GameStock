@@ -426,9 +426,49 @@ html[data-nx] .restriction-badge {
 
 /* 두 줄로 세워 전일·시가, 고가·저가, 상한가·하한가가 늘 위아래 짝으로 붙어 있게 한다. */
 .nx-stats { display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: max-content; gap: 6px 28px; margin: 12px 0 0; }
-.nx-stats div { display: flex; gap: 6px; align-items: baseline; }
+.nx-stats > div { display: flex; gap: 6px; align-items: baseline; }
 .nx-stats dt { color: var(--ink-muted); font-size: 12px; }
 .nx-stats dd { margin: 0; font-size: 13px; }
+/* 시장 의견: 값은 누를 수 있는 글자이고, 근거는 그 아래로 겹쳐 뜨는 작은 상자에 둔다. */
+.nx-opinion { position: relative; }
+.nx-opinion-value {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.nx-opinion-value.is-buy { color: var(--up); }
+.nx-opinion-value.is-sell { color: var(--down); }
+.nx-opinion-value.is-caution { color: var(--amber-deep); }
+.nx-opinion-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-raised);
+  /* 아래 차트 위에 겹쳐 뜨는 상자라는 걸 그림자로만 구분한다. */
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.nx-opinion:hover .nx-opinion-panel,
+.nx-opinion:focus-within .nx-opinion-panel { display: block; }
+.nx-opinion-panel table { width: 100%; border-collapse: collapse; }
+.nx-opinion-panel th { padding: 3px 0; color: var(--ink-muted); font-weight: 400; text-align: left; }
+.nx-opinion-panel td { padding: 3px 0 3px 12px; text-align: right; white-space: nowrap; }
+.nx-opinion-caution { margin: 0 0 8px; color: var(--amber-deep); }
+.nx-opinion-rule { margin: 8px 0 0; color: var(--ink-muted); }
 
 .nx-chart { flex: 1; min-height: 320px; }
 
@@ -687,6 +727,10 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 @media (max-width: 520px) {
   /* 휴대폰에서는 네 열이 들어가지 않아 짝을 한 줄에 나란히 둔다. */
   .nx-stats { grid-template-rows: none; grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 의견은 오른쪽 열에 오니 상자를 오른쪽 끝에 맞춰 화면 밖으로 나가지 않게 한다. */
+  .nx-opinion-panel { right: 0; left: auto; }
+  /* 손가락으로 누를 영역만 44px로 넓히고, 음수 여백으로 줄 높이는 그대로 둔다. */
+  .nx-opinion-value { min-width: 44px; min-height: 44px; margin: -12px -11px; padding: 0 11px; }
   .nx-nav-link { padding: 0 8px; font-size: 14px; }
   .nx-watch-toggle { padding: 0 10px; }
   .nx-ladder { grid-template-columns: 84px minmax(0, 1fr); }
