@@ -55,4 +55,5 @@ jobs:
       - name: Deploy Firebase Hosting
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/firebase-service-account.json
-        run: npx --yes firebase-tools@latest deploy --only hosting --project gamestock-20994
+        # 15.34.1부터 배포 전에 Service Usage API 권한을 따로 확인해, 이 서비스 계정으로는 403이 난다.
+        run: npx --yes firebase-tools@15.34.0 deploy --only hosting --project gamestock-20994
