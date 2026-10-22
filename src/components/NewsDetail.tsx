@@ -88,7 +88,7 @@ export function hostOf(url: string): string {
   }
 }
 
-/** 속보 오른쪽 단. 고른 소식의 원문과 발행 이후 시세 반영을 보여 준다. */
+/** 뉴스 오른쪽 단. 고른 소식의 원문과 발행 이후 시세 반영을 보여 준다. */
 export function NewsDetail({ item }: Props) {
   const snapshot = useMarket();
   const api = useMarketApi();

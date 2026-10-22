@@ -1,5 +1,5 @@
 /*
- * 새 화면(?ui=next)의 화면별 배치: 속보, 랭킹, 내 계좌, 대출, 충전, 칭호, 설정, 로그인, 관리자.
+ * 새 화면(?ui=next)의 화면별 배치: 뉴스, 랭킹, 내 계좌, 대출, 충전, 칭호, 설정, 로그인, 관리자.
  * 부품은 next-kit.css, 색과 규칙은 DESIGN.md(판정선 체계)를 따른다.
  */
 
@@ -19,7 +19,7 @@
 
 .nx-grid-table small { color: var(--ink-muted); font-size: 11px; }
 
-/* ───────── 속보 ───────── */
+/* ───────── 뉴스 ───────── */
 
 .nx-news-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 /* 건수는 버튼 글자색을 그대로 따른다. 더 흐린 색은 대비 기준(4.5:1)을 넘지 못했다. */
@@ -257,11 +257,12 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 button.nx-title { cursor: pointer; }
 button.nx-title:hover:not(:disabled) { background: var(--nx-tint); }
 .nx-title.is-equipped { border-color: var(--brand); background: var(--brand-wash); }
-.nx-title.is-locked { color: var(--ink-muted); }
+/* 미획득 칭호는 이름과 자물쇠를 옅게 눌러 획득한 칭호와 한눈에 갈린다. 조건 글은 읽어야 하니 그대로 둔다. */
+.nx-title.is-locked { color: var(--nx-locked-ink); }
 .nx-title-name { font-size: 16px; }
 .nx-title-crown { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--amber-wash); color: var(--amber-deep); font-size: 11px; }
 .nx-title-cond { color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
-.nx-title.is-locked .nx-title-cond { color: var(--ink-muted); }
+.nx-title.is-locked .nx-title-state { color: var(--nx-locked-ink); }
 .nx-title-state { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); font-size: 12px; }
 .nx-title.is-equipped .nx-title-state { color: var(--ink); }
 .nx-title-state svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; }

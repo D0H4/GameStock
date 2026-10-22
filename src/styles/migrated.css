@@ -1,12 +1,12 @@
 /*
  * ssokdex-frontend 원본 UI 마이그레이션 스타일.
- * MarketHead · Spotlight · split(인기 종목/속보) · 내 보유 표 · 컴팩트 속보 목록.
+ * MarketHead · Spotlight · split(인기 종목/뉴스) · 내 보유 표 · 컴팩트 뉴스 목록.
  * 다른 페이지 스타일을 침범하지 않게 마지막에 import 하고,
  * 뉴스 컴팩트 목록은 .news-compact 스코프로만 적용한다.
  */
 
 @layer component {
-  /* 홈 2단: 인기 종목 | 속보 */
+  /* 홈 2단: 인기 종목 | 뉴스 */
   .split {
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -150,7 +150,7 @@
     min-width: 200px;
   }
 
-  /* 컴팩트 속보 목록: 아이콘 · 제목 · (이름 · 시간) · 등락 */
+  /* 컴팩트 뉴스 목록: 아이콘 · 제목 · (이름 · 시간) · 등락 */
   .news-compact .news-item {
     display: flex;
     align-items: center;

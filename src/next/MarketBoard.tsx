@@ -5,7 +5,7 @@ import { PriceCell } from "../components/PriceCell";
 import { apiFetch } from "../lib/api";
 import { useHeldOrder, useHoldWhilePointing } from "../lib/useHeldOrder";
 import { bucketPrices, type PricePoint } from "../market/dayHistory";
-import { compactWon, rate, shares, won } from "../market/format";
+import { rate, shares, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate, sortCodes, type SortDirection, type SortKey } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -20,11 +20,12 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "watch", label: "관심" },
 ];
 
-const COLUMNS: { key: SortKey; label: string; numeric: boolean }[] = [
+const COLUMNS: { key: SortKey; label: string; numeric: boolean; className?: string }[] = [
   { key: "name", label: "종목", numeric: false },
   { key: "price", label: "현재가", numeric: true },
   { key: "rate", label: "등락률", numeric: true },
   { key: "volume", label: "거래량", numeric: true },
+  { key: "open", label: "시가", numeric: true, className: "nx-col-open" },
 ];
 
 /** 종목별 10분 칸 가격. 키가 없으면 아직 불러오는 중, null이면 불러오지 못한 것. */
@@ -144,7 +145,7 @@ export function MarketBoard() {
                 {COLUMNS.map((column) => {
                   const active = sort.key === column.key;
                   return (
-                    <th key={column.key} scope="col" className={column.numeric ? "is-num" : undefined} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                    <th key={column.key} scope="col" className={[column.numeric && "is-num", column.className].filter(Boolean).join(" ") || undefined} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
                       <button type="button" className={`nx-sort${active ? " is-active" : ""}`} onClick={() => changeSort(column.key)}>
                         {column.label}
                         <svg viewBox="0 0 12 12" aria-hidden="true"><path d={active && sort.direction === "asc" ? "M3 7.5L6 4.5l3 3" : "M3 4.5L6 7.5l3-3"} /></svg>
@@ -152,7 +153,6 @@ export function MarketBoard() {
                     </th>
                   );
                 })}
-                <th scope="col" className="is-num nx-col-cap">시가총액</th>
                 <th scope="col" className="nx-col-range">오늘 흐름</th>
               </tr>
             </thead>
@@ -186,7 +186,7 @@ export function MarketBoard() {
                       {rate(ratio)}
                     </td>
                     <td className="is-num nx-num">{shares(quote.volume)}</td>
-                    <td className="is-num nx-num nx-col-cap">{quote.marketCap ? compactWon(quote.marketCap) : "-"}</td>
+                    <td className="is-num nx-num nx-col-open">{won(quote.open)}</td>
                     <td className="nx-col-range"><DayChart points={histories[code]} price={quote.price} prevClose={quote.prevClose} low={quote.low} high={quote.high} /></td>
                   </tr>
                 );

@@ -31,7 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 속보 본문 미리보기. 뉴스는 Google News RSS 링크로만 저장되므로
+ * 뉴스 본문 미리보기. 뉴스는 Google News RSS 링크로만 저장되므로
  * 링크를 언론사 원문 주소로 풀고, 원문 페이지에서 본문 첫 두 문단을 뽑는다.
  * 원문을 세 번 거쳐 읽느라 한 건에 수 초가 걸리므로, 수집된 소식은 백그라운드에서 미리 풀어
  * market_events.excerpt에 저장하고 소식 목록과 함께 내려 준다. 클릭 시 조회도 저장값을 먼저 쓴다.

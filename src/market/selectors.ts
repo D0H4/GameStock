@@ -117,7 +117,7 @@ export function newsEffect(priceAtPublish: number, quote: Quote | undefined): nu
   return (quote.price - priceAtPublish) / priceAtPublish;
 }
 
-export type SortKey = "name" | "price" | "rate" | "volume";
+export type SortKey = "name" | "price" | "rate" | "volume" | "open";
 export type SortDirection = "asc" | "desc";
 
 export function sortCodes(
@@ -136,6 +136,8 @@ export function sortCodes(
         return sessionRate(quote);
       case "volume":
         return quote.volume;
+      case "open":
+        return quote.open;
       case "name":
         return LISTING_BY_CODE[code]?.name ?? code;
     }

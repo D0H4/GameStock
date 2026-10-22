@@ -14,7 +14,7 @@ public class NewsExcerptController {
 
     public NewsExcerptController(NewsExcerptService excerpts) { this.excerpts = excerpts; }
 
-    /** 속보 본문 패널에 붙일 원문 첫 두 문단. 저장된 소식의 Google News 링크만 받는다. */
+    /** 뉴스 본문 패널에 붙일 원문 첫 두 문단. 저장된 소식의 Google News 링크만 받는다. */
     @GetMapping("/news/excerpt")
     public NewsExcerptService.Excerpt excerpt(@RequestParam String link) { return excerpts.excerpt(link); }
 

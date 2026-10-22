@@ -185,7 +185,7 @@ export function HomeBoard() {
         </section>
         <section className="nx-panel nx-home-news" aria-labelledby="nx-news-title">
           <header className="nx-panel-head">
-            <h2 id="nx-news-title" className="nx-panel-title">속보</h2>
+            <h2 id="nx-news-title" className="nx-panel-title">뉴스</h2>
             <Link to="/news" className="nx-more">전체 보기</Link>
           </header>
           <NewsFeed limit={6} />

@@ -34,7 +34,7 @@ Android와 iOS 모두 대상이다. 하나의 Expo(React Native) 앱이 같은 �
 ## Capabilities and Constraints
 
 - **앱 전환 계획:** 핵심 화면은 네이티브로 새로 만들고 나머지는 WebView로 남긴다.
-  - 1단계 네이티브 화면: **홈**(게임주 지수·내 자산, 많이 오른 게임, 거래량 상위 종목, 속보, 보유 종목).
+  - 1단계 네이티브 화면: **홈**(게임주 지수·내 자산, 많이 오른 게임, 거래량 상위 종목, 뉴스, 보유 종목).
   - 1단계 WebView 유지: 시장·종목 상세·주문, 거래, 뉴스, 랭킹, 마이페이지, 설정, 충전(미션), 대출, 칭호, 관리자, 로그인.
   - 네이티브 화면에서 WebView 화면으로 자연스럽게 오가는 연결이 필요하다.
 - 종목 15개(UMA, BA, GOV, ZZZ, GI, SR, AK, WH, CRK, VR, ES, KRP, OW, PW, TR). 카탈로그는 `src/market/universe.ts`, `StockCatalog.java`.

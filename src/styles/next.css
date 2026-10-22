@@ -22,6 +22,8 @@ html[data-nx][data-nx-theme="dark"] {
   --ink-faint: #6f6986;
   /* 그래프의 전일 종가·기준 점선. 패널 위 3:1 이상(3.4:1). */
   --nx-guide: #6f6986;
+  /* 아직 얻지 못한 칭호처럼 손댈 수 없는 항목의 이름. 패널 위 3.4:1. */
+  --nx-locked-ink: #6f6986;
   --canvas: var(--nx-stage);
   --paper: var(--nx-panel);
   --sunken: var(--nx-raised);
@@ -75,6 +77,8 @@ html[data-nx][data-nx-theme="light"] {
   --ink-faint: #a29db0;
   /* --ink-faint는 흰 바탕에서 2.6:1이라 기준 점선에는 한 단계 진하게 쓴다(3.6:1). */
   --nx-guide: #8a849a;
+  /* 다크와 같은 정도로 옅게 맞춘다. 흰 바탕 3.6:1. */
+  --nx-locked-ink: #8a849a;
   --canvas: var(--nx-stage);
   --paper: var(--nx-panel);
   --sunken: var(--nx-raised);
@@ -420,7 +424,8 @@ html[data-nx] .restriction-badge {
   font-size: 12px;
 }
 
-.nx-stats { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 12px 0 0; }
+/* 두 줄로 세워 전일·시가, 고가·저가, 상한가·하한가가 늘 위아래 짝으로 붙어 있게 한다. */
+.nx-stats { display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: max-content; gap: 6px 28px; margin: 12px 0 0; }
 .nx-stats div { display: flex; gap: 6px; align-items: baseline; }
 .nx-stats dt { color: var(--ink-muted); font-size: 12px; }
 .nx-stats dd { margin: 0; font-size: 13px; }
@@ -680,6 +685,8 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 }
 
 @media (max-width: 520px) {
+  /* 휴대폰에서는 네 열이 들어가지 않아 짝을 한 줄에 나란히 둔다. */
+  .nx-stats { grid-template-rows: none; grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .nx-nav-link { padding: 0 8px; font-size: 14px; }
   .nx-watch-toggle { padding: 0 10px; }
   .nx-ladder { grid-template-columns: 84px minmax(0, 1fr); }

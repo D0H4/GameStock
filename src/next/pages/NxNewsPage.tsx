@@ -178,7 +178,7 @@ export function NxNewsPage({ id }: { id: number | null }) {
     <div className={`nx-screen nx-news-screen${id !== null ? " has-article" : ""}`}>
       <header className="nx-screen-head">
         <div>
-          <h1 className="nx-page-title">속보</h1>
+          <h1 className="nx-page-title">뉴스</h1>
           <p className="nx-screen-sub">게임 뉴스가 나온 뒤 그 종목 가격이 얼마나 움직였는지 함께 보여 줘요.</p>
         </div>
         <div className="nx-news-filters">

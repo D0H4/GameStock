@@ -10,12 +10,12 @@ import { NEWS_PATH } from "../router";
 interface Props {
   limit?: number;
   emptyMessage?: string;
-  /** 속보 화면에서 상세 패널과 나란히 놓일 때의 좁은 카드. */
+  /** 뉴스 화면에서 상세 패널과 나란히 놓일 때의 좁은 카드. */
   compact?: boolean;
   selectedId?: number | null;
 }
 
-/** 소식 목록. 게임 아이콘, 제목, 발행 후 등락만 보여 준다. 제목을 누르면 속보 화면에서 본문을 연다. */
+/** 소식 목록. 게임 아이콘, 제목, 발행 후 등락만 보여 준다. 제목을 누르면 뉴스 화면에서 본문을 연다. */
 export function NewsFeed({ limit, emptyMessage, compact = false, selectedId = null }: Props) {
   const snapshot = useMarket();
   const items = limit ? snapshot.news.slice(0, limit) : snapshot.news;

@@ -36,7 +36,7 @@ function titleFor(route: Route): string {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
     return name ? `${name} · 거래 · 슈엔증권` : "거래 · 슈엔증권";
   }
-  if (route.name === "news") return "속보 · 슈엔증권";
+  if (route.name === "news") return "뉴스 · 슈엔증권";
   if (route.name === "ranking") return "투자 랭킹 · 슈엔증권";
   if (route.name === "mypage") return "내 계좌 · 슈엔증권";
   if (route.name === "settings") return "설정 · 슈엔증권";
@@ -70,7 +70,7 @@ export default function App() {
     if (previous.current === route) return;
     const withinNews = previous.current.name === "news" && route.name === "news";
     previous.current = route;
-    /* 속보 목록에서 기사를 고를 때는 목록 스크롤과 포커스를 그대로 둔다. */
+    /* 뉴스 목록에서 기사를 고를 때는 목록 스크롤과 포커스를 그대로 둔다. */
     if (withinNews) return;
     window.requestAnimationFrame(() => {
       if (document.documentElement.dataset.appShell !== "mobile") {

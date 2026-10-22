@@ -255,8 +255,8 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
   .nx-index-chart { height: 120px; }
   .nx-home-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heat" "movers" "news" "holdings"; }
   .nx-search { flex: 1; margin-left: 0; }
-  .nx-col-cap { display: none; }
-  /* 좁은 화면에서는 시가총액을 빼고 그래프만 줄여서 남긴다. */
+  .nx-col-open { display: none; }
+  /* 좁은 화면에서는 시가를 빼고 그래프만 줄여서 남긴다. */
   .nx-col-range { width: 88px; }
   .nx-day-chart { width: 72px; }
 }

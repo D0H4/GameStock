@@ -8,7 +8,7 @@ import { ProfileMenu } from "../components/ProfileMenu";
 import { RestrictionBadge } from "../components/RestrictionBadge";
 import { SeriesChart } from "../components/SeriesChart";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
-import { compactWon, indexValue, rate, shares, since, won } from "../market/format";
+import { indexValue, rate, shares, since, won } from "../market/format";
 import { newsEffect, sessionRate, strengthRatio } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -20,7 +20,7 @@ import { NxOrderTicket } from "./trade/NxOrderTicket";
 const NAV = [
   { label: "홈", to: "/", match: "home" },
   { label: "시장", to: "/market", match: "market" },
-  { label: "속보", to: "/news", match: "news" },
+  { label: "뉴스", to: "/news", match: "news" },
   { label: "랭킹", to: "/ranking", match: "ranking" },
 ] as const;
 
@@ -192,12 +192,12 @@ function StockHead({ code, quote }: { code: string; quote: Quote }) {
       </div>
       <dl className="nx-stats">
         <div><dt>전일</dt><dd className="nx-num">{won(quote.prevClose)}</dd></div>
+        <div><dt>시가</dt><dd className="nx-num">{won(quote.open)}</dd></div>
         <div><dt>고가</dt><dd className="nx-num is-up">{won(quote.high)}</dd></div>
         <div><dt>저가</dt><dd className="nx-num is-down">{won(quote.low)}</dd></div>
-        <div><dt>거래량</dt><dd className="nx-num">{shares(quote.volume)}</dd></div>
-        <div><dt>시가총액</dt><dd className="nx-num">{quote.marketCap ? compactWon(quote.marketCap) : "-"}</dd></div>
         <div><dt>상한가</dt><dd className="nx-num">{won(quote.limitUp)}</dd></div>
         <div><dt>하한가</dt><dd className="nx-num">{won(quote.limitDown)}</dd></div>
+        <div><dt>거래량</dt><dd className="nx-num">{shares(quote.volume)}</dd></div>
       </dl>
     </header>
   );
