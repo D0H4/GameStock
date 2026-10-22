@@ -41,6 +41,8 @@ market:
     target-per-symbol: ${GAMESTOCK_TARGET_FILLS_PER_SYMBOL:300}
     book-cache: true
     compact-ledger: true
+    # 봇 전용 상세 원장 payload. 운영 코드가 읽지 않으므로 기본 비활성화한다.
+    ledger-detail: ${GAMESTOCK_BOT_LEDGER_DETAIL:false}
     inline-liquidity: true
     # 배치마다 드는 고정 쿼리(영수증·잠금·revision)를 줄인다. 체결 수는 경과 시간만큼 쌓인
     # 예산으로 정해지므로 주기가 길어지면 배치 하나가 커질 뿐이다. 코드상 상한은 250ms다.

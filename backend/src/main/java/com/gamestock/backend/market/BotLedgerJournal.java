@@ -15,7 +15,9 @@ final class BotLedgerJournal {
     private static final int ORDER_CLEANUP_BATCH=5000;
     private static final int ORDER_CLEANUP_PASSES=4;
     private final JdbcTemplate db;
-    BotLedgerJournal(JdbcTemplate db){this.db=db;}
+    private final boolean detail;
+    BotLedgerJournal(JdbcTemplate db){this(db,true);}
+    BotLedgerJournal(JdbcTemplate db,boolean detail){this.db=db;this.detail=detail;}
     record Execution(long buyer,long seller,long buyOrder,long sellOrder,long makerOrder,long takerOrder,
                      int quantity,long price,long buyerFee,long sellerFee,String side,String type,
                      Holding buyerBefore,Holding sellerBefore) { }
@@ -78,7 +80,7 @@ final class BotLedgerJournal {
             var positions=book.changedHoldings.stream().filter(k->k.stock()==stock && book.accounts.get(k.user()).bot).map(k->new Position(k.user(),book.holdings.get(k))).toList();
             var executions=fills.stream().map(f->new Execution(f.buy().user,f.sell().user,f.buy().id,f.sell().id,f.maker().id,f.taker().id,f.quantity(),f.price(),f.buyerFee(),f.sellerFee(),f.taker().side,f.taker().type,f.buyerBefore(),f.sellerBefore())).toList();
             long lpFills=fills.stream().filter(f->book.accounts.get(f.buy().user).liquidityProvider||book.accounts.get(f.sell().user).liquidityProvider).count();
-            batches.add(new Object[]{stock,new Timestamp(now),fills.size(),lpFills,encode(new Batch(now,executions,accounts,positions,orders))});
+            if(detail)batches.add(new Object[]{stock,new Timestamp(now),fills.size(),lpFills,encode(new Batch(now,executions,accounts,positions,orders))});
             if(fills.isEmpty())continue;
             List<Print> prints=new ArrayList<>();
             for(int i=fills.size()-1;i>=0&&prints.size()<10;i--){Fill f=fills.get(i);prints.add(new Print(now,f.taker().side,f.quantity(),f.price(),f.taker().type));}
