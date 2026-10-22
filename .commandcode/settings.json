@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(mvn:*)",
+      "Shell(echo \"== remotes ==\"; git remote -v; echo; echo \"== admin-ish files in any remote ref ==\"; for ref in $(git for-each-ref --format='%(refname)' refs/remotes refs/heads); do hits=$(git ls-tree -r --name-only \"$ref\" 2>/dev/null | grep -iE 'admin|notice|announce' ); if [ -n \"$hits\" ]; then echo \"-- $ref --\"; echo \"$hits\"; fi; done; echo; echo \"== vite inputs / scripts ==\"; grep -nE 'input|rollup|pages|admin' vite.config.ts 2>/dev/null; echo \"--- package.json scripts ---\"; node -e \"console.log(JSON.stringify(require('./package.json').scripts,null,2))\" 2>/dev/null)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

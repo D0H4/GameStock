@@ -33,6 +33,8 @@ public class MarketSocketHandler extends TextWebSocketHandler {
     private final ThreadPoolExecutor senders=pool(4,128,"market-socket");
     private final ThreadPoolExecutor closers=pool(2,128,"market-socket-close");
     private volatile boolean stopped;
+    @org.springframework.beans.factory.annotation.Value("${gamestock.websocket.max-connections:2048}")
+    private int maxConnections=2048;
 
     private static final class Client {
         final WebSocketSession session;
@@ -58,7 +60,12 @@ public class MarketSocketHandler extends TextWebSocketHandler {
             try {flush();} catch(RuntimeException error){dirty.set(true);log.warn("Market broadcast refresh failed",error);}
         },0,250,TimeUnit.MILLISECONDS);
     }
-    @Override public void afterConnectionEstablished(WebSocketSession session) {
+    @Override public synchronized void afterConnectionEstablished(WebSocketSession session) {
+        session.setTextMessageSizeLimit(8192);
+        if(sessions.size()>=maxConnections) {
+            try{session.close(CloseStatus.POLICY_VIOLATION);}catch(IOException ignored){}
+            throw new IllegalArgumentException("WebSocket capacity reached");
+        }
         Client client=new Client(session);
         sessions.put(session.getId(),client);
         try {

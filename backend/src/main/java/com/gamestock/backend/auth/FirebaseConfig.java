@@ -1,6 +1,7 @@
 package com.gamestock.backend.auth;
 
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.AccessToken;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import jakarta.annotation.PostConstruct;
@@ -13,6 +14,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Date;
 
 @Component
 public class FirebaseConfig {
@@ -23,6 +25,8 @@ public class FirebaseConfig {
      */
     @Value("${FIREBASE_SERVICE_ACCOUNT_JSON:}") private String serviceAccountJsonOrPath;
     @Value("${FIREBASE_SERVICE_ACCOUNT_PATH:}") private String serviceAccountPath;
+    @Value("${FIREBASE_AUTH_EMULATOR_HOST:}") private String authEmulatorHost;
+    @Value("${FIREBASE_PROJECT_ID:local-development}") private String projectId;
 
     @PostConstruct public void initialize() throws Exception {
         if (!FirebaseApp.getApps().isEmpty()) return;
@@ -30,7 +34,17 @@ public class FirebaseConfig {
         String configured = !serviceAccountPath.isBlank()
                 ? serviceAccountPath.trim()
                 : serviceAccountJsonOrPath.trim();
-        if (configured.isBlank()) return;
+        if (configured.isBlank()) {
+            if (!authEmulatorHost.isBlank()) {
+                FirebaseApp.initializeApp(FirebaseOptions.builder()
+                        .setProjectId(projectId)
+                        .setCredentials(GoogleCredentials.create(new AccessToken(
+                                "local-firebase-emulator",
+                                new Date(System.currentTimeMillis() + 3_600_000))))
+                        .build());
+            }
+            return;
+        }
 
         try (InputStream input = openCredentials(configured)) {
             FirebaseApp.initializeApp(FirebaseOptions.builder().setCredentials(GoogleCredentials.fromStream(input)).build());

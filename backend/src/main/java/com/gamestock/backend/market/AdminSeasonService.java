@@ -68,9 +68,11 @@ public class AdminSeasonService {
         for(long user:users){
             var state=human(db,user);var holdings=db.queryForList("SELECT * FROM portfolios WHERE user_id=?",user);var orders=db.queryForList("SELECT * FROM orders WHERE user_id=? AND status='OPEN'",user);
             // Preserve the exact pre-reset state in the immutable audit before clearing assets.
+            var derivatives=db.queryForList("SELECT * FROM derivative_positions WHERE user_id=? AND status='OPEN'",user);
             var attendance=db.queryForList("SELECT * FROM attendance_rewards WHERE user_id=?",user);var missions=db.queryForList("SELECT * FROM mission_rewards WHERE user_id=?",user);
-            support.audit(actor,"SEASON_USER_RESET",id+":"+user,why,Map.of("user",state,"holdings",holdings,"orders",orders,"attendance",attendance,"missions",missions),Map.of("cash",1000000,"loanBalance",0));
+            support.audit(actor,"SEASON_USER_RESET",id+":"+user,why,Map.of("user",state,"holdings",holdings,"orders",orders,"attendance",attendance,"missions",missions,"derivatives",derivatives),Map.of("cash",1000000,"loanBalance",0));
             db.update("UPDATE orders SET status='CANCELLED',remaining_quantity=0,reserved_cash=0,reserved_quantity=0 WHERE user_id=? AND status='OPEN'",user);
+            db.update("UPDATE derivative_positions SET status='RESET',quantity=0,margin=0,mark_value=0,closed_at=CURRENT_TIMESTAMP(3),close_reason='SEASON_RESET' WHERE user_id=? AND status='OPEN'",user);
             db.update("DELETE FROM portfolios WHERE user_id=?",user);
             db.update("DELETE FROM attendance_rewards WHERE user_id=?",user);db.update("DELETE FROM mission_rewards WHERE user_id=?",user);
             db.update("INSERT INTO admin_cash_epochs(user_id,last_adjustment_id) SELECT ?,COALESCE(MAX(id),0) FROM admin_cash_adjustments WHERE user_id=? ON DUPLICATE KEY UPDATE last_adjustment_id=VALUES(last_adjustment_id)",user,user);
@@ -80,11 +82,6 @@ public class AdminSeasonService {
         support.audit(actor,"SEASON_RESET",id,why,before,Map.of("users",users.size(),"status","RESET"));
     }
     private Map<String,Object> season(long id,String status){var rows=db.queryForList("SELECT * FROM admin_seasons WHERE id=? AND status=? FOR UPDATE",id,status);if(rows.isEmpty())throw new IllegalArgumentException("시즌이 없거나 현재 상태에서 실행할 수 없습니다.");return rows.get(0);}
-    private List<Map<String,Object>> assets(){return db.queryForList("""
-        SELECT u.id,u.nickname,u.cash-u.loan_balance
-          +COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id=u.id AND o.status='OPEN'),0)
-          +COALESCE((SELECT SUM(st.gross_amount-st.seller_fee) FROM settlements st WHERE st.seller_id=u.id AND st.status='PENDING'),0)
-          +COALESCE((SELECT SUM(p.quantity*s.current_price) FROM portfolios p JOIN stocks s ON s.id=p.stock_id WHERE p.user_id=u.id),0) AS asset
-        FROM users u WHERE
-        """+HUMAN+" ORDER BY u.id");}
+    private List<Map<String,Object>> assets(){return db.queryForList("SELECT u.id,u.nickname,("
+        +AccountValuation.GROSS_ASSET+"-u.loan_balance) AS asset FROM users u WHERE "+HUMAN+" ORDER BY u.id");}
 }

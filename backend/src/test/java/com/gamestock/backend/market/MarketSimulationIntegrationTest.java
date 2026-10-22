@@ -54,6 +54,33 @@ class MarketSimulationIntegrationTest {
     private long id(String username){return jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,username);}
     private void limit(long user,String side,int quantity,long price){market.order(new OrderRequest("UMA",side,quantity,"LIMIT",price),user);}
 
+    @Test @Order(1) void consensusCheckpointSurvivesEngineRecreationAndRollsBackWithTheBatch() {
+        Object oldClock=ReflectionTestUtils.getField(market,"clock");
+        Object oldCache=ReflectionTestUtils.getField(market,"bookCacheEnabled");
+        long now=System.currentTimeMillis();
+        try {
+            ReflectionTestUtils.setField(market,"bookCacheEnabled",false);
+            ReflectionTestUtils.invokeMethod(market,"initializeActivityEngine");
+            ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(java.time.Instant.ofEpochMilli(now),java.time.ZoneOffset.UTC));
+            jdbc.update("INSERT INTO market_consensus_state(stock_id,value,observed_at,random_state) VALUES(?,11500,?,1234) ON DUPLICATE KEY UPDATE value=11500,observed_at=VALUES(observed_at),random_state=1234",stock,now);
+            market.participantBatch(0);
+            assertEquals(11500,jdbc.queryForObject("SELECT value FROM market_consensus_state WHERE stock_id=?",Double.class,stock),.000001);
+            Object point=transaction.createSavepoint();
+            ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(java.time.Instant.ofEpochMilli(now+1000),java.time.ZoneOffset.UTC));
+            market.participantBatch(0);
+            var expected=jdbc.queryForMap("SELECT value,observed_at,random_state FROM market_consensus_state WHERE stock_id=?",stock);
+            transaction.rollbackToSavepoint(point);
+            assertEquals(11500,jdbc.queryForObject("SELECT value FROM market_consensus_state WHERE stock_id=?",Double.class,stock),.000001);
+            ReflectionTestUtils.invokeMethod(market,"initializeActivityEngine");
+            market.participantBatch(0);
+            assertEquals(expected,jdbc.queryForMap("SELECT value,observed_at,random_state FROM market_consensus_state WHERE stock_id=?",stock));
+        } finally {
+            ReflectionTestUtils.setField(market,"clock",oldClock);
+            ReflectionTestUtils.setField(market,"bookCacheEnabled",oldCache);
+            ReflectionTestUtils.invokeMethod(market,"initializeActivityEngine");
+        }
+    }
+
     @Test @Order(1) void refillCountsPassiveHumanHoldingsOutsideTheLoadedAccounts() {
         long lp=id("liquidity_provider");
         jdbc.update("UPDATE portfolios SET quantity=0,settled_quantity=0 WHERE user_id=? AND stock_id=?",lp,stock);
@@ -87,7 +114,8 @@ class MarketSimulationIntegrationTest {
         var metrics=new PriceMetricService(jdbc).read(stock,10010,now+10,0);
         assertEquals(7,metrics.volume());assertEquals((50000+20020)/7.0,metrics.vwap(),.0001);
         assertEquals(2,market.publicTrades("UMA").size());assertFalse(market.priceHistory("UMA","5m").isEmpty());
-        assertTrue(market.chartHistory("UMA","1h").stream().anyMatch(c->c.highPrice()==10010));
+        assertTrue(market.chartHistory("UMA","1h").stream().anyMatch(c->c.highPrice()==10010
+                && java.time.Instant.parse(c.updatedAt()).toEpochMilli()==now));
         assertEquals(7,market.priceDrivers("UMA").botBuyVolume());
         // A user can consume a surviving compact-origin quote through the unchanged API.
         long human=jdbc.queryForObject("SELECT id FROM users WHERE username='demo'",Long.class);
@@ -114,7 +142,8 @@ class MarketSimulationIntegrationTest {
         var repository=new BatchMarketRepository(jdbc,new BotLedgerJournal(jdbc));var book=repository.load(now,Set.of(stock),Set.of(buyer,lp));
         book.submit(lp,stock,"SELL","LIMIT",2,10000,now,60000);book.submit(buyer,stock,"BUY","MARKET",2,0,now,0);repository.persist(book,now);
         MarketMakerEngine.RiskBook after=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","UMA",lp);
-        assertEquals(before.cashBudget()+20000,after.cashBudget());
+        assertEquals(1,book.fills.stream().mapToInt(BatchOrderBook.Fill::quantity).sum(),"The protected LP share remains for human orders");
+        assertEquals(before.cashBudget()+10000,after.cashBudget());
         long fees=jdbc.queryForObject("SELECT SUM(fees) FROM bot_ledger_totals",Long.class);
         assertEquals(0,fees,"Internal fills do not drain simulation cash");
         assertEquals(beforeCash,jdbc.queryForObject("SELECT SUM(cash) FROM users",Long.class)+fees);
@@ -457,14 +486,12 @@ class MarketSimulationIntegrationTest {
         String allocationQuery="SELECT stock_id,opening_cash,baseline_trade_id,target_inventory,max_inventory FROM lp_risk_books ORDER BY stock_id";
         var allocations=jdbc.queryForList(allocationQuery);
         long riskBefore=jdbc.queryForObject("SELECT risk_limit FROM lp_risk_books WHERE stock_id=?",Long.class,stock);
-        long repricedRisk=jdbc.queryForObject("SELECT current_price FROM stocks WHERE id=?",Long.class,stock)
-                *StockMarketProfile.initialLiquidityInventory("UMA",100)*4L;
         manager.commit(transaction); transaction=null;
         // Run the actual startup path a second time, including idempotent schema upgrades.
         market.initializeData();
         assertEquals(cashBefore,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,lp));
         assertEquals(StockMarketProfile.initialLiquidityInventory("UMA",100)-5,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,lp,stock));
         assertEquals(allocations,jdbc.queryForList(allocationQuery));
-        assertEquals(Math.max(riskBefore,repricedRisk),jdbc.queryForObject("SELECT risk_limit FROM lp_risk_books WHERE stock_id=?",Long.class,stock));
+        assertEquals(riskBefore,jdbc.queryForObject("SELECT risk_limit FROM lp_risk_books WHERE stock_id=?",Long.class,stock));
     }
 }

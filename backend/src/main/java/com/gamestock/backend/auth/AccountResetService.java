@@ -42,6 +42,9 @@ public class AccountResetService {
         settleUserPendingPayments(userId);
         cancelOpenOrders(userId);
         jdbc.update("DELETE FROM portfolios WHERE user_id = ?", userId);
+        // 열린 파생 포지션을 남기면 초기 자금과 별개로 평가액이 살아남는다.
+        jdbc.update("DELETE FROM derivative_positions WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM derivative_trades WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM attendance_rewards WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM mission_rewards WHERE user_id = ?", userId);
         jdbc.update("INSERT INTO admin_cash_epochs(user_id,last_adjustment_id) SELECT ?,COALESCE(MAX(id),0) FROM admin_cash_adjustments WHERE user_id=? ON DUPLICATE KEY UPDATE last_adjustment_id=VALUES(last_adjustment_id)",userId,userId);

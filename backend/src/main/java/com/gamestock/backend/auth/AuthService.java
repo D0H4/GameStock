@@ -18,7 +18,6 @@ import java.time.ZoneId;
 import java.sql.Timestamp;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
@@ -29,7 +28,6 @@ public class AuthService {
     private static final ZoneId ATTENDANCE_ZONE = ZoneId.of("Asia/Seoul");
     private final JdbcTemplate jdbc;
     private final Clock clock;
-    private final Map<String, PendingMobileCode> mobileCodes = new ConcurrentHashMap<>();
     /**
      * The administrator is still authenticated by Firebase. These optional
      * allowlists only decide which verified Firebase identity receives ADMIN on
@@ -46,6 +44,32 @@ public class AuthService {
     AuthService(JdbcTemplate jdbc, Clock clock) {
         this.jdbc = jdbc;
         this.clock = clock;
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void initializeMobileCodes() {
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS mobile_login_codes (
+                    code_hash CHAR(64) PRIMARY KEY,
+                    custom_token TEXT NOT NULL,
+                    expires_at TIMESTAMP(3) NOT NULL,
+                    INDEX ix_mobile_code_expiry (expires_at)
+                )
+                """);
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60_000)
+    public void removeExpiredMobileCodes() {
+        jdbc.update("DELETE FROM mobile_login_codes WHERE expires_at <= ?", Timestamp.from(clock.instant()));
+    }
+
+    private static String codeHash(String code) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(code.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
     /**
@@ -78,24 +102,35 @@ public class AuthService {
         try {
             String customToken = FirebaseAuth.getInstance().createCustomToken(token.getUid());
             String code = UUID.randomUUID().toString().replace("-", "");
-            Instant expiresAt = Instant.now().plusSeconds(MOBILE_CODE_TTL_SECONDS);
-            mobileCodes.put(code, new PendingMobileCode(customToken, expiresAt));
-            mobileCodes.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(Instant.now()));
+            Instant expiresAt = clock.instant().plusSeconds(MOBILE_CODE_TTL_SECONDS);
+            jdbc.update("DELETE FROM mobile_login_codes WHERE expires_at <= ?", Timestamp.from(clock.instant()));
+            jdbc.update("INSERT INTO mobile_login_codes (code_hash, custom_token, expires_at) VALUES (?, ?, ?)",
+                    codeHash(code), customToken, Timestamp.from(expiresAt));
             return new MobileCode(code, expiresAt.toString());
         } catch (Exception error) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "모바일 로그인 코드를 만들지 못했습니다.");
         }
     }
 
+    @Transactional
     public MobileToken exchangeMobileCode(MobileCodeExchange request) {
         if (request == null || request.code() == null || request.code().isBlank())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "로그인 인증 코드가 필요합니다.");
-        PendingMobileCode pending = mobileCodes.remove(request.code().trim());
-        if (pending == null || pending.expiresAt().isBefore(Instant.now()))
+        String code = request.code().trim();
+        if (!code.matches("[a-f0-9]{32}"))
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "유효하지 않은 로그인 코드입니다.");
+        String hash = codeHash(code);
+        PendingMobileCode pending = jdbc.query(
+                "SELECT custom_token, expires_at FROM mobile_login_codes WHERE code_hash = ? FOR UPDATE",
+                (rs, row) -> new PendingMobileCode(rs.getString("custom_token"), rs.getTimestamp("expires_at").toInstant()), hash)
+                .stream().findFirst().orElse(null);
+        if (pending == null || !pending.expiresAt().isAfter(clock.instant()))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "만료되었거나 이미 사용한 로그인 코드입니다.");
+        jdbc.update("DELETE FROM mobile_login_codes WHERE code_hash = ?", hash);
         return new MobileToken(pending.customToken());
     }
 
+    @Transactional
     public LoginUser requireAdmin(String authorization) {
         LoginUser user = requireUser(authorization);
         if (!"ADMIN".equalsIgnoreCase(user.role()))
@@ -107,7 +142,7 @@ public class AuthService {
         if (authorization == null || !authorization.startsWith("Bearer "))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
         try {
-            return FirebaseAuth.getInstance().verifyIdToken(authorization.substring(7));
+            return FirebaseAuth.getInstance().verifyIdToken(authorization.substring(7), true);
         } catch (Exception error) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "유효하지 않거나 만료된 로그인입니다.");
         }
@@ -268,9 +303,8 @@ public class AuthService {
             String nickname = String.format("슈엔단%04d", ThreadLocalRandom.current().nextInt(10_000));
             if (!nicknameExists(nickname)) return nickname;
         }
-        // 4자리 조합이 모두 사용되는 상황은 사실상 불가능하지만, DB의
-        // UNIQUE 제약과 함께 동작하도록 마지막 값도 같은 형식을 유지한다.
-        return String.format("슈엔단%04d", ThreadLocalRandom.current().nextInt(10_000));
+        // Keep short names when available without imposing a 10,000-account cap.
+        return "슈엔단" + UUID.randomUUID().toString().replace("-", "");
     }
 
     private boolean nicknameExists(String nickname) {

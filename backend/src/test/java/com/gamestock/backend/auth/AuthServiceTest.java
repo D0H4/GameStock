@@ -142,7 +142,7 @@ class AuthServiceTest {
         com.google.firebase.auth.FirebaseAuth firebase = mock(com.google.firebase.auth.FirebaseAuth.class);
         com.google.firebase.auth.FirebaseToken token = mock(com.google.firebase.auth.FirebaseToken.class);
         when(token.getUid()).thenReturn("uid-7");
-        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        when(firebase.verifyIdToken("valid", true)).thenReturn(token);
 
         try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
             statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
@@ -154,13 +154,34 @@ class AuthServiceTest {
     @Test void invalidTokenIsStillUnauthorized() throws Exception {
         AuthService auth = new AuthService(mock(JdbcTemplate.class), Clock.fixed(NOW, ZoneOffset.UTC));
         com.google.firebase.auth.FirebaseAuth firebase = mock(com.google.firebase.auth.FirebaseAuth.class);
-        when(firebase.verifyIdToken("bad")).thenThrow(new IllegalArgumentException("bad token"));
+        when(firebase.verifyIdToken("bad", true)).thenThrow(new IllegalArgumentException("bad token"));
 
         try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
             statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
             var error = assertThrows(ResponseStatusException.class, () -> auth.requireUser("Bearer bad"));
             assertEquals(401, error.getStatusCode().value());
         }
+    }
+
+    @Test void revokedTokenCannotMintANewMobileSession() throws Exception {
+        var firebase=mock(com.google.firebase.auth.FirebaseAuth.class);
+        when(firebase.verifyIdToken("revoked",true)).thenThrow(new IllegalArgumentException("revoked"));
+        try(var mocked=mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
+            mocked.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
+            var auth=new AuthService(mock(JdbcTemplate.class),Clock.fixed(NOW,ZoneOffset.UTC));
+            assertThrows(ResponseStatusException.class,()->auth.issueMobileCode("Bearer revoked"));
+            verify(firebase,never()).createCustomToken(anyString());
+        }
+    }
+
+    @Test void exhaustedShortNicknamesHaveAnExpandableFallback() {
+        JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(1);
+        var auth=new AuthService(jdbc,Clock.fixed(NOW,ZoneOffset.UTC));
+        String name=org.springframework.test.util.ReflectionTestUtils.invokeMethod(auth,"defaultNickname");
+        assertNotNull(name);
+        assertTrue(name.startsWith("슈엔단"));
+        assertTrue(name.length()>7 && name.length()<=50);
     }
 
     @Test void nicknameOnlyUpdatePreservesExistingProfileImage() throws Exception {
@@ -256,7 +277,7 @@ class AuthServiceTest {
         when(token.getUid()).thenReturn("uid-7");
         when(token.getEmail()).thenReturn(email);
         when(token.isEmailVerified()).thenReturn(true);
-        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        when(firebase.verifyIdToken("valid", true)).thenReturn(token);
         try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
             statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
             body.run(auth);
@@ -314,7 +335,7 @@ class AuthServiceTest {
         com.google.firebase.auth.FirebaseAuth firebase = mock(com.google.firebase.auth.FirebaseAuth.class);
         com.google.firebase.auth.FirebaseToken token = mock(com.google.firebase.auth.FirebaseToken.class);
         when(token.getUid()).thenReturn("uid-7");
-        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        when(firebase.verifyIdToken("valid", true)).thenReturn(token);
         try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
             statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
             var error = assertThrows(ResponseStatusException.class, () -> auth.login("Bearer valid"));

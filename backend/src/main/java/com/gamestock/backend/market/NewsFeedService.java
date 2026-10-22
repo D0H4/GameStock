@@ -220,7 +220,7 @@ public class NewsFeedService {
                 .GET()
                 .build();
         HttpResponse<String> response = httpClient.send(request,
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                BoundedHttpBody.utf8(3_000_000));
         if (response.statusCode() / 100 != 2) {
             log.warn("뉴스 피드가 HTTP {}을 반환했습니다: 종목={}", response.statusCode(), stockCode);
             return;

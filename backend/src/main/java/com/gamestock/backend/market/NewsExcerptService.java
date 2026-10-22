@@ -96,6 +96,7 @@ public class NewsExcerptService {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JdbcTemplate jdbc;
+    private final java.util.concurrent.Semaphore fetchSlots = new java.util.concurrent.Semaphore(4);
     private final ObjectMapper json = JSON;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -256,6 +257,8 @@ public class NewsExcerptService {
             Cached cached = cache.get(articleId);
             if (cached != null && cached.expiresAt().isAfter(Instant.now())) return cached.excerpt();
         }
+        if(!fetchSlots.tryAcquire())throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,"뉴스를 읽는 중입니다. 잠시 후 다시 시도해 주세요.");
         String url = null;
         List<String> paragraphs = List.of();
         try {
@@ -264,7 +267,7 @@ public class NewsExcerptService {
             if (!VIDEO_HOST.matcher(URI.create(url).getHost()).find()) paragraphs = extractParagraphs(fetchPage(url));
         } catch (Exception error) {
             log.debug("뉴스 본문 미리보기 실패: {}", articleId, error);
-        }
+        } finally { fetchSlots.release(); }
         Excerpt excerpt = new Excerpt(paragraphs, url);
         remember(articleId, excerpt);
         return excerpt;
@@ -303,7 +306,7 @@ public class NewsExcerptService {
     }
 
     private String send(HttpRequest request) throws Exception {
-        HttpResponse<String> response = google.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response = google.send(request, BoundedHttpBody.utf8(3_000_000));
         if (response.statusCode() / 100 != 2) throw new IllegalStateException("HTTP " + response.statusCode());
         return response.body();
     }
@@ -318,7 +321,7 @@ public class NewsExcerptService {
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "text/html,application/xhtml+xml")
                     .header("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.6")
-                    .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+                    .GET().build(), BoundedHttpBody.bytes(3_000_000));
             int status = response.statusCode();
             if (status / 100 == 3) {
                 String location = response.headers().firstValue("Location").orElseThrow();
@@ -327,7 +330,6 @@ public class NewsExcerptService {
             }
             if (status / 100 != 2) throw new IllegalStateException("HTTP " + status);
             byte[] bytes = response.body();
-            if (bytes.length > 3_000_000) throw new IllegalStateException("페이지가 너무 큽니다.");
             return new String(bytes, charsetOf(response.headers().firstValue("Content-Type").orElse(""), bytes));
         }
         throw new IllegalStateException("리다이렉트가 너무 많습니다.");
@@ -335,12 +337,11 @@ public class NewsExcerptService {
 
     private static void requirePublicHost(URI uri) throws Exception {
         String scheme = uri.getScheme();
-        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme) || uri.getHost() == null) {
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme) || uri.getHost() == null || uri.getUserInfo() != null || (uri.getPort() != -1 && uri.getPort() != 80 && uri.getPort() != 443)) {
             throw new IllegalStateException("지원하지 않는 주소입니다.");
         }
         for (InetAddress address : InetAddress.getAllByName(uri.getHost())) {
-            if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()
-                    || address.isAnyLocalAddress() || address.isMulticastAddress()) {
+            if (!PublicNetworkAddress.allowed(address)) {
                 throw new IllegalStateException("내부망 주소는 읽지 않습니다.");
             }
         }

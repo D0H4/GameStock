@@ -63,6 +63,7 @@ class MarketActivityTest {
             long human=db.queryForObject("SELECT id FROM users WHERE username='activity_human'",Long.class);
             long cashBefore=db.queryForObject("SELECT (SELECT SUM(cash) FROM users)+(SELECT COALESCE(SUM(reserved_cash),0) FROM orders WHERE status='OPEN')",Long.class);
             long sharesBefore=db.queryForObject("SELECT SUM(quantity) FROM portfolios",Long.class);
+            long issuedBefore=db.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM market_inventory_issuance",Long.class);
             int warmup=Integer.getInteger("market.activity.warmup",10),seconds=Integer.getInteger("market.activity.seconds",30);
             Map<String,NavigableMap<Long,Integer>> fills=new TreeMap<>();
             Map<String,Set<Long>> protectedSeconds=new HashMap<>();
@@ -144,6 +145,7 @@ class MarketActivityTest {
             fees+=db.queryForObject("SELECT COALESCE(SUM(fees),0) FROM bot_ledger_totals",Long.class);
             long cashAfter=db.queryForObject("SELECT (SELECT SUM(cash) FROM users)+(SELECT COALESCE(SUM(reserved_cash),0) FROM orders WHERE status='OPEN')",Long.class);
             long sharesAfter=db.queryForObject("SELECT SUM(quantity) FROM portfolios",Long.class);
+            long issued=db.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM market_inventory_issuance",Long.class)-issuedBefore;
             Map<String,Object> report=new LinkedHashMap<>();
             report.put("measuredSeconds",measured);report.put("warmupSeconds",warmup);report.put("perSymbol",perSymbol);
             report.put("measurement","Actual committed bot fills per fully continuous second; VI/circuit-breaker seconds are reported separately.");
@@ -153,7 +155,7 @@ class MarketActivityTest {
             report.put("userOrderP95Ms",users.isEmpty()?0:users.get((int)(users.size()*.95)));
             var sorted=batchMillis.stream().sorted().toList();
             report.put("batchP50Ms",sorted.get(sorted.size()/2));report.put("batchP95Ms",sorted.get((int)(sorted.size()*.95)));report.put("batchMaxMs",sorted.get(sorted.size()-1));
-            report.put("cashError",cashAfter+fees-cashBefore);report.put("shareError",sharesAfter-sharesBefore);
+            report.put("cashError",cashAfter+fees-cashBefore);report.put("issuedShares",issued);report.put("shareError",sharesAfter-sharesBefore-issued);
             long committedBots=fills.values().stream().flatMap(m->m.values().stream()).mapToLong(Integer::longValue).sum();
             long ledgerFills=db.queryForObject("SELECT COUNT(*) FROM trades",Long.class);
             ledgerFills+=db.queryForObject("SELECT COALESCE(SUM(fills),0) FROM bot_ledger_totals",Long.class);
@@ -176,7 +178,7 @@ class MarketActivityTest {
             Path path=Path.of("target/market-activity",System.getProperty("market.activity.label","latest")+".json");Files.createDirectories(path.getParent());
             new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(path.toFile(),report);
             System.out.println("ACTIVITY "+report);
-            assertTrue(errors.isEmpty(),errors.toString());assertEquals(cashBefore,cashAfter+fees);assertEquals(sharesBefore,sharesAfter);
+            assertTrue(errors.isEmpty(),errors.toString());assertEquals(cashBefore,cashAfter+fees);assertEquals(sharesBefore+issued,sharesAfter,"Every additional share must be a committed, bounded LP issuance");
             assertTrue(ledgerFills>=committedBots,"only committed ledger fills may be counted");
             long[] audited={0};
             db.query("SELECT fill_count,payload FROM bot_ledger_batches ORDER BY id",rs->{

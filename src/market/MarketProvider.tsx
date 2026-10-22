@@ -21,6 +21,8 @@ export interface MarketApi {
   orderable: (code: string, side: "buy" | "sell") => number;
   toggleWatch: (code: string) => void;
   setActiveDetailCode: (code: string | null) => void;
+  /** 파생 거래 뒤 주식 계좌 현금을 즉시 맞춘다. */
+  refreshPortfolio: () => Promise<void>;
   claimMissionReward: (missionId: string) => Promise<{ rewardCash: number; awarded: boolean; missions: DailyMissionStatus }>;
   /** 대출을 받거나 갚고, 바뀐 계좌를 바로 화면에 반영한다. */
   loanAction: (kind: "borrow" | "repay", amount: number) => Promise<{ message: string; loan: LoanStatus }>;
@@ -66,7 +68,7 @@ type BackendEvent = {
   articleUrl?: string | null;
 };
 type BackendPosition = { stockCode: string; quantity: number; averagePrice: number; availableQuantity?: number };
-type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number; loanBalance?: number };
+type BackendPortfolio = { cash: number; positions: BackendPosition[]; realizedProfitLoss?: number; attendanceRewardCash?: number; missionRewardCash?: number; loanBalance?: number; derivativeAssetValue?: number; derivativeRealizedProfitLoss?: number };
 type BackendSettlement = { id: number; stockCode: string; side: string; quantity: number; grossAmount: number; createdAt: string };
 type BackendActiveOrder = { id: number; stockCode: string; status: string };
 type BackendMissionReward = { rewardCash: number; awarded: boolean; portfolio: BackendPortfolio; missions: DailyMissionStatus };
@@ -93,7 +95,7 @@ function toFills(settlements: BackendSettlement[]): Portfolio["fills"] {
 }
 
 function toPortfolio(value?: BackendPortfolio): Portfolio {
-  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0, loanBalance: 0 };
+  if (!value) return { cash: INITIAL_CASH, positions: {}, fills: [], realized: 0, attendanceRewardCash: 0, missionRewardCash: 0, loanBalance: 0, derivativeAssetValue: 0, derivativeRealizedProfitLoss: 0 };
   const positions: Record<string, Position> = {};
   for (const item of value.positions ?? []) {
     if (!LISTING_BY_CODE[item.stockCode] || item.quantity < 1) continue;
@@ -107,6 +109,8 @@ function toPortfolio(value?: BackendPortfolio): Portfolio {
     attendanceRewardCash: value.attendanceRewardCash ?? 0,
     missionRewardCash: value.missionRewardCash ?? 0,
     loanBalance: value.loanBalance ?? 0,
+    derivativeAssetValue: value.derivativeAssetValue ?? 0,
+    derivativeRealizedProfitLoss: value.derivativeRealizedProfitLoss ?? 0,
   };
 }
 
@@ -620,6 +624,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       activeDetailCodeRef.current = code;
       streamRef.current?.subscribe(code ? [code] : snapshot.codes, code);
     },
+    refreshPortfolio,
     claimMissionReward,
     loanAction,
   }), [snapshot]);

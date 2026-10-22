@@ -48,8 +48,14 @@ public class MarketController {
         return market.rewardMission(missionId, auth.requireUser(authorization).id());
     }
     @GetMapping("/orders")
-    public java.util.List<ActiveOrder> activeOrders(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return market.activeOrders(auth.requireUser(authorization).id());
+    public java.util.List<ActiveOrder> activeOrders(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   @RequestParam(required = false) String stockCode) {
+        return market.activeOrders(auth.requireUser(authorization).id(), stockCode == null ? null : stockCode.toUpperCase(java.util.Locale.ROOT));
+    }
+    @DeleteMapping("/orders")
+    public java.util.concurrent.CompletableFuture<java.util.Map<String,Integer>> cancelAllOrders(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return orders.cancelAll(auth.requireUser(authorization).id()).thenApply(count -> java.util.Map.of("cancelled", count));
     }
     @GetMapping("/settlements")
     public java.util.List<SettlementEntry> settlements(@RequestHeader(value = "Authorization", required = false) String authorization) {

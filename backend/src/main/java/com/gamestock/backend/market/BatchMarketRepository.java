@@ -84,7 +84,18 @@ final class BatchMarketRepository {
             });
         }
         stamp("lockAccounts");
-        Timestamp time=new Timestamp(now/1000*1000);
+        Timestamp time=new Timestamp(now);
+        Map<Fill,Long> sequences=new IdentityHashMap<>();
+        if(!book.fills.isEmpty()) {
+            if(book.fills.size()>=1_000_000)throw new IllegalStateException("Execution batch too large");
+            Map<Long,Long> revisions=new HashMap<>();
+            db.query("SELECT stock_id,revision FROM market_book_revisions WHERE stock_id IN ("+selected(book.stocks.keySet())+")",
+                    rs->{revisions.put(rs.getLong(1),rs.getLong(2));});
+            for(int i=0;i<book.fills.size();i++) {
+                Fill fill=book.fills.get(i);
+                sequences.put(fill,Math.addExact(Math.multiplyExact(revisions.get(fill.buy().stock),1_000_000L),i+1));
+            }
+        }
         List<Fill> compact=journal==null?List.of():book.fills.stream().filter(f->journal.compact(f,book)).toList();
         List<Fill> retained=journal==null?book.fills:book.fills.stream().filter(f->!journal.compact(f,book)).toList();
         Set<Order> referenced=new HashSet<>();retained.forEach(f->{referenced.add(f.buy());referenced.add(f.sell());});
@@ -109,9 +120,11 @@ final class BatchMarketRepository {
         var newPositions=positions.stream().filter(k->!book.holdingIds.containsKey(k)).toList();
         var positionIds=insert("portfolios","user_id,stock_id,quantity,settled_quantity,average_price,realized_profit_loss",newPositions.stream().map(k->{Holding h=book.holdings.get(k);return new Object[]{k.user(),k.stock(),h.quantity(),h.settled(),h.average(),h.realized()};}).toList(),true,"");
         for(int i=0;i<positionIds.size();i++)book.holdingIds.put(newPositions.get(i),positionIds.get(i));
+        insert("market_inventory_issuance","stock_id,quantity",book.issuedShares.entrySet().stream()
+                .map(e->new Object[]{e.getKey(),e.getValue()}).toList(),false," ON DUPLICATE KEY UPDATE quantity=quantity+VALUES(quantity)");
         stamp("holdings");
-        List<Long> tradeIds=insert("trades","stock_id,buy_order_id,sell_order_id,buyer_id,seller_id,maker_order_id,taker_order_id,aggressor_side,quantity,price,buyer_fee,seller_fee,fee,created_at",
-                retained.stream().map(f->new Object[]{f.buy().stock,f.buy().id,f.sell().id,f.buy().user,f.sell().user,f.maker().id,f.taker().id,f.taker().side,f.quantity(),f.price(),f.buyerFee(),f.sellerFee(),f.buyerFee()+f.sellerFee(),time}).toList(),true,"");
+        List<Long> tradeIds=insert("trades","stock_id,buy_order_id,sell_order_id,buyer_id,seller_id,maker_order_id,taker_order_id,aggressor_side,quantity,price,buyer_fee,seller_fee,fee,created_at,execution_sequence",
+                retained.stream().map(f->new Object[]{f.buy().stock,f.buy().id,f.sell().id,f.buy().user,f.sell().user,f.maker().id,f.taker().id,f.taker().side,f.quantity(),f.price(),f.buyerFee(),f.sellerFee(),f.buyerFee()+f.sellerFee(),time,sequences.get(f)}).toList(),true,"");
         stamp("trades");
         List<Object[]> settlements=new ArrayList<>();
         for(int i=0;i<retained.size();i++) {
@@ -121,14 +134,14 @@ final class BatchMarketRepository {
         insert("settlements","trade_id,buyer_id,seller_id,stock_id,quantity,gross_amount,buyer_fee,seller_fee,settlement_at,status,buyer_quantity_before,buyer_settled_quantity_before,buyer_average_price_before,buyer_realized_profit_loss_before,seller_quantity_before,seller_settled_quantity_before,seller_average_price_before,seller_realized_profit_loss_before,settled_at,created_at",settlements,false,"");
         stamp("settlements");
         if(journal!=null) {
-            journal.write(book,compact,now);
+            journal.write(book,compact,now,sequences);
             journal.deleteOrders(book.changedOrders.stream().filter(o->o.persisted&&o.compactOrigin&&!o.status.equals("OPEN")).map(o->o.id).toList());
         }
         stamp("journal");
         Map<Long,PriceChange> changes=new LinkedHashMap<>();
         for(PriceChange p:book.prices) {PriceChange old=changes.get(p.stock());changes.put(p.stock(),new PriceChange(p.stock(),p.previous(),p.price(),p.volume()+(old==null?0:old.volume())));}
         update("stocks","id",new ArrayList<>(changes.values()),PriceChange::stock,List.of("previous_price","current_price","total_volume"),p->new Object[]{p.previous(),p.price(),p.volume()},Set.of("total_volume"));
-        insert("stock_price_history","stock_id,price,recorded_at",journal==null?book.prices.stream().map(p->new Object[]{p.stock(),p.price(),time}).toList():retained.stream().map(f->new Object[]{f.buy().stock,f.price(),time}).toList(),false,"");
+        insert("stock_price_history","stock_id,price,recorded_at,execution_sequence",retained.stream().map(f->new Object[]{f.buy().stock,f.price(),time,sequences.get(f)}).toList(),false,"");
         String tradingDate=java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString();
         insert("daily_market_summaries","stock_id,trading_date,open_price,close_price,total_volume",changes.values().stream().map(p->new Object[]{p.stock(),tradingDate,book.stocks.get(p.stock()).reference,p.price(),p.volume()}).toList(),false,
                 " ON DUPLICATE KEY UPDATE close_price=VALUES(close_price),total_volume=daily_market_summaries.total_volume+VALUES(total_volume)");

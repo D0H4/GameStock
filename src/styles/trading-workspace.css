@@ -1,0 +1,227 @@
+/* UnrealPFT's chart + order rail composition, using GameStock's palette and controls. */
+.nx-trade-page,
+.nx-product-page {
+  --trade-surface: #1a1726;
+  --trade-field: #241f34;
+  --trade-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --trade-press: cubic-bezier(0.3, 0, 0.2, 1);
+}
+html[data-nx-theme="light"] :is(.nx-trade-page, .nx-product-page) {
+  --trade-surface: #f8f7fb;
+  --trade-field: #eeebf4;
+}
+.nx-trade-page { max-width: 1280px; margin: 0 auto; padding: 24px 28px 48px; }
+.nx-market-tabs { display: flex; align-items: center; gap: 28px; margin-bottom: 24px; }
+.nx-market-tabs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 2px; color: var(--ink-muted); font-size: 16px; text-decoration: none; }
+.nx-market-tabs a.is-active { color: var(--ink); box-shadow: inset 0 -2px var(--brand); }
+.nx-market-tabs a:hover { color: var(--brand-deep); }
+.nx-trade-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 28px; }
+.nx-back-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--ink-muted); font-size: 14px; text-decoration: none; }
+.nx-back-link:hover { color: var(--ink); }
+.nx-stock-selector { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--ink-muted); font-size: 13px; }
+.nx-stock-selector > span { flex: none; }
+.nx-stock-selector select { max-width: 320px; min-width: 0; height: 44px; padding: 0 32px 0 12px; border: 0; border-radius: 6px; background-color: var(--trade-field); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.nx-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 336px; align-items: start; gap: 24px 40px; }
+.nx-trade-main { display: flex; flex-direction: column; min-width: 0; gap: 30px; }
+.nx-trade-chart { min-width: 0; }
+.nx-trade-page .nx-head-id { gap: 12px; }
+.nx-trade-page .nx-head-id > div { min-width: 0; }
+.nx-trade-page .nx-head-name { font-size: 30px; line-height: 1.3; }
+.nx-trade-page .nx-head-id .game-icon { width: 44px; height: 44px; }
+.nx-trade-page .nx-head-sub { flex-wrap: wrap; }
+.nx-trade-page .nx-watch-toggle { margin-left: auto; min-height: 44px; border: 0; border-radius: 6px; background: var(--trade-field); }
+.nx-trade-page .nx-watch-toggle svg { fill: none; }
+.nx-trade-page .nx-head-price { flex-direction: column; align-items: flex-start; gap: 10px; margin: 24px 0; }
+.nx-trade-page .nx-price { font-size: 44px; line-height: 1.1; }
+.nx-trade-page .nx-head-delta { font-size: 16px; }
+.nx-trade-page .nx-head-price .restriction-badge { align-self: flex-start; }
+.nx-trade-page .nx-chart { min-height: 0; margin-top: 20px; }
+html[data-nx] .nx-trade-page .stock-series-chart { display: flex; flex-direction: column; }
+html[data-nx] .nx-trade-page .chart-toolbar { order: 2; flex-wrap: wrap; padding-top: 16px; border: 0; }
+html[data-nx] .nx-trade-page .chart-readout { min-height: 32px; }
+html[data-nx] .nx-trade-page .chart-plot { height: clamp(260px, 34vh, 360px); }
+html[data-nx] .nx-trade-page .chart-control-button { min-height: 38px; padding: 6px 10px; }
+html[data-nx] .nx-trade-page .chart-control-button.is-active { background: var(--trade-field); }
+.nx-trade-facts h2, .nx-stock-news h2 { margin: 0 0 18px; font-size: 18px; font-weight: 500; }
+.nx-trade-page .nx-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: auto; grid-auto-flow: row; gap: 18px 24px; margin: 0; padding: 0; border: 0; }
+.nx-trade-page .nx-stats > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.nx-trade-page .nx-stats dt { font-size: 12px; }
+.nx-trade-page .nx-stats dd { margin: 0; font-size: 14px; }
+.nx-trade-page .nx-account { flex: initial; padding: 12px 0 0; background: var(--trade-surface); border: 1px solid var(--nx-line); border-radius: 8px; }
+.nx-trade-page .nx-acct-bar { margin: 0; border: 0; padding: 0 12px; }
+.nx-trade-page .nx-acct-empty { min-height: 140px; }
+.nx-trade-page .nx-acct-status { border: 0; padding-bottom: 12px; }
+.nx-trade-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 24px; }
+.nx-trade-page .nx-book { padding: 18px; border: 1px solid var(--nx-line); border-radius: 8px; background: var(--trade-surface); }
+.nx-trade-page .nx-book .nx-panel-head { flex-wrap: wrap; gap: 6px; }
+.nx-trade-page .nx-ladder { grid-template-columns: 64px minmax(0, 1fr); }
+.nx-trade-page .nx-judge { gap: 6px; padding-left: 18px; }
+.nx-trade-page .nx-judge-price { font-size: 20px; }
+.nx-trade-page .nx-book-price { padding-inline: 4px; }
+.nx-trade-page .nx-lanes { background: var(--nx-lane); }
+.nx-trade-page .nx-note { transition: opacity 160ms var(--trade-ease); }
+.nx-trade-page .nx-note.is-hit { animation: nx-workspace-note 160ms var(--trade-ease); }
+.nx-trade-page .nx-note.is-hit::after { display: none; }
+@keyframes nx-workspace-note { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.nx-stock-news header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.nx-stock-news header a { color: var(--ink-muted); font-size: 12px; }
+.nx-stock-article { display: block; padding: 14px 0; text-decoration: none; color: var(--ink); }
+.nx-stock-article:first-of-type { padding-top: 0; }
+.nx-stock-article > span { color: var(--ink-muted); font-size: 12px; }
+.nx-stock-article h3 { margin: 6px 0 8px; font-size: 15px; font-weight: 500; line-height: 1.55; }
+.nx-stock-article:hover h3 { color: var(--brand-deep); }
+.nx-trade-disclaimer { margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 1.6; }
+
+/* The single order form becomes a native, focus-trapped sheet on small screens. */
+.nx-order-dock { position: sticky; top: 76px; min-width: 0; }
+.nx-order-dialog { position: static; box-sizing: border-box; width: 100%; max-width: none; max-height: calc(100dvh - 100px); margin: 0; padding: 22px; overflow: auto; border: 1px solid var(--nx-line); border-radius: 10px; background: var(--trade-surface); color: var(--ink); scrollbar-width: thin; }
+.nx-order-dialog:not([open]) { display: none; }
+.nx-order-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.nx-order-heading h2 { margin: 0 0 4px; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+.nx-order-heading span { color: var(--ink-muted); font-size: 12px; }
+.nx-dock-close { display: none; }
+.nx-mobile-order { display: none; }
+.nx-order-dialog .nx-ticket { gap: 12px; }
+.nx-order-dialog .nx-ticket-sides { background: var(--trade-field); box-shadow: none; }
+.nx-order-dialog .nx-ticket-side.is-active { background: var(--trade-surface); box-shadow: inset 0 -2px currentColor; }
+.nx-order-dialog .nx-ticket-side.is-buy.is-active { color: var(--up-deep); }
+.nx-order-dialog .nx-ticket-side.is-sell.is-active { color: var(--down-deep); }
+.nx-order-dialog .nx-stepper { border: 0; border-radius: 6px; background: var(--trade-field); }
+.nx-order-dialog .nx-stepper input { background: transparent; }
+.nx-order-dialog .nx-stepper:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nx-order-dialog .nx-stepper button { min-height: 44px; border: 0; background: transparent; }
+.nx-order-dialog .nx-ratios button { border: 0; border-radius: 4px; background: var(--trade-field); }
+.nx-order-dialog .nx-seg { background: var(--trade-field); box-shadow: none; }
+html[data-nx] .nx-order-dialog :is(.nx-seg, .nx-ticket-sides, .nx-ticket-submit:disabled) { box-shadow: none; }
+.nx-order-dialog .nx-ticket-total { margin: 0; padding: 6px 0 0; border: 0; }
+.nx-order-dialog .nx-ticket-amount { font-size: 24px; }
+.nx-order-dialog .nx-ticket-submit { color: #f1eef8; transition: transform 140ms var(--trade-press), opacity 140ms var(--trade-ease); }
+.nx-order-dialog .nx-ticket-submit:hover:not(:disabled) { filter: none; opacity: .9; }
+.nx-order-dialog .nx-ticket-submit:active:not(:disabled) { transform: translateY(1px); }
+.nx-order-dialog .nx-ticket-submit:disabled { background: var(--trade-field); color: var(--ink-muted); box-shadow: none; }
+
+/* ETF lives in the stock section; futures and options keep their own navigation. */
+.nx-product-page { gap: 24px; }
+.nx-product-page .nx-market-tabs { margin-bottom: 0; }
+.nx-product-page .derivatives-head { padding: 0; border: 0; }
+.nx-product-page .derivatives-head h1 { font-size: 28px; font-weight: 500; }
+.nx-product-page .derivatives-lede { font-size: 14px; }
+.nx-product-page .derivatives-head-index { border: 0; }
+.nx-product-page .derivatives-tabs { border: 0; gap: 28px; }
+.nx-product-page .derivatives-tab { text-decoration: none; }
+.nx-product-page .derivative-account { grid-template-columns: repeat(3, minmax(0, 1fr)); border: 0; padding: 16px; background: var(--trade-surface); border-radius: 6px; }
+.nx-product-page .derivative-signin { padding: 0; border: 0; background: transparent; }
+.nx-product-page .derivative-signin p { font-size: 13px; }
+.nx-product-page .derivative-badge { border: 0; border-radius: 4px; background: var(--trade-field); }
+.nx-product-page .derivative-chip { border: 0; border-radius: 4px; background: var(--trade-field); }
+.nx-product-page .option-cycle-tag, .nx-product-page .option-strike em { border: 0; border-radius: 4px; }
+.nx-product-page .derivative-field input { min-height: 44px; border: 0; border-radius: 6px; background: var(--trade-field); }
+.nx-product-page .derivative-side-tabs { border: 0; border-radius: 6px; background: var(--trade-field); }
+.nx-product-page .derivative-side-tabs .terminal-tab { min-height: 44px; border: 0; border-radius: 4px; }
+.nx-product-page .derivative-close { min-height: 40px; border: 0; border-radius: 4px; background: var(--trade-field); }
+.nx-product-page .derivative-submit { color: #f1eef8; min-height: 48px; border: 0; border-radius: 6px; }
+.nx-order-dialog .nx-ticket-submit.is-buy:not(:disabled), .nx-product-page .derivative-submit.is-buy { background: #c92238; }
+.nx-product-page .derivative-submit.is-sell { background: var(--down-fill); }
+.nx-product-totals { color: var(--ink-muted); font-size: 13px; }
+.nx-product-totals summary { width: fit-content; padding-block: 12px; cursor: pointer; }
+.nx-product-totals p { margin: 8px 0 16px; }
+.nx-product-totals dl { display: flex; flex-wrap: wrap; gap: 24px; }
+.nx-product-totals dl > div { display: grid; gap: 6px; }
+.nx-product-totals dd { margin: 0; color: var(--ink); font-size: 16px; }
+.nx-etf-page > .nx-trade-toolbar { margin: -8px 0 4px; }
+.nx-etf-panel .nx-etf-name { margin: 0; font-size: 28px; font-weight: 500; }
+.nx-etf-panel .nx-etf-code { margin: 10px 0; color: var(--ink-muted); }
+.nx-etf-panel .nx-trade-main { gap: 22px; }
+.nx-etf-price { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.nx-etf-price > strong { font-size: 40px; line-height: 1.1; }
+.nx-etf-chart { margin: 8px 0 0; }
+.nx-etf-chart .spark { display: block; width: 100%; height: 260px; }
+.nx-etf-chart figcaption { margin-top: 12px; color: var(--ink-muted); font-size: 12px; }
+.nx-etf-panel .derivative-facts { border: 0; padding: 0; }
+.nx-etf-panel .table-scroll { min-width: 0; }
+.nx-etf-constituents-title { margin: 6px 0 0; font-size: 18px; font-weight: 500; }
+.nx-etf-ticket.derivative-ticket { padding: 0; border: 0; background: transparent; gap: 20px; }
+.nx-etf-ticket .derivative-order-summary { border: 0; }
+.nx-etf-ticket .derivative-order-summary .is-emphasis { border: 0; padding-top: 12px; }
+.nx-etf-ticket .derivative-field input { width: 100%; }
+
+/* ETF discovery uses the same table, search and sorting controls as stocks. */
+.nx-etf-market .nx-trade-disclaimer { margin-top: 20px; }
+.nx-etf-market .nx-etf-mark { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--nx-tint); color: var(--ink-muted); font-size: 11px; }
+.nx-etf-trend, .nx-etf-trend .spark { display: block; width: 140px; height: 36px; }
+.nx-etf-trend .spark-area { display: none; }
+@media (max-width: 1080px) {
+  .nx-etf-trend, .nx-etf-trend .spark { width: 72px; }
+}
+@media (max-width: 600px) {
+  .nx-etf-market .nx-table { table-layout: fixed; }
+  .nx-etf-market .nx-table th:first-child { width: 47%; }
+  .nx-etf-market .nx-name-link { gap: 8px; padding-block: 10px; min-height: 60px; }
+  .nx-etf-market .nx-name-link > span:not(.nx-etf-mark) { min-width: 0; }
+  .nx-etf-market .nx-name-text { font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
+  .nx-etf-market .nx-table .nx-etf-col-count { display: none; }
+  .nx-etf-market .nx-table .nx-col-range { display: none; }
+  .nx-etf-market .nx-rate-chart { display: flex; justify-content: flex-end; }
+  .nx-etf-market .nx-rate-chart .nx-etf-trend, .nx-etf-market .nx-rate-chart .spark { width: 64px; height: 20px; }
+}
+@media (max-width: 380px) {
+  .nx-etf-market .nx-etf-mark { display: none; }
+}
+
+@media (max-width: 1150px) {
+  .nx-workspace { grid-template-columns: minmax(0, 1fr) 308px; gap: 28px; }
+  .nx-trade-details { grid-template-columns: minmax(0, 1fr); }
+  .nx-trade-page .nx-stats { column-gap: 16px; }
+  .nx-trade-page .nx-watch-toggle { font-size: 0; padding: 0 12px; }
+  .nx-trade-page .nx-watch-toggle svg { width: 20px; height: 20px; }
+}
+@media (max-width: 960px) {
+  .nx-workspace { grid-template-columns: minmax(0, 1fr); }
+  .nx-trade-page { padding-bottom: 110px; }
+  .nx-etf-page { padding-bottom: 90px; }
+  .nx-order-dock { position: static; }
+  .nx-order-dialog[open] { position: fixed; inset: auto 0 0; width: min(100%, 560px); max-height: 90dvh; margin: 0 auto; padding: 20px 24px calc(20px + env(safe-area-inset-bottom, 0px)); border: 0; border-radius: 14px 14px 0 0; overscroll-behavior: contain; }
+  .nx-order-dialog::backdrop { background: rgb(18 16 28 / .65); }
+  .nx-order-heading { margin-bottom: 18px; }
+  .nx-dock-close { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 0; border-radius: 6px; background: var(--trade-field); color: var(--ink); cursor: pointer; }
+  .nx-dock-close svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; fill: none; }
+  .nx-mobile-order { position: fixed; z-index: 25; bottom: var(--nx-tabbar, 0px); left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 24px; background: var(--trade-surface); }
+  .nx-mobile-order > div { display: grid; min-width: 0; gap: 3px; }
+  .nx-mobile-order span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-muted); font-size: 12px; }
+  .nx-mobile-order strong { font-size: 20px; }
+  .nx-mobile-order > button { flex: none; min-height: 48px; min-width: 148px; border: 0; border-radius: 6px; background: var(--brand); color: var(--brand-ink); font: inherit; cursor: pointer; transition: transform 140ms var(--trade-press); }
+  .nx-mobile-order > button:active { transform: translateY(1px); }
+  .nx-trade-details { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .nx-trade-page { padding: 12px 16px 100px; }
+  .nx-market-tabs { margin-bottom: 16px; gap: 24px; }
+  .nx-trade-toolbar { align-items: flex-start; gap: 8px; margin-bottom: 24px; }
+  .nx-stock-selector { gap: 8px; max-width: 100%; }
+  .nx-stock-selector select { max-width: 240px; }
+  .nx-trade-toolbar > .nx-stock-selector { margin-left: auto; }
+  .nx-trade-page .nx-stock-selector > span { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+  .nx-trade-page .nx-head-name { font-size: 24px; }
+  .nx-trade-page .nx-head-sub { font-size: 11px; gap: 4px; }
+  .nx-trade-page .nx-head-id .game-icon { width: 36px; height: 36px; }
+  .nx-trade-page .nx-price { font-size: 38px; }
+  .nx-trade-page .nx-head-price { margin-top: 22px; }
+  .nx-trade-page .nx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .nx-trade-page .nx-opinion-panel { left: 0; right: auto; }
+  .nx-trade-details { grid-template-columns: minmax(0, 1fr); }
+  .nx-trade-page .nx-ladder { grid-template-columns: 84px minmax(0, 1fr); }
+  .nx-trade-page .nx-acct-bar { padding-inline: 4px; }
+  .nx-mobile-order { padding-inline: 16px; gap: 16px; }
+  .nx-mobile-order > button { min-width: 128px; }
+  .nx-product-page .derivatives-head { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .nx-product-page .derivatives-head-index { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; padding: 0; }
+  .nx-product-page .derivatives-head-index > strong { font-size: 20px; }
+  .nx-product-page .derivative-account { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .nx-product-page .derivative-signin { flex-direction: row; align-items: center; }
+  .nx-etf-panel .nx-etf-name { font-size: 24px; }
+  .nx-etf-chart .spark { height: 210px; }
+  .nx-etf-page .derivative-card-head { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nx-trade-page *, .nx-product-page * { animation: none !important; transition: none !important; }
+}

@@ -179,6 +179,10 @@ export interface Portfolio {
   missionRewardCash?: number;
   /** 갚지 않은 모의 대출 잔액(쌓인 이자 포함). 순자산과 손익에서 뺀다. */
   loanBalance?: number;
+  /** ETF·선물·옵션 포지션의 평가액. 현금과 별도로 총자산에 더한다. */
+  derivativeAssetValue?: number;
+  /** 청산·만기로 확정된 파생 손익. */
+  derivativeRealizedProfitLoss?: number;
 }
 
 export interface MarketSnapshot {

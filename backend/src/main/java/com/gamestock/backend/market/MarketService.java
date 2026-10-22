@@ -404,6 +404,15 @@ public class MarketService {
         }
         Map<Long,Integer> recent=bookCacheEnabled?lane.cache.recent(now):repository.recentCounter(lane.stocks,now).recent(now);
         long observed=System.nanoTime();
+        // Reload on a new decision so restart, ownership transfer and a failed transaction all
+        // continue from the committed checkpoint. A retry reuses its already chosen plan/state.
+        if (retryPlan.get() == null) {
+            Map<Long,MarketConsensusValue.Checkpoint> saved = new HashMap<>();
+            jdbc.query("SELECT stock_id,value,observed_at,random_state FROM market_consensus_state WHERE stock_id IN ("
+                    +lane.stocks.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","))+")",
+                    rs -> { saved.put(rs.getLong(1),new MarketConsensusValue.Checkpoint(rs.getDouble(2),rs.getLong(3),rs.getLong(4))); });
+            lane.engine.restoreConsensus(saved);
+        }
         List<BotActivityEngine.Activity> activity;
         if(retryPlan.get()!=null)activity=matching.compute(()->retryPlan.get().apply(book,now));
         else{
@@ -419,6 +428,9 @@ public class MarketService {
         else pipelineMetrics.add("bot.orders",acceptedCount);
         long planned=System.nanoTime();
         repository.persist(book,now);
+        repository.insert("market_consensus_state","stock_id,value,observed_at,random_state",
+                lane.engine.consensusCheckpoint().entrySet().stream().map(e -> new Object[]{e.getKey(),e.getValue().value(),e.getValue().at(),e.getValue().randomState()}).toList(), false,
+                " ON DUPLICATE KEY UPDATE value=VALUES(value),observed_at=VALUES(observed_at),random_state=VALUES(random_state)");
         long persisted=System.nanoTime();
         pipelineMetrics.timing("db.persist",persisted-planned);pipelineMetrics.gauge("db.batch.orders",book.accepted.size());
         for(var stock:book.stocks.values())if(stock.viTrigger>0)protection.beforeTrade(stock.code,stock.viTrigger);
@@ -680,6 +692,8 @@ public class MarketService {
                        COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0) AS attendance_reward_cash,
                        COALESCE((SELECT SUM(mr.reward_cash) FROM mission_rewards mr WHERE mr.user_id = u.id), 0) AS mission_reward_cash,
                        COALESCE(SUM(CASE WHEN p.quantity > 0 THEN p.quantity * COALESCE(pm.mark_price,s.current_price) ELSE 0 END), 0) AS asset_value,
+                       """ + AccountValuation.DERIVATIVE_ASSET + """
+                       AS derivative_value,
                        (SELECT ut.title_id FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_title,
                        (SELECT ut.win_count FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_count
                 FROM users u
@@ -689,7 +703,7 @@ public class MarketService {
                 WHERE u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo'
                   AND COALESCE(u.role, 'USER') <> 'ADMIN'
                 GROUP BY u.id, u.nickname, u.profile_image_url, u.cash, u.loan_balance
-                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value - u.loan_balance) DESC, u.id ASC
+                ORDER BY (u.cash + reserved_cash + unsettled_cash + asset_value + derivative_value - u.loan_balance) DESC, u.id ASC
                 LIMIT 100
                 """, (rs, row) -> {
             long assetValue = rs.getLong("asset_value");
@@ -698,8 +712,9 @@ public class MarketService {
             long unsettledCash = rs.getLong("unsettled_cash");
             long attendanceRewardCash = rs.getLong("attendance_reward_cash");
             long missionRewardCash = rs.getLong("mission_reward_cash");
+            long derivativeValue = rs.getLong("derivative_value");
             // 빌린 돈으로 순위가 오르지 않도록 랭킹 자산은 대출 잔액을 뺀 순자산이다.
-            long totalAsset = cash + reservedCash + unsettledCash + assetValue - rs.getLong("loan_balance");
+            long totalAsset = cash + reservedCash + unsettledCash + assetValue + derivativeValue - rs.getLong("loan_balance");
             // 출석·미션 보상은 투자 성과가 아니므로 수익률에서 제외한다.
             double changePercent = (totalAsset - STARTING_CASH - attendanceRewardCash - missionRewardCash - externalCash.getOrDefault(rs.getLong("id"),0L)) * 100.0 / STARTING_CASH;
             // Rows saved before image validation may hold arbitrary URLs; never expose them to other viewers.
@@ -775,12 +790,18 @@ public class MarketService {
 
     @Transactional(readOnly = true)
     public List<ActiveOrder> activeOrders(long userId) {
+        return activeOrders(userId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ActiveOrder> activeOrders(long userId, String stockCode) {
         return jdbc.query("""
                 SELECT o.id, s.stock_code, o.side, o.quantity, o.remaining_quantity, COALESCE(o.price, 0) AS price,
                        o.status, o.order_type, COALESCE(o.reserved_cash, 0) AS reserved_cash,
                        COALESCE(o.reserved_quantity, 0) AS reserved_quantity, o.created_at, o.expires_at
                 FROM orders o JOIN stocks s ON s.id = o.stock_id
                 WHERE o.user_id = ? AND o.status = 'OPEN'
+                  AND (? IS NULL OR s.stock_code = ?)
                 ORDER BY o.created_at DESC, o.id DESC
                 LIMIT 5
                 """, (rs, row) -> new ActiveOrder(
@@ -788,7 +809,7 @@ public class MarketService {
                 rs.getInt("quantity"), rs.getInt("remaining_quantity"), rs.getLong("price"),
                 rs.getString("status"), rs.getString("order_type"), rs.getLong("reserved_cash"),
                 rs.getInt("reserved_quantity"), databaseInstant(rs.getTimestamp("created_at")).toString(),
-                rs.getTimestamp("expires_at") == null ? null : databaseInstant(rs.getTimestamp("expires_at")).toString()), userId);
+                rs.getTimestamp("expires_at") == null ? null : databaseInstant(rs.getTimestamp("expires_at")).toString()), userId, stockCode, stockCode);
     }
 
     /** The user's recently completed fills. Cash and shares settle immediately. */
@@ -814,8 +835,9 @@ public class MarketService {
                                     AND st.seller_average_price_before IS NOT NULL
                                     AND st.seller_realized_profit_loss_before IS NOT NULL
                               THEN TRUE ELSE FALSE END AS cancellable
-                  FROM settlements st
+                  FROM settlements st JOIN users owner ON owner.id = ?
                   WHERE (st.buyer_id = ? OR st.seller_id = ?) AND st.status = 'SETTLED'
+                    AND st.created_at > COALESCE(owner.account_reset_at, '1970-01-01')
                 ) x JOIN stocks s ON s.id = x.stock_id
                 ORDER BY x.created_at DESC, x.id DESC
                 LIMIT 5
@@ -826,7 +848,7 @@ public class MarketService {
                 databaseInstant(rs.getTimestamp("settlement_at")).toString(),
                 databaseInstant(rs.getTimestamp("created_at")).toString(),
                 rs.getBoolean("cancellable")),
-                userId, userId, userId, userId, userId);
+                userId, userId, userId, userId, userId, userId);
     }
 
     /**
@@ -899,6 +921,19 @@ public class MarketService {
         events.publishEvent(new UserMarketEvent(userId,"ORDER_CANCELLED",Map.of("orderId",orderId,"portfolio",portfolioUnsafe(userId))));
     }
 
+    /** Cancel the complete account order set under the same admission lock as matching. */
+    @Transactional
+    public int cancelAllOrders(long userId) {
+        requireMatchingOwner();
+        acquireMarketLock();
+        long refund = jdbc.queryForObject("SELECT COALESCE(SUM(reserved_cash), 0) FROM orders WHERE user_id = ? AND status = 'OPEN'", Long.class, userId);
+        int cancelled = jdbc.update("UPDATE orders SET status = 'CANCELLED', remaining_quantity = 0, reserved_cash = 0, reserved_quantity = 0 WHERE user_id = ? AND status = 'OPEN'", userId);
+        if (refund > 0) jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", refund, userId);
+        events.publishEvent(new MarketChangedEvent());
+        events.publishEvent(new UserMarketEvent(userId, "ORDER_CANCELLED", Map.of("cancelled", cancelled, "portfolio", portfolioUnsafe(userId))));
+        return cancelled;
+    }
+
     @Transactional(readOnly = true)
     public List<OrderHistory> orderHistory(String code, long userId) {
         return jdbc.query("""
@@ -965,10 +1000,10 @@ public class MarketService {
         String table=historyWindow(range).toMinutes()<=15?"bot_trade_seconds":"bot_trade_minutes";
         List<PricePoint> points = jdbc.query("""
                 SELECT price,recorded_at FROM (
-                  SELECT h.id,h.price,h.recorded_at FROM stock_price_history h JOIN stocks s ON s.id=h.stock_id
+                  SELECT h.execution_sequence AS id,h.price,h.recorded_at FROM stock_price_history h JOIN stocks s ON s.id=h.stock_id
                   WHERE s.stock_code=? AND h.recorded_at>=?
                   UNION ALL
-                  SELECT 0,b.close_price,FROM_UNIXTIME(b.last_at/1000.0) FROM %s b JOIN stocks s ON s.id=b.stock_id
+                  SELECT b.last_sequence,b.close_price,FROM_UNIXTIME(b.last_at/1000.0) FROM %s b JOIN stocks s ON s.id=b.stock_id
                   WHERE s.stock_code=? AND b.last_at>=?
                 ) points ORDER BY recorded_at DESC,id DESC
                 LIMIT 2000
@@ -990,18 +1025,18 @@ public class MarketService {
         String table=window.toDays()<=8?"bot_trade_minutes":"bot_trade_hours";
         return jdbc.query("""
                 WITH points AS (
-                  SELECT h.id,h.price open_price,h.price high_price,h.price low_price,h.price close_price,h.recorded_at,
+                  SELECT h.execution_sequence AS id,h.execution_sequence AS first_sequence,h.price open_price,h.price high_price,h.price low_price,h.price close_price,h.recorded_at,
                          UNIX_TIMESTAMP(h.recorded_at)*1000 first_at,UNIX_TIMESTAMP(h.recorded_at)*1000 last_at,1 point_count
                   FROM stock_price_history h JOIN stocks s ON s.id=h.stock_id WHERE s.stock_code=? AND h.recorded_at>=?
                   UNION ALL
-                  SELECT 0,b.open_price,b.high_price,b.low_price,b.close_price,FROM_UNIXTIME(b.bucket_at),b.first_at,b.last_at,b.fills
+                  SELECT b.last_sequence,b.first_sequence,b.open_price,b.high_price,b.low_price,b.close_price,FROM_UNIXTIME(b.bucket_at),b.first_at,b.last_at,b.fills
                   FROM %s b JOIN stocks s ON s.id=b.stock_id WHERE s.stock_code=? AND b.bucket_at>=?
                 ), bucketed AS (
                   SELECT h.*,
                          FLOOR(UNIX_TIMESTAMP(h.recorded_at) / ?) AS bucket,
                          ROW_NUMBER() OVER (
                            PARTITION BY FLOOR(UNIX_TIMESTAMP(h.recorded_at) / ?)
-                           ORDER BY h.first_at ASC, h.id ASC
+                           ORDER BY h.first_at ASC, h.first_sequence ASC
                          ) AS open_rank,
                          ROW_NUMBER() OVER (
                            PARTITION BY FLOOR(UNIX_TIMESTAMP(h.recorded_at) / ?)
@@ -1014,7 +1049,8 @@ public class MarketService {
                        MAX(high_price) AS high_price,
                        MIN(low_price) AS low_price,
                        MAX(CASE WHEN close_rank = 1 THEN close_price END) AS close_price,
-                       SUM(point_count) AS point_count
+                       SUM(point_count) AS point_count,
+                       MAX(last_at) AS updated_at
                 FROM bucketed
                 GROUP BY bucket
                 ORDER BY bucket ASC
@@ -1025,7 +1061,8 @@ public class MarketService {
                 rs.getLong("high_price"),
                 rs.getLong("low_price"),
                 rs.getLong("close_price"),
-                rs.getLong("point_count")),
+                rs.getLong("point_count"),
+                Instant.ofEpochMilli(rs.getLong("updated_at")).toString()),
                 normalized,Timestamp.from(cutoff),normalized,cutoff.getEpochSecond(),bucketSeconds,bucketSeconds,bucketSeconds,bucketSeconds);
     }
 
@@ -1144,19 +1181,11 @@ public class MarketService {
 
     private String priceDriversReason(double changePercent, double newsImpact, long userNet,
                                       long botNet, long openNet) {
-        boolean newsUp = newsImpact > 0.2;
-        boolean newsDown = newsImpact < -0.2;
-        boolean flowUp = userNet > 0 || botNet > 0 || openNet > 0;
-        boolean flowDown = userNet < 0 || botNet < 0 || openNet < 0;
-        if (changePercent > 0 && newsUp && flowUp) return "최근 뉴스와 매수세가 함께 반영되어 가격이 상승했습니다.";
-        if (changePercent < 0 && newsDown && flowDown) return "최근 뉴스와 매도세가 함께 반영되어 가격이 하락했습니다.";
-        if (changePercent > 0 && newsDown && flowUp) return "하락 방향 뉴스가 있었지만 매수세가 우세해 가격이 상승했습니다.";
-        if (changePercent < 0 && newsUp && flowDown) return "상승 방향 뉴스가 있었지만 매도세가 우세해 가격이 하락했습니다.";
-        if (changePercent > 0 && flowUp) return "매수세가 매도세보다 커 가격이 상승했습니다.";
-        if (changePercent < 0 && flowDown) return "매도세가 매수세보다 커 가격이 하락했습니다.";
-        if (changePercent > 0 && newsUp) return "최근 뉴스 흐름이 상승 방향으로 반영되어 가격이 올랐습니다.";
-        if (changePercent < 0 && newsDown) return "최근 뉴스 흐름이 하락 방향으로 반영되어 가격이 내렸습니다.";
-        return "최근 뉴스와 거래 흐름이 뚜렷한 한 방향으로 모이지 않았습니다.";
+        if (newsImpact > .2) return "최근 뉴스 지표는 긍정적입니다. 가격은 실제 주문 체결로 결정됩니다.";
+        if (newsImpact < -.2) return "최근 뉴스 지표는 부정적입니다. 가격은 실제 주문 체결로 결정됩니다.";
+        if (openNet > 0) return "현재 미체결 매수 수량이 더 많습니다. 이후 체결 방향을 보장하지 않습니다.";
+        if (openNet < 0) return "현재 미체결 매도 수량이 더 많습니다. 이후 체결 방향을 보장하지 않습니다.";
+        return "현재 뉴스와 미체결 주문에서 뚜렷한 한 방향이 확인되지 않습니다.";
     }
 
     public synchronized List<DailyCandle> dailySummaries(String code) {
@@ -1283,7 +1312,7 @@ public class MarketService {
             TradingRestriction restriction=protection.restriction(code);
             String message=restriction!=null&&order.status.equals("OPEN")?restriction.label()+" 단일가 주문 접수":orderMessage(order.status);
             outcomes.set(i,new OrderBatch.Outcome(new OrderResult(message,code,order.side,order.quantity,order.price>0?order.price:book.stocks.get(order.stock).last,
-                order.status,portfolios.computeIfAbsent(command.userId(),this::portfolioUnsafe),execution.fee(),execution.status(),execution.settlementAt()),null));
+                order.status,portfolios.computeIfAbsent(command.userId(),this::portfolioUnsafe),execution.fee(),execution.status(),execution.settlementAt(),order.id),null));
         }
         publishBookEvents(book);
         events.publishEvent(bookEvent(book,now));
@@ -1645,6 +1674,7 @@ public class MarketService {
                     INSERT INTO portfolios (user_id, stock_id, quantity, settled_quantity, average_price, realized_profit_loss)
                     VALUES (?, ?, ?, ?, ?, 0)
                     """, userId, id, initialInventory, initialInventory, findStock(code).price());
+            recordLiquidityIssuance(id, initialInventory);
         } else if (holdings.get(0).quantity() <= 4) {
             // The startup/legacy path obeys the same finite supply bound as inline quotes.
             long circulating=jdbc.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM portfolios WHERE stock_id=?",Long.class,id);
@@ -1660,7 +1690,12 @@ public class MarketService {
                     SET quantity = ?, settled_quantity = ?, average_price = ?
                     WHERE user_id = ? AND stock_id = ?
                     """, nextQuantity, current.settledQuantity()+refill, average, userId, id);
+            recordLiquidityIssuance(id, refill);
         }
+    }
+
+    private void recordLiquidityIssuance(long stockId, int quantity) {
+        jdbc.update("INSERT INTO market_inventory_issuance(stock_id,quantity) VALUES(?,?) ON DUPLICATE KEY UPDATE quantity=quantity+VALUES(quantity)", stockId, quantity);
     }
 
     private long traderBotId(String username) {
@@ -1698,8 +1733,10 @@ public class MarketService {
                 jdbc.update("INSERT IGNORE INTO lp_risk_books VALUES (?,?,?,?,?,?)",
                         id,allocation,baseline,batchEnabled?100:400,1200,stock.price()*1200L);
                 int target=StockMarketProfile.initialLiquidityInventory(code,LP_INITIAL_INVENTORY);
-                jdbc.update("UPDATE lp_risk_books SET target_inventory=?,max_inventory=GREATEST(max_inventory,?),risk_limit=GREATEST(risk_limit,?) WHERE stock_id=?",
-                        target,target*4,stock.price()*target*4L,id);
+                // A profile migration may increase the budget; an ordinary
+                // restart must not inflate it just because the last price rose.
+                jdbc.update("UPDATE lp_risk_books SET target_inventory=?,max_inventory=GREATEST(max_inventory,?),risk_limit=GREATEST(risk_limit,?) WHERE stock_id=? AND (target_inventory<>? OR max_inventory<?)",
+                        target,target*4,stock.price()*target*4L,id,target,target*4);
                 jdbc.update("INSERT IGNORE INTO market_price_metrics (stock_id,mark_price,hidden_fundamental,anchor_price) VALUES (?,?,?,?)",
                         id,stock.price(),stock.price(),stock.price());
                 sectors.put(code,stock.genre());
@@ -1770,23 +1807,11 @@ public class MarketService {
     }
 
     private void updateFundamentalFromNews(String code) {
-        long id = stockId(code);
-        long lastNews = jdbc.queryForObject("SELECT last_news_id FROM market_price_metrics WHERE stock_id=?",Long.class,id);
-        List<Long> ids = jdbc.queryForList("SELECT id FROM market_events WHERE stock_id=? AND event_type='NEWS' AND id>? AND COALESCE(published_at,created_at)<=CURRENT_TIMESTAMP ORDER BY id",Long.class,id,lastNews);
-        double total = 0;
-        for (Long newsId : ids) {
-            RecentNews news = jdbc.queryForObject("SELECT title,description,impact FROM market_events WHERE id=?",
-                    (rs,n)->new RecentNews(rs.getString(1),rs.getString(2),rs.getDouble(3),1),newsId);
-            if (NewsRelevance.isRelevant(code,news.title(),news.description())) total += newsInfluence(news).rate();
-        }
-        if (!ids.isEmpty()) {
-            double weightedTotal = total * StockMarketProfile.of(code).movementWeight();
-            jdbc.update("""
-                    UPDATE market_price_metrics SET hidden_fundamental=GREATEST(anchor_price*.5,
-                        LEAST(anchor_price*?,hidden_fundamental*?)),last_news_id=? WHERE stock_id=?
-                    """,StockMarketProfile.isSpeculative(code)?4:2,
-                    1+MarketEnvironment.clamp(weightedTotal,-.1,StockMarketProfile.isSpeculative(code)?.5:.1),ids.get(ids.size()-1),id);
-        }
+        // A projection of the same published-time window, never a multiplier on the last batch.
+        // Re-reading also handles corrections to an existing article without inventing a new ID.
+        double bias = recentNewsBias(code).rate() * StockMarketProfile.of(code).movementWeight();
+        double multiplier = 1 + MarketEnvironment.clamp(bias, -.5, StockMarketProfile.isSpeculative(code) ? 3 : 1);
+        jdbc.update("UPDATE market_price_metrics SET hidden_fundamental=anchor_price*? WHERE stock_id=?", multiplier, stockId(code));
     }
 
     private void refreshMarkPrice(String code) {
@@ -2074,7 +2099,7 @@ public class MarketService {
     private void enforceOrderLimits(long userId, long stockId, String side, String orderType,
                                     int quantity, long price) {
         String passwordHash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?", String.class, userId);
-        if ("BOT".equals(passwordHash)) return;
+        if ("BOT".equals(passwordHash) || "TRADER".equals(passwordHash)) return;
         Integer recentCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE user_id = ? "
                         + "AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL " + USER_ORDER_WINDOW_SECONDS + " SECOND)",
@@ -2083,7 +2108,7 @@ public class MarketService {
             throw new IllegalArgumentException("주문 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
         Integer duplicateCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE user_id = ? AND stock_id = ? AND side = ? AND order_type = ? "
-                        + "AND quantity = ? AND COALESCE(price, 0) = ? "
+                        + "AND quantity = ? AND (order_type = 'MARKET' OR COALESCE(price, 0) = ?) "
                         + "AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL " + DUPLICATE_ORDER_WINDOW_SECONDS + " SECOND)",
                 Integer.class, userId, stockId, side, orderType, quantity, price);
         if (duplicateCount != null && duplicateCount > 0)
@@ -2547,16 +2572,17 @@ public class MarketService {
         List<RecentNews> recentNews = jdbc.query("""
                 SELECT e.title, e.description, e.impact,
                        GREATEST(0, LEAST(1, 1 - TIMESTAMPDIFF(SECOND,
-                           COALESCE(e.published_at, e.created_at), CURRENT_TIMESTAMP) / 86400.0)) AS recency
+                           COALESCE(e.published_at, e.created_at), ?) / 86400.0)) AS recency
                 FROM market_events e JOIN stocks s ON s.id = e.stock_id
                 WHERE e.event_type = 'NEWS' AND s.stock_code = ?
-                  AND COALESCE(e.published_at, e.created_at) >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 24 HOUR)
+                  AND COALESCE(e.published_at, e.created_at) >= ?
                   AND COALESCE(e.published_at, e.created_at) <= ?
                 ORDER BY COALESCE(e.published_at, e.created_at) DESC, e.id DESC
                 LIMIT 100
                 """, (rs, row) -> new RecentNews(
                 rs.getString("title"), rs.getString("description"), rs.getDouble("impact"),
-                Math.max(0.0, Math.min(1.0, rs.getDouble("recency")))), code, Timestamp.from(clock.instant().minusMillis(latency))).stream()
+                Math.max(0.0, Math.min(1.0, rs.getDouble("recency")))), Timestamp.from(clock.instant().minusMillis(latency)), code,
+                Timestamp.from(clock.instant().minusMillis(latency).minusSeconds(86400)), Timestamp.from(clock.instant().minusMillis(latency))).stream()
                 // Price formation uses the ten newest relevant headlines for
                 // this stock, independently of the ten-item global feed.
                 .filter(news -> NewsRelevance.isRelevant(code, news.title(), news.description()))
@@ -2594,6 +2620,10 @@ public class MarketService {
                                    AND o.side = 'SELL' AND o.status = 'OPEN'), 0) AS reserved_quantity,
                        p.average_price, COALESCE(p.realized_profit_loss, 0) AS realized_profit_loss,
                        p.quantity * COALESCE(pm.mark_price,s.current_price) AS market_value,
+                       GREATEST(0, COALESCE(p.settled_quantity,p.quantity) - COALESCE((
+                           SELECT SUM(o.reserved_quantity) FROM orders o
+                           WHERE o.user_id = p.user_id AND o.stock_id = p.stock_id AND o.status = 'OPEN' AND o.side = 'SELL'
+                       ),0)) AS available_quantity,
                        p.quantity * (COALESCE(pm.mark_price,s.current_price) - p.average_price) AS profit_loss
                 FROM portfolios p JOIN stocks s ON s.id = p.stock_id
                 LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
@@ -2642,9 +2672,15 @@ public class MarketService {
         // 대출 잔액은 빌린 돈이라 화면에서 순자산과 손익을 계산할 때 뺀다.
         long loanBalance = jdbc.queryForObject("SELECT loan_balance FROM users WHERE id = ?", Long.class, userId);
         long assetValue = positions.stream().mapToLong(Position::marketValue).sum();
-        return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue,
+        // ETF·선물·옵션 평가액도 계좌 총자산에 포함한다. 저장된 마지막 평가값을 쓴다.
+        long derivativeAssetValue = AccountValuation.derivatives(jdbc,userId);
+        long derivativeRealized = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(realized_pnl), 0) FROM derivative_positions WHERE user_id = ?
+                """, Long.class, userId);
+        return new Portfolio(cash, assetValue, cash + reservedCash + unsettledCash + assetValue + derivativeAssetValue,
                 positions, unsettledCash, unsettledAssetValue, totalFees, realizedProfitLoss, attendanceRewardCash,
-                missionRewardCash, loanBalance,adminRuntime==null?0:adminRuntime.externalCash(userId));
+                missionRewardCash, loanBalance,adminRuntime==null?0:adminRuntime.externalCash(userId),
+                derivativeAssetValue, derivativeRealized);
     }
 
     private long currentPrice(String code) {

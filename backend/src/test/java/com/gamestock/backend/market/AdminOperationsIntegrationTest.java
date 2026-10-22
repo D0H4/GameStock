@@ -47,8 +47,8 @@ class AdminOperationsIntegrationTest {
     }
     @BeforeEach void reset(){
         tx(()->{
-            for(String table:List.of("admin_season_entries","admin_seasons","user_reports","admin_content","admin_mission_config","admin_cash_epochs","admin_cash_adjustments","admin_permissions","admin_audit","settlements","trades","orders","portfolios","mission_rewards","attendance_rewards","promo_redemptions","user_titles"))db.update("DELETE FROM "+table);
-            db.update("DELETE FROM admin_stock_state");db.update("UPDATE admin_runtime SET bots_paused=FALSE,traders_paused=FALSE,market_paused=FALSE,cadence_ms=NULL,target_per_symbol=NULL,trader_ramp_seconds=NULL,traders_resumed_at=NULL");
+            for(String table:List.of("derivative_trades","derivative_positions","derivative_expiry_fixings","derivative_index_observations","user_feature_limits","stock_comments","price_alerts","admin_season_entries","admin_seasons","user_reports","admin_content","admin_mission_config","admin_cash_epochs","admin_cash_adjustments","admin_permissions","admin_audit","settlements","trades","orders","portfolios","mission_rewards","attendance_rewards","promo_redemptions","user_titles"))db.update("DELETE FROM "+table);
+            db.update("DELETE FROM stock_tags WHERE created_by IS NOT NULL");db.update("DELETE FROM admin_stock_state");db.update("UPDATE admin_runtime SET bots_paused=FALSE,traders_paused=FALSE,market_paused=FALSE,cadence_ms=NULL,target_per_symbol=NULL,trader_ramp_seconds=NULL,traders_resumed_at=NULL");
             db.update("UPDATE users SET cash=1000000,loan_balance=0,account_reset_at=NULL WHERE id IN (?,?)",buyer,seller);
             db.update("UPDATE stocks SET current_price=10000,previous_price=10000 WHERE id=?",stock);
             new TradingProtectionService(db).refreshDay();
@@ -82,6 +82,150 @@ class AdminOperationsIntegrationTest {
         assertEquals(1L,((Number)codes.stream().filter(row->"launch-1".equals(row.get("code"))).findFirst().orElseThrow().get("used_count")).longValue());
         assertEquals(1,promos.redemptions("launch-1").size());
         assertEquals(0,titles.redeem(seller,"syuen").rewardCash());
+    }
+
+    @Test void derivativeOnlyCollateralCanBeLiquidatedToRepayTheLoan() {
+        var manager=new DataSourceTransactionManager(source);
+        var derivatives=new DerivativeService(db,manager);
+        transaction.executeWithoutResult(status->derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null)));
+        db.update("UPDATE users SET cash=0,loan_balance=500000 WHERE id=?",buyer);
+        var loans=new LoanService(db,market,mock(OrderService.class),derivatives,mock(ApplicationEventPublisher.class),manager);
+        long asset=loans.status(buyer).grossAsset();
+        assertTrue(asset>0 && asset<500000);
+        loans.liquidate(buyer);
+        assertEquals(0,cash(buyer));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM derivative_positions WHERE user_id=? AND status='OPEN'",Long.class,buyer));
+        assertTrue(loans.status(buyer).balance()<500000);
+        long fees=db.queryForObject("SELECT SUM(fee) FROM derivative_trades WHERE user_id=? AND action='CLOSE'",Long.class,buyer);
+        assertEquals(500000-asset+fees,loans.status(buyer).balance());
+    }
+
+    @Test void weeklyRankingUsesTheSameDerivativeValuationAsThePortfolio() {
+        var derivatives=new DerivativeService(db,new DataSourceTransactionManager(source));
+        transaction.executeWithoutResult(status->derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null)));
+        var investors=(java.util.List<?>)org.springframework.test.util.ReflectionTestUtils.invokeMethod(titles,"investorAssets");
+        var asset=investors.stream().filter(row->java.util.Objects.equals(org.springframework.test.util.ReflectionTestUtils.invokeMethod(row,"userId"),buyer)).findFirst().orElseThrow();
+        assertEquals(market.portfolio(buyer).totalAsset(),(Long)org.springframework.test.util.ReflectionTestUtils.invokeMethod(asset,"adjustedAsset"));
+    }
+
+    @Test void seasonIncludesEtfsAndResetCannotCashOutAnOldPosition() {
+        var derivatives=new DerivativeService(db,new DataSourceTransactionManager(source));
+        var opened=transaction.execute(status->derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null)));
+        long position=opened.account().positions().get(0).id();
+        long before=market.portfolio(buyer).totalAsset();
+        long season=((Number)tx(()->seasons.create(admin,new AdminSeasonService.Create("asset-test","자산 검사"))).get("id")).longValue();
+        tx(()->{seasons.start(admin,season,"시작");return null;});
+        assertEquals(before,db.queryForObject("SELECT opening_asset FROM admin_season_entries WHERE season_id=? AND user_id=?",Long.class,season,buyer));
+        transaction.executeWithoutResult(status->derivatives.close(buyer,position,100));
+        tx(()->seasons.close(admin,season,new AdminSeasonService.Close(List.of(),"종료")));
+        var row=db.queryForMap("SELECT opening_asset,closing_asset FROM admin_season_entries WHERE season_id=? AND user_id=?",season,buyer);
+        assertTrue(((Number)row.get("closing_asset")).longValue()<=((Number)row.get("opening_asset")).longValue());
+        long old=transaction.execute(status->derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",1,"ETFIDX",null,null,null,null))).account().positions().get(0).id();
+        pause();
+        tx(()->{seasons.reset(admin,season,"초기화");return null;});
+        assertEquals(1_000_000,cash(buyer));
+        assertEquals("RESET",db.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,old));
+        assertThrows(IllegalArgumentException.class,()->transaction.execute(status->derivatives.close(buyer,old,1)));
+        assertEquals(1_000_000,cash(buyer));
+    }
+
+    @Test void newsProjectionIsIndependentOfBatchSplitsAndExpiresOldOrCorrectedArticles() {
+        var oldClock=org.springframework.test.util.ReflectionTestUtils.getField(market,"clock");
+        var now=java.time.Instant.parse("2030-01-01T10:00:00Z");
+        org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(now,java.time.ZoneOffset.UTC));
+        try {transaction.executeWithoutResult(status->{
+            long tr=db.queryForObject("SELECT id FROM stocks WHERE stock_code='TR'",Long.class);
+            db.update("DELETE FROM market_events WHERE stock_id=? AND event_type='NEWS'",tr);
+            db.update("UPDATE market_price_metrics SET anchor_price=10000,hidden_fundamental=10000 WHERE stock_id=?",tr);
+            for(int i=0;i<10;i++) {
+                db.update("INSERT INTO market_events(stock_id,event_type,title,description,impact,source,created_at,published_at) VALUES(?,'NEWS','트릭컬 업데이트','트릭컬 신규 콘텐츠',10,'regression',?,?)",tr,java.sql.Timestamp.from(now),java.sql.Timestamp.from(now));
+                org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
+            }
+            double split=db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr);
+            db.update("UPDATE market_price_metrics SET hidden_fundamental=10000,last_news_id=0 WHERE stock_id=?",tr);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
+            assertEquals(split,db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr),1e-9);
+            db.update("UPDATE market_events SET impact=-10 WHERE stock_id=? AND source='regression'",tr);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
+            assertTrue(db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr)<10000);
+            db.update("UPDATE market_events SET published_at=? WHERE stock_id=? AND source='regression'",java.sql.Timestamp.from(now.minusSeconds(7*86400)),tr);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
+            assertEquals(10000,db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr));
+            status.setRollbackOnly();
+        });}finally{org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",oldClock);}
+    }
+
+    @Test void latestHumanFillAndSameMillisecondSequenceWinOverOlderBotBuckets() {
+        var oldClock=org.springframework.test.util.ReflectionTestUtils.getField(market,"clock");
+        long second=java.time.Instant.parse("2030-01-01T10:00:00Z").toEpochMilli();
+        try {transaction.executeWithoutResult(status->{
+            db.update("INSERT INTO bot_trade_seconds(stock_id,bucket_at,first_at,last_at,open_price,high_price,low_price,close_price,quantity,notional,fills,first_sequence,last_sequence) VALUES(?,?,?,?,10000,10000,10000,10000,1,10000,1,1,1)",stock,second/1000,second+100,second+100);
+            org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(java.time.Instant.ofEpochMilli(second+800),java.time.ZoneOffset.UTC));
+            market.order(new OrderRequest("UMA","SELL",1,"LIMIT",10200L),seller);
+            org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(java.time.Instant.ofEpochMilli(second+900),java.time.ZoneOffset.UTC));
+            market.order(new OrderRequest("UMA","BUY",1,"LIMIT",10200L),buyer);
+            var metrics=new PriceMetricService(db);
+            assertEquals(10200,metrics.read(stock,10200,second+950,0).lastPrice());
+            assertEquals(second+900,db.queryForObject("SELECT created_at FROM trades WHERE stock_id=? ORDER BY id DESC LIMIT 1",java.sql.Timestamp.class,stock).getTime());
+            db.update("UPDATE bot_trade_seconds SET last_at=? WHERE stock_id=?",second+900,stock);
+            assertEquals(10200,metrics.read(stock,10200,second+950,0).lastPrice());
+            var points=market.priceHistory("UMA","15m");
+            assertEquals(10200,points.get(points.size()-1).price());
+            status.setRollbackOnly();
+        });}finally{org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",oldClock);}
+    }
+
+    @Test void deniedAdminCallRollsBackAttendanceThroughTheActualTransactionProxy() throws Exception {
+        var firebase=mock(com.google.firebase.auth.FirebaseAuth.class);
+        var token=mock(com.google.firebase.auth.FirebaseToken.class);
+        when(token.getUid()).thenReturn("buyer-test");
+        when(firebase.verifyIdToken("synthetic",true)).thenReturn(token);
+        try(var statics=mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
+            statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
+            var factory=new org.springframework.aop.framework.ProxyFactory(new AuthService(db));
+            factory.setProxyTargetClass(true);
+            factory.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(
+                    new DataSourceTransactionManager(source),new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+            AuthService proxy=(AuthService)factory.getProxy();
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,()->proxy.requireAdmin("Bearer synthetic"));
+            assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM attendance_rewards WHERE user_id=?",Integer.class,buyer));
+            assertEquals(1_000_000,cash(buyer));
+        }
+    }
+
+    @Test void schemaUpgradeFreezesExistingReferenceBeforeDailyMaintenance() {
+        db.update("UPDATE stocks SET current_price=9000 WHERE id=?",stock);
+        db.update("UPDATE stock_protection_state SET day_reference=10000 WHERE stock_id=?",stock);
+        db.update("DELETE FROM derivative_index_bases WHERE stock_id=?",stock);
+        var derivatives=new DerivativeService(db,new DataSourceTransactionManager(source));
+        derivatives.ensureTables();
+        assertEquals(10000,db.queryForObject("SELECT reference_price FROM derivative_index_bases WHERE stock_id=?",Long.class,stock));
+        double before=derivatives.snapshot().indexValue();
+        db.update("UPDATE stock_protection_state SET day_reference=9000 WHERE stock_id=?",stock);
+        assertEquals(before,derivatives.snapshot().indexValue(),0);
+    }
+
+    @Test void legacyEtfCashFlowMigrationIsIdempotent() {
+        var derivatives=new DerivativeService(db,new DataSourceTransactionManager(source));
+        transaction.execute(status->derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",1,"ETFIDX",null,null,null,null)));
+        long actual=db.queryForObject("SELECT cash_flow FROM derivative_trades WHERE user_id=?",Long.class,buyer);
+        db.update("UPDATE derivative_trades SET cash_flow=cash_flow+fee,cash_flow_version=1 WHERE user_id=?",buyer);
+        derivatives.ensureTables();derivatives.ensureTables();
+        assertEquals(actual,db.queryForObject("SELECT cash_flow FROM derivative_trades WHERE user_id=?",Long.class,buyer));
+        assertEquals(2,db.queryForObject("SELECT cash_flow_version FROM derivative_trades WHERE user_id=?",Integer.class,buyer));
+    }
+
+    @Test void featureWritesRespectAccountAndStockLimitsAcrossTransactions() {
+        var features=new UserFeatureService(db);
+        for(int i=0;i<10;i++){final int n=i;transaction.execute(status->features.addTag(buyer,"UMA",new UserFeatureModels.TagRequest("guard-"+n)));}
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,()->transaction.execute(status->features.addTag(buyer,"UMA",new UserFeatureModels.TagRequest("too-fast"))));
+        assertEquals(10,db.queryForObject("SELECT COUNT(*) FROM stock_tags WHERE created_by=?",Integer.class,buyer));
+        db.update("UPDATE user_feature_limits SET window_no=0 WHERE user_id=?",buyer);
+        var rows=new java.util.ArrayList<Object[]>();
+        for(int i=0;i<100;i++)rows.add(new Object[]{stock,"quota-"+i,seller});
+        db.batchUpdate("INSERT IGNORE INTO stock_tags(stock_id,tag,created_by) VALUES(?,?,?)",rows);
+        assertThrows(IllegalArgumentException.class,()->transaction.execute(status->features.addTag(buyer,"UMA",new UserFeatureModels.TagRequest("over-stock-cap"))));
+        assertEquals(100,features.tags("UMA").size());
     }
 
     @Test void cashAdjustmentIsIdempotentAndCannotOverdraw(){

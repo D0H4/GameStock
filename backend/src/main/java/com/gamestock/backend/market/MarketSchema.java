@@ -33,6 +33,7 @@ final class MarketSchema {
         ensureSettlementTable();
         ensureDailySummaryTable();
         ensureSimulationState();
+        jdbc.execute("CREATE TABLE IF NOT EXISTS market_inventory_issuance(stock_id BIGINT PRIMARY KEY,quantity BIGINT NOT NULL)");
         ensureMarketLock();
         MarketBookCache.ensureTables(jdbc);
         BotLedgerJournal.ensureTables(jdbc);
@@ -42,8 +43,15 @@ final class MarketSchema {
         ensureSimulationBookTables();
         priceMetrics.ensureTables();
         ensureOrderTimestampPrecision();
+        for (String[] field : List.of(new String[]{"trades","created_at"},new String[]{"stock_price_history","recorded_at"},new String[]{"market_trade_buckets","created_at"})) {
+            Integer precision=jdbc.queryForObject("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?",Integer.class,field[0],field[1]);
+            if(precision!=null && precision<3)jdbc.execute("ALTER TABLE "+field[0]+" MODIFY COLUMN "+field[1]+" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+        }
+        jdbc.execute("CREATE TABLE IF NOT EXISTS market_consensus_state(stock_id BIGINT PRIMARY KEY,value DOUBLE NOT NULL,observed_at BIGINT NOT NULL,random_state BIGINT NOT NULL)");
         ensureNewsPriceState();
+        DerivativeService.ensureTables(jdbc);
         AdminSchema.ensure(jdbc);
+        com.gamestock.backend.openapi.OpenApiSchema.ensureTables(jdbc);
     }
 
     private void ensureOrderTimestampPrecision() {

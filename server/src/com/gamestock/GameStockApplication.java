@@ -26,14 +26,17 @@ public final class GameStockApplication {
     }
 
     private void start() throws IOException {
-        var server = HttpServer.create(new InetSocketAddress(PORT), 0);
+        // This legacy demo has a shared account and is never a public API.
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 32);
         server.createContext("/api/health", this::health);
         server.createContext("/api/stocks", this::stocks);
         server.createContext("/api/market-events", this::marketEvents);
         server.createContext("/api/portfolio", this::portfolio);
         server.createContext("/api/orders", this::orders);
         server.createContext("/", this::staticFile);
-        server.setExecutor(Executors.newCachedThreadPool());
+        server.setExecutor(new java.util.concurrent.ThreadPoolExecutor(4, 8, 30,
+                java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.ArrayBlockingQueue<>(64),
+                new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy()));
         server.start();
         System.out.printf("GameStock 서버가 실행되었습니다: http://localhost:%d%n", PORT);
     }
@@ -60,7 +63,12 @@ public final class GameStockApplication {
     private void orders(HttpExchange exchange) throws IOException {
         if (!method(exchange, "POST")) return;
         try (InputStream input = exchange.getRequestBody()) {
-            String body = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            byte[] bytes = input.readNBytes(8193);
+            if (bytes.length > 8192) {
+                text(exchange, 413, "요청이 너무 큽니다.", "text/plain; charset=UTF-8");
+                return;
+            }
+            String body = new String(bytes, StandardCharsets.UTF_8);
             Map<String, String> order = JsonFields.parse(body);
             String result = market.placeOrder(order.get("stockCode"), order.get("side"), order.get("quantity"));
             json(exchange, 201, result);

@@ -48,6 +48,14 @@ public class OrderService {
             reject(userId,result,PersistenceWorker.unavailable());
         return result;
     }
+    public CompletableFuture<Integer> cancelAll(long userId) {
+        try {
+            market.requireMatchingOwner();
+            return persistence.submit(UUID.randomUUID().toString(), Integer.class, 1, () -> market.cancelAllOrders(userId));
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
+        }
+    }
     public CompletableFuture<List<BotActivityEngine.Activity>> submitBotBatch(int shard){
         if(shard<0||shard>=4)throw new IllegalArgumentException("Invalid bot shard");
         BotRequest request;

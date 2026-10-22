@@ -1,0 +1,3102 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GameStock Trading OpenAPI",
+    "version": "1.0.0",
+    "description": "GameStock 모의 주식·ETF·선물·옵션 시세와 주문 API. 시세는 공개, 계좌 조회는 READ/TRADE 키, 주문은 TRADE 키가 필요합니다. API 키 관리에는 기존 Firebase ID 토큰을 사용합니다. 실제 화폐를 취급하지 않습니다. 서버 인스턴스별 IP 120회/분, 계정 120회/분 및 거래 30회/분 제한. 기존 시장의 주문·가격제한·정지 규칙도 적용됩니다."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "명세를 제공하는 API 서버"
+    }
+  ],
+  "paths": {
+    "/api/openapi/keys": {
+      "post": {
+        "operationId": "createApiKey",
+        "summary": "API 키 발급",
+        "tags": [
+          "Keys"
+        ],
+        "security": [
+          {
+            "FirebaseToken": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedKey"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          }
+        },
+        "description": "활성 키 최대 10개, 만기 기본 90일/최대 365일. 토큰 원문은 이 응답에서만 제공됩니다.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKey"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listApiKeys",
+        "summary": "API 키 목록",
+        "tags": [
+          "Keys"
+        ],
+        "security": [
+          {
+            "FirebaseToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KeyInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "description": "활성 키 우선, 최근 생성 순 최대 100개. 토큰 원문은 반환하지 않습니다."
+      }
+    },
+    "/api/openapi/keys/{keyId}": {
+      "delete": {
+        "operationId": "revokeApiKey",
+        "summary": "API 키 폐기",
+        "tags": [
+          "Keys"
+        ],
+        "security": [
+          {
+            "FirebaseToken": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "완료"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          }
+        },
+        "description": "본인 키만 폐기. 정지 중인 계정도 키를 폐기할 수 있습니다. 이미 실행 중인 주문은 완료될 수 있습니다.",
+        "parameters": [
+          {
+            "name": "keyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/openapi/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiSpec",
+        "summary": "OpenAPI 명세",
+        "tags": [
+          "Keys"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/quotes": {
+      "get": {
+        "operationId": "getQuotes",
+        "summary": "모든 상품 시세",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quotes"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/stocks": {
+      "get": {
+        "operationId": "listStocks",
+        "summary": "주식 시세 목록",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Stock"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/stocks/{symbol}": {
+      "get": {
+        "operationId": "getStock",
+        "summary": "주식 현재가",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stock"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9]{0,15}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/openapi/v1/stocks/{symbol}/orderbook": {
+      "get": {
+        "operationId": "getOrderBook",
+        "summary": "주식 호가",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderBook"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9]{0,15}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/openapi/v1/stocks/{symbol}/candles": {
+      "get": {
+        "operationId": "getCandles",
+        "summary": "주식 OHLC 차트",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Candle"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9]{0,15}$"
+            }
+          },
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1h",
+                "6h",
+                "12h",
+                "1d",
+                "1w",
+                "1m",
+                "1y"
+              ],
+              "default": "1d"
+            }
+          }
+        ]
+      }
+    },
+    "/api/openapi/v1/etfs": {
+      "get": {
+        "operationId": "listEtfs",
+        "summary": "ETF NAV 시세",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EtfQuote"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/futures": {
+      "get": {
+        "operationId": "listFutures",
+        "summary": "선물 시세",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FutureQuote"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/options": {
+      "get": {
+        "operationId": "listOptions",
+        "summary": "옵션 체인",
+        "tags": [
+          "Market data"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OptionContract"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "cycleId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "10M",
+                "1H",
+                "SUN"
+              ]
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CALL",
+                "PUT"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/openapi/v1/account": {
+      "get": {
+        "operationId": "getAccount",
+        "summary": "공유 계좌 잔고",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/positions": {
+      "get": {
+        "operationId": "listPositions",
+        "summary": "ETF·선물·옵션 보유 포지션",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DerivativePosition"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/trades": {
+      "get": {
+        "operationId": "listDerivativeTrades",
+        "summary": "ETF·선물·옵션 최근 거래 20건",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DerivativeTrade"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/orders": {
+      "get": {
+        "operationId": "listOpenOrders",
+        "summary": "주식 미체결 주문 목록",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockOrder"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "description": "id 내림차순. 다음 페이지에는 마지막 행의 id를 beforeId로 전달합니다.",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "beforeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "placeOrder",
+        "summary": "주식·ETF·선물·옵션 주문",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          }
+        },
+        "description": "TRADE 키 필요. 선물 BUY/SELL은 신규 롱/숏이며 청산은 별도 경로입니다. 옵션 매수 예제의 strike/expiryEpoch는 최신 /options 응답으로 교체해야 합니다. 기존 미체결 주문·잔액·호가 단위·가격제한·수수료 규칙을 적용합니다.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Order"
+              },
+              "examples": {
+                "stockBuy": {
+                  "value": {
+                    "product": "STOCK",
+                    "side": "BUY",
+                    "symbol": "GI",
+                    "quantity": 1,
+                    "orderType": "MARKET"
+                  }
+                },
+                "stockSell": {
+                  "value": {
+                    "product": "STOCK",
+                    "side": "SELL",
+                    "symbol": "GI",
+                    "quantity": 1,
+                    "orderType": "LIMIT",
+                    "price": 10000
+                  }
+                },
+                "etfBuy": {
+                  "value": {
+                    "product": "ETF",
+                    "side": "BUY",
+                    "symbol": "ETFIDX",
+                    "quantity": 1
+                  }
+                },
+                "etfSell": {
+                  "value": {
+                    "product": "ETF",
+                    "side": "SELL",
+                    "symbol": "ETFIDX",
+                    "quantity": 1
+                  }
+                },
+                "futureLong": {
+                  "value": {
+                    "product": "FUTURE",
+                    "side": "BUY",
+                    "symbol": "FUTIDX",
+                    "quantity": 1,
+                    "leverage": 5
+                  }
+                },
+                "futureShort": {
+                  "value": {
+                    "product": "FUTURE",
+                    "side": "SELL",
+                    "symbol": "FUTIDX",
+                    "quantity": 1,
+                    "leverage": 5
+                  }
+                },
+                "optionBuy": {
+                  "value": {
+                    "product": "OPTION",
+                    "side": "BUY",
+                    "quantity": 1,
+                    "optionType": "CALL",
+                    "cycleId": "1H",
+                    "strike": 1000,
+                    "expiryEpoch": 1792659600
+                  }
+                },
+                "optionSell": {
+                  "value": {
+                    "product": "OPTION",
+                    "side": "SELL",
+                    "quantity": 1,
+                    "positionId": 123
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/orders/history": {
+      "get": {
+        "operationId": "getStockOrderHistory",
+        "summary": "종목별 주식 주문 이력 최근 20건",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockOrderHistory"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/openapi/v1/orders/{orderId}": {
+      "get": {
+        "operationId": "getOrder",
+        "summary": "본인 주식 주문 상태",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "cancelOrder",
+        "summary": "주식 미체결 주문 취소",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          }
+        },
+        "description": "TRADE 키 필요. 이미 완료된 주문은 취소할 수 없습니다.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ]
+      }
+    },
+    "/api/openapi/v1/positions/{positionId}/close": {
+      "post": {
+        "operationId": "closePosition",
+        "summary": "ETF·선물·옵션 부분/전량 청산",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          }
+        },
+        "description": "TRADE 키 필요. 수량 1~100 및 본인 보유 수량 이하. 롱·숏 모두 포지션 id로 청산합니다.",
+        "parameters": [
+          {
+            "name": "positionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Close"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openapi/v1/requests/{requestId}": {
+      "get": {
+        "operationId": "getReceipt",
+        "summary": "완료된 요청의 원래 결과 조회",
+        "tags": [
+          "Trading"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "429": {
+            "$ref": "#/components/responses/429"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "503": {
+            "$ref": "#/components/responses/503"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "description": "최소 7일간 보관. 처리 중·실패·다른 계정·보관 만료는 404일 수 있습니다. 404만으로 미실행을 단정하지 말고 동일 키·본문으로 재시도하세요.",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._-]+$"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TradingRestriction": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "limitOrdersAllowed": {
+            "type": "boolean"
+          },
+          "marketOrdersAllowed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "phase",
+          "level",
+          "reason",
+          "effect",
+          "startedAt",
+          "endsAt",
+          "limitOrdersAllowed",
+          "marketOrdersAllowed"
+        ]
+      },
+      "Stock": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "genre": {
+            "type": "string"
+          },
+          "price": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "changePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "restriction": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              },
+              "level": {
+                "type": "integer",
+                "format": "int32"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "endsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "limitOrdersAllowed": {
+                "type": "boolean"
+              },
+              "marketOrdersAllowed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "label",
+              "phase",
+              "level",
+              "reason",
+              "effect",
+              "startedAt",
+              "endsAt",
+              "limitOrdersAllowed",
+              "marketOrdersAllowed"
+            ],
+            "nullable": true
+          },
+          "activeUsers": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "marketCap": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "movementWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "referencePrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "limitUp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "limitDown": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "genre",
+          "price",
+          "changePercent",
+          "volume",
+          "restriction",
+          "activeUsers",
+          "marketCap",
+          "movementWeight",
+          "referencePrice",
+          "limitUp",
+          "limitDown"
+        ],
+        "description": "주식 가격·기준가·상하한가는 모의 원화(KRW). 기존 공개 시세 캐시를 공유합니다."
+      },
+      "StockPosition": {
+        "type": "object",
+        "properties": {
+          "stockCode": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "settledQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unsettledQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "availableQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "averagePrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "marketValue": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "profitLoss": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "profitLossPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "realizedProfitLoss": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "stockCode",
+          "quantity",
+          "settledQuantity",
+          "unsettledQuantity",
+          "availableQuantity",
+          "averagePrice",
+          "marketValue",
+          "profitLoss",
+          "profitLossPercent",
+          "realizedProfitLoss"
+        ]
+      },
+      "Portfolio": {
+        "type": "object",
+        "properties": {
+          "cash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "assetValue": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalAsset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockPosition"
+            }
+          },
+          "unsettledCash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unsettledAssetValue": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalFees": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "realizedProfitLoss": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "attendanceRewardCash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "missionRewardCash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "loanBalance": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "adminAdjustmentCash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "derivativeAssetValue": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "derivativeRealizedProfitLoss": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "cash",
+          "assetValue",
+          "totalAsset",
+          "positions",
+          "unsettledCash",
+          "unsettledAssetValue",
+          "totalFees",
+          "realizedProfitLoss",
+          "attendanceRewardCash",
+          "missionRewardCash",
+          "loanBalance",
+          "adminAdjustmentCash",
+          "derivativeAssetValue",
+          "derivativeRealizedProfitLoss"
+        ],
+        "description": "기존 계좌의 전체 자산 요약. derivatives.cash와 같은 현금이므로 합산하면 안 됩니다."
+      },
+      "StockOrderResult": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "stockCode": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "price": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "portfolio": {
+            "$ref": "#/components/schemas/Portfolio"
+          },
+          "fee": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "settlementStatus": {
+            "type": "string"
+          },
+          "settlementAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "orderId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "message",
+          "stockCode",
+          "side",
+          "quantity",
+          "price",
+          "status",
+          "portfolio",
+          "fee",
+          "settlementStatus",
+          "settlementAt",
+          "orderId"
+        ],
+        "description": "orderId로 현재 상태를 조회/취소합니다. OPEN은 대기 또는 부분 체결이며 FILLED만 전량 체결입니다."
+      },
+      "StockOrder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stockCode": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "remainingQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "price": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "orderType": {
+            "type": "string"
+          },
+          "reservedCash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reservedQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "stockCode",
+          "side",
+          "quantity",
+          "remainingQuantity",
+          "price",
+          "status",
+          "orderType",
+          "reservedCash",
+          "reservedQuantity",
+          "createdAt",
+          "expiresAt"
+        ],
+        "description": "시장가의 price는 0일 수 있습니다. 잔여 수량과 status를 함께 확인하세요."
+      },
+      "StockOrderHistory": {
+        "type": "object",
+        "properties": {
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "price": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "orderType": {
+            "type": "string"
+          },
+          "remainingQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fee": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "settlementStatus": {
+            "type": "string"
+          },
+          "settlementAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "side",
+          "quantity",
+          "price",
+          "status",
+          "orderType",
+          "remainingQuantity",
+          "createdAt",
+          "fee",
+          "settlementStatus",
+          "settlementAt"
+        ]
+      },
+      "OrderBookLevel": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "price",
+          "quantity",
+          "orderCount"
+        ]
+      },
+      "OrderBook": {
+        "type": "object",
+        "properties": {
+          "stockCode": {
+            "type": "string"
+          },
+          "bids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderBookLevel"
+            }
+          },
+          "asks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderBookLevel"
+            }
+          }
+        },
+        "required": [
+          "stockCode",
+          "bids",
+          "asks"
+        ]
+      },
+      "Candle": {
+        "type": "object",
+        "properties": {
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "openPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "highPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lowPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "closePrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "이 봉에 반영된 마지막 가격 기록의 서버 시각. 실시간 체결과 병합할 때 오래된 응답의 역행을 방지합니다."
+          }
+        },
+        "required": [
+          "recordedAt",
+          "openPrice",
+          "highPrice",
+          "lowPrice",
+          "closePrice",
+          "volume",
+          "updatedAt"
+        ],
+        "description": "기존 차트 집계: volume은 가격 표본·집계 건수이며 거래 주식 수가 아닙니다."
+      },
+      "Constituent": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number",
+            "format": "double"
+          },
+          "changePercent": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "weight",
+          "changePercent"
+        ]
+      },
+      "EtfQuote": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "theme": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "prevClose": {
+            "type": "number",
+            "format": "double"
+          },
+          "changePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "constituents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Constituent"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "theme",
+          "description",
+          "price",
+          "prevClose",
+          "changePercent",
+          "constituents",
+          "series"
+        ],
+        "description": "가격은 원화 NAV. series는 서버 메모리의 최근 표본이며 시각/OHLC/영구 이력을 제공하지 않습니다."
+      },
+      "FutureQuote": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "prevClose": {
+            "type": "number",
+            "format": "double"
+          },
+          "changePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "multiplier": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leverages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "maintenanceRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "price",
+          "prevClose",
+          "changePercent",
+          "multiplier",
+          "leverages",
+          "maintenanceRate",
+          "series"
+        ],
+        "description": "가격은 지수 포인트. 계약 가치는 price × multiplier 원. FUTIDX 한 종목, 레버리지 2/5/10, 기본 5."
+      },
+      "OptionCycle": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "expiryAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiryEpoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "secondsLeft": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "tag",
+          "expiryAt",
+          "expiryEpoch",
+          "secondsLeft"
+        ]
+      },
+      "OptionContract": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "cycleId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "strike": {
+            "type": "number",
+            "format": "double"
+          },
+          "mark": {
+            "type": "number",
+            "format": "double"
+          },
+          "premium": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "breakeven": {
+            "type": "number",
+            "format": "double"
+          },
+          "expiryAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiryEpoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "secondsLeft": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "cycleId",
+          "type",
+          "strike",
+          "mark",
+          "premium",
+          "breakeven",
+          "expiryAt",
+          "expiryEpoch",
+          "secondsLeft"
+        ],
+        "description": "mark·strike는 지수 포인트, premium은 계약당 모의 원화. expiryEpoch는 초 단위 Unix 시각. 옵션 매수는 이 응답의 만기를 그대로 전달합니다."
+      },
+      "DerivativeSnapshot": {
+        "type": "object",
+        "properties": {
+          "indexValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "indexPrevClose": {
+            "type": "number",
+            "format": "double"
+          },
+          "indexChangePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "etfs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EtfQuote"
+            }
+          },
+          "future": {
+            "$ref": "#/components/schemas/FutureQuote"
+          },
+          "cycles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionCycle"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionContract"
+            }
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "indexValue",
+          "indexPrevClose",
+          "indexChangePercent",
+          "etfs",
+          "future",
+          "cycles",
+          "options",
+          "serverTime"
+        ],
+        "description": "최대 1초간 공유 캐시. 주문 시 서버에서 가격·증거금을 다시 계산합니다."
+      },
+      "DerivativePosition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "markPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "entryValue": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "margin": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "leverage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "optionType": {
+            "type": "string",
+            "nullable": true
+          },
+          "strike": {
+            "type": "number",
+            "format": "double"
+          },
+          "expiryAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "value": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unrealizedPnl": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unrealizedPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "symbol",
+          "name",
+          "side",
+          "quantity",
+          "entryPrice",
+          "markPrice",
+          "entryValue",
+          "margin",
+          "leverage",
+          "optionType",
+          "strike",
+          "expiryAt",
+          "value",
+          "unrealizedPnl",
+          "unrealizedPercent",
+          "status",
+          "openedAt"
+        ],
+        "description": "kind는 ETF/FUTURE/OPTION. 포지션별 id는 청산에 사용합니다. 선물·옵션 entryPrice/markPrice는 포인트입니다."
+      },
+      "DerivativeTrade": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "positionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "action": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "cashFlow": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fee": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "positionId",
+          "action",
+          "kind",
+          "symbol",
+          "side",
+          "quantity",
+          "price",
+          "cashFlow",
+          "fee",
+          "createdAt"
+        ],
+        "description": "cashFlow는 수수료를 포함한 실제 현금 증감(원)입니다. fee는 그중 수수료이며 다시 차감하지 않습니다."
+      },
+      "DerivativeAccount": {
+        "type": "object",
+        "properties": {
+          "cash": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "positionValue": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "equity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unrealizedPnl": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "realizedPnl": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalFees": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DerivativePosition"
+            }
+          },
+          "trades": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DerivativeTrade"
+            }
+          }
+        },
+        "required": [
+          "cash",
+          "positionValue",
+          "equity",
+          "unrealizedPnl",
+          "realizedPnl",
+          "totalFees",
+          "positions",
+          "trades"
+        ],
+        "description": "ETF·선물·옵션 잔고. cash는 주식 계좌와 공유. trades는 최근 20건이며 equity에는 주식 평가액이 포함되지 않습니다."
+      },
+      "DerivativeOrderResult": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "account": {
+            "$ref": "#/components/schemas/DerivativeAccount"
+          }
+        },
+        "required": [
+          "message",
+          "account"
+        ]
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "portfolio": {
+            "$ref": "#/components/schemas/Portfolio"
+          },
+          "derivatives": {
+            "$ref": "#/components/schemas/DerivativeAccount"
+          }
+        },
+        "required": [
+          "portfolio",
+          "derivatives"
+        ],
+        "description": "두 요약의 현금은 동일한 계좌입니다. 순차 조회이므로 동시 거래 중 값의 기준 시각이 다를 수 있습니다."
+      },
+      "Quotes": {
+        "type": "object",
+        "properties": {
+          "stocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Stock"
+            }
+          },
+          "derivatives": {
+            "$ref": "#/components/schemas/DerivativeSnapshot"
+          }
+        },
+        "required": [
+          "stocks",
+          "derivatives"
+        ]
+      },
+      "KeyInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string",
+            "enum": [
+              "READ",
+              "TRADE"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "permission",
+          "createdAt",
+          "expiresAt",
+          "revokedAt"
+        ]
+      },
+      "IssuedKey": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/KeyInfo"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "token"
+        ],
+        "description": "token 원문은 이 응답에서만 제공됩니다. 서버에는 SHA-256 해시만 저장합니다."
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "Cancellation": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "CANCELLED"
+            ]
+          }
+        },
+        "required": [
+          "orderId",
+          "status"
+        ]
+      },
+      "OrderReceipt": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "operation",
+          "result"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StockOrderResult"
+              },
+              {
+                "$ref": "#/components/schemas/DerivativeOrderResult"
+              }
+            ]
+          }
+        },
+        "description": "커밋 완료 후 응답. 동일 계정·Idempotency-Key의 동일 요청은 최소 7일간 원래 결과를 반환합니다. 현재 잔고는 /account에서 조회하세요."
+      },
+      "PositionReceipt": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "operation",
+          "result"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DerivativeOrderResult"
+              }
+            ]
+          }
+        },
+        "description": "커밋 완료 후 응답. 동일 계정·Idempotency-Key의 동일 요청은 최소 7일간 원래 결과를 반환합니다. 현재 잔고는 /account에서 조회하세요."
+      },
+      "CancelReceipt": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "operation",
+          "result"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Cancellation"
+              }
+            ]
+          }
+        },
+        "description": "커밋 완료 후 응답. 동일 계정·Idempotency-Key의 동일 요청은 최소 7일간 원래 결과를 반환합니다. 현재 잔고는 /account에서 조회하세요."
+      },
+      "Receipt": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "operation",
+          "result"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StockOrderResult"
+              },
+              {
+                "$ref": "#/components/schemas/DerivativeOrderResult"
+              },
+              {
+                "$ref": "#/components/schemas/Cancellation"
+              }
+            ]
+          }
+        },
+        "description": "커밋 완료 후 응답. 동일 계정·Idempotency-Key의 동일 요청은 최소 7일간 원래 결과를 반환합니다. 현재 잔고는 /account에서 조회하세요."
+      },
+      "CreateKey": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "permission"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "permission": {
+            "type": "string",
+            "enum": [
+              "READ",
+              "TRADE"
+            ]
+          },
+          "expiresInDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "default": 90,
+            "nullable": true
+          }
+        }
+      },
+      "Close": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "quantity"
+        ],
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "StockMarketOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product",
+          "side",
+          "symbol",
+          "quantity"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "enum": [
+              "STOCK"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "symbol": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]{0,15}$"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "MARKET"
+            ],
+            "default": "MARKET"
+          }
+        }
+      },
+      "StockLimitOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product",
+          "side",
+          "symbol",
+          "quantity",
+          "orderType",
+          "price"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "enum": [
+              "STOCK"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "symbol": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]{0,15}$"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "LIMIT"
+            ]
+          },
+          "price": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      },
+      "EtfOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product",
+          "side",
+          "symbol",
+          "quantity"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "enum": [
+              "ETF"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "symbol": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]{0,15}$"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "MARKET"
+            ]
+          }
+        }
+      },
+      "FutureOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product",
+          "side",
+          "symbol",
+          "quantity"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "enum": [
+              "FUTURE"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "symbol": {
+            "type": "string",
+            "enum": [
+              "FUTIDX"
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "MARKET"
+            ]
+          },
+          "leverage": {
+            "type": "integer",
+            "enum": [
+              2,
+              5,
+              10
+            ],
+            "default": 5
+          }
+        },
+        "description": "BUY는 LONG 신규 진입, SELL은 SHORT 신규 진입. 기존 포지션은 /positions/{positionId}/close로 청산합니다."
+      },
+      "OptionBuyOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product",
+          "side",
+          "quantity",
+          "optionType",
+          "cycleId",
+          "strike",
+          "expiryEpoch"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "enum": [
+              "OPTION"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY"
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "MARKET"
+            ]
+          },
+          "optionType": {
+            "type": "string",
+            "enum": [
+              "CALL",
+              "PUT"
+            ]
+          },
+          "cycleId": {
+            "type": "string",
+            "enum": [
+              "10M",
+              "1H",
+              "SUN"
+            ]
+          },
+          "strike": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "expiryEpoch": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      },
+      "OptionSellOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product",
+          "side",
+          "quantity",
+          "positionId"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "enum": [
+              "OPTION"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "SELL"
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "MARKET"
+            ]
+          },
+          "positionId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "description": "보유 옵션의 매도 청산만 지원합니다. 옵션 신규 매도(발행)는 지원하지 않습니다."
+      },
+      "Order": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StockMarketOrder"
+          },
+          {
+            "$ref": "#/components/schemas/StockLimitOrder"
+          },
+          {
+            "$ref": "#/components/schemas/EtfOrder"
+          },
+          {
+            "$ref": "#/components/schemas/FutureOrder"
+          },
+          {
+            "$ref": "#/components/schemas/OptionBuyOrder"
+          },
+          {
+            "$ref": "#/components/schemas/OptionSellOrder"
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gs_<random token>",
+        "description": "POST /api/openapi/keys에서 발급한 키"
+      },
+      "FirebaseToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Firebase ID token",
+        "description": "로그인한 계정의 Firebase ID 토큰. API 키 발급·조회·폐기에만 사용"
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "description": "계정별 요청 식별자. 새로운 주문마다 새 UUID, 재시도에는 동일 키·동일 본문. 성공 결과 최소 7일 보관. 같은 키로 다른 작업/본문은 409."
+      }
+    },
+    "responses": {
+      "400": {
+        "description": "요청 검증 실패",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "401": {
+        "description": "인증 실패·키 만료·폐기",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "403": {
+        "description": "권한 부족·계정 정지·관리자 거래",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "404": {
+        "description": "본인 소유 리소스 없음",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "409": {
+        "description": "Idempotency-Key 충돌 또는 활성 키 10개 초과",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "429": {
+        "description": "호출 한도 초과",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "재시도까지 대기할 초",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "500": {
+        "description": "서버 오류",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "503": {
+        "description": "주문 처리 일시 불가",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Keys"
+    },
+    {
+      "name": "Market data"
+    },
+    {
+      "name": "Account"
+    },
+    {
+      "name": "Trading"
+    }
+  ]
+}

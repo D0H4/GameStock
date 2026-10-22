@@ -379,7 +379,7 @@ public class TitleService {
             stats.maxPositionValue = Math.max(stats.maxPositionValue, value);
             stats.assetValue += value;
         }, userId);
-        stats.totalAsset = stats.cash + stats.reservedCash + stats.unsettledCash + stats.assetValue - stats.loanBalance;
+        stats.totalAsset = stats.cash + stats.reservedCash + stats.unsettledCash + stats.assetValue + AccountValuation.derivatives(jdbc,userId) - stats.loanBalance;
         return stats;
     }
 
@@ -421,13 +421,7 @@ public class TitleService {
         Map<Long,Long> externalCash=adminRuntime==null?Map.of():adminRuntime.externalCash();
         return jdbc.query("""
                 SELECT u.id, u.account_reset_at,
-                       u.cash
-                       + COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0)
-                       + COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0)
-                       + COALESCE((SELECT SUM(p.quantity * COALESCE(pm.mark_price, s.current_price))
-                                   FROM portfolios p JOIN stocks s ON s.id = p.stock_id
-                                   LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
-                                   WHERE p.user_id = u.id AND p.quantity > 0), 0)
+                       """ + AccountValuation.GROSS_ASSET + """
                        - COALESCE((SELECT SUM(ar.reward_cash) FROM attendance_rewards ar WHERE ar.user_id = u.id), 0)
                        - COALESCE((SELECT SUM(mr.reward_cash) FROM mission_rewards mr WHERE mr.user_id = u.id), 0)
                        - u.loan_balance AS adjusted_asset
@@ -603,13 +597,7 @@ public class TitleService {
         String placeholders = String.join(",", java.util.Collections.nCopies(userIds.size(), "?"));
         jdbc.query("""
                 SELECT u.id, u.nickname, u.profile_image_url,
-                       u.cash
-                       + COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0)
-                       + COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0)
-                       + COALESCE((SELECT SUM(p.quantity * COALESCE(pm.mark_price, s.current_price))
-                                   FROM portfolios p JOIN stocks s ON s.id = p.stock_id
-                                   LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
-                                   WHERE p.user_id = u.id AND p.quantity > 0), 0)
+                       """ + AccountValuation.GROSS_ASSET + """
                        - u.loan_balance AS total_asset,
                        (SELECT ut.title_id FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_title,
                        (SELECT ut.win_count FROM user_titles ut WHERE ut.user_id = u.id AND ut.equipped = TRUE LIMIT 1) AS equipped_count
