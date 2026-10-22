@@ -52,6 +52,8 @@
 .nx-search svg { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--ink-muted); stroke-width: 1.8; stroke-linecap: round; }
 .nx-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; }
 .nx-search input::placeholder { color: var(--ink-muted); }
+/* 초점은 바깥 상자 테두리로만 보인다. 전역 :focus-visible 링이 안쪽에 한 겹 더 그려지지 않게 막는다. */
+html[data-nx] .nx-search input:focus-visible { outline: none; }
 
 .nx-empty-state { display: grid; justify-items: center; gap: 8px; padding: 56px 16px; color: var(--ink-muted); }
 

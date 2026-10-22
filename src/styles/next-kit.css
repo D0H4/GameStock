@@ -123,6 +123,8 @@
 }
 .nx-input:focus,
 .nx-select:focus { border-color: var(--brand); outline: 0; }
+/* 드롭다운은 바깥 초점 링만 남기고, 그 안쪽 테두리는 평소 색으로 둬서 두 겹으로 보이지 않게 한다. */
+html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
 .nx-input::placeholder { color: var(--ink-faint); }
 
 /* 숫자 입력: [−] 값 단위 [+] 한 줄. */
