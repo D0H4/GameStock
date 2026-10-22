@@ -20,6 +20,24 @@ class SubscriptionStreamTest {
     @AfterEach void stop()throws Exception{connections.close();}
     WebSocketSession socket(String id){var socket=mock(WebSocketSession.class);when(socket.getId()).thenReturn(id);when(socket.isOpen()).thenReturn(true);connections.connect(socket);return socket;}
     void publish(String channel,String message){bus.publish(new EventFanout.Envelope(channel,UUID.randomUUID().toString(),message));}
+    @Test void inboundFloodClosesOnlyTheOffendingConnectionBeforeFurtherWork() {
+        socket("noisy");socket("other");
+        for(int i=0;i<20;i++)assertTrue(connections.acceptMessage("noisy",false));
+        assertFalse(connections.acceptMessage("noisy",false));
+        assertEquals(1,connections.size());
+        assertTrue(connections.acceptMessage("other",false));
+    }
+    @Test void repeatedAuthenticationAndCapacityAreBounded() throws Exception {
+        var first=socket("first");
+        for(int i=0;i<6;i++)assertTrue(connections.acceptMessage("first",true));
+        assertFalse(connections.acceptMessage("first",true));
+        org.springframework.test.util.ReflectionTestUtils.setField(connections,"maxConnections",1);
+        socket("kept");
+        var rejected=mock(WebSocketSession.class);when(rejected.getId()).thenReturn("rejected");
+        assertThrows(IllegalArgumentException.class,()->connections.connect(rejected));
+        verify(rejected).close(CloseStatus.POLICY_VIOLATION);
+        assertEquals(1,connections.size());
+    }
     @Test void personalEventsNeverReachOtherAccountsAndMarketEventsRequireSubscription()throws Exception{
         var a=socket("a");var b=socket("b");var anonymous=socket("anon");
         connections.authenticate("a",1);connections.authenticate("b",2);connections.subscribe("a",Set.of("A"));connections.subscribe("b",Set.of("B"));

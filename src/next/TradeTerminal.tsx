@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
@@ -12,15 +12,17 @@ import { indexValue, rate, shares, since, won } from "../market/format";
 import { marketOpinion, newsEffect, sessionRate, strengthRatio, type OpinionTone } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
-import { MARKET_PATH, NEWS_PATH, TRADE_PATH, type Route } from "../router";
+import { MARKET_PATH, NEWS_PATH, navigate, type Route } from "../router";
 import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
+import { OrderDock } from "./trade/OrderDock";
+import { MarketTabs } from "./MarketTabs";
 
 const NAV = [
   { label: "홈", to: "/", match: "home" },
-  { label: "시장", to: "/market", match: "market" },
-  { label: "ETF·파생", to: "/derivatives", match: "derivatives" },
+  { label: "주식", to: "/market", match: "market" },
+  { label: "파생", to: "/derivatives", match: "derivatives" },
   { label: "뉴스", to: "/news", match: "news" },
   { label: "랭킹", to: "/ranking", match: "ranking" },
 ] as const;
@@ -86,7 +88,7 @@ function TopTicker() {
 }
 
 function navActive(route: Route, match: (typeof NAV)[number]["match"]): boolean {
-  return route.name === match || (match === "market" && route.name === "trade");
+  return route.name === match || (match === "market" && (route.name === "trade" || route.name === "etf"));
 }
 
 export function NxTopbar({ route }: { route: Route }) {
@@ -139,32 +141,18 @@ export function NxTabbar({ route }: { route: Route }) {
   );
 }
 
-function Watchlist({ current }: { current: string }) {
+function StockSelector({ current }: { current: string }) {
   const snapshot = useMarket();
   return (
-    <nav className="nx-panel nx-watch" aria-label="종목 목록">
-      <h2 className="nx-panel-title">종목 <span className="nx-num">{snapshot.codes.length}</span></h2>
-      <ul>
+    <label className="nx-stock-selector">
+      <span>종목 선택</span>
+      <select value={current} onChange={(event) => navigate(MARKET_PATH(event.target.value))}>
         {snapshot.codes.map((code) => {
           const listing = LISTING_BY_CODE[code];
-          const quote = snapshot.quotes[code];
-          if (!listing || !quote) return null;
-          const ratio = sessionRate(quote);
-          const active = code === current;
-          return (
-            <li key={code}>
-              <Link to={TRADE_PATH(code)} className={`nx-watch-row${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined}>
-                <GameIcon code={code} size="small" />
-                <span className="nx-watch-name">{listing.name}</span>
-                <PriceCell className="nx-num nx-watch-price" value={quote.price} />
-                <span className={`nx-num nx-watch-rate ${ratio > 0 ? "is-up" : ratio < 0 ? "is-down" : ""}`}>{rate(ratio)}</span>
-                {quote.restriction && <span className="nx-watch-limit">{quote.restriction.kind === "CIRCUIT_BREAKER" ? "CB" : "VI"}</span>}
-              </Link>
-            </li>
-          );
+          return listing ? <option key={code} value={code}>{listing.name} · {code}{snapshot.watch.includes(code) ? " · 관심" : ""}</option> : null;
         })}
-      </ul>
-    </nav>
+      </select>
+    </label>
   );
 }
 
@@ -181,7 +169,7 @@ function StockHead({ code, quote }: { code: string; quote: Quote }) {
           <p className="nx-head-sub"><span className="nx-code">{code}</span>{listing.publisher} · {listing.genre}</p>
           <h1 className="nx-head-name">{listing.name}</h1>
         </div>
-        <button type="button" className={`nx-watch-toggle${watched ? " is-on" : ""}`} aria-pressed={watched} onClick={() => api.toggleWatch(code)}>
+        <button type="button" className={`nx-watch-toggle${watched ? " is-on" : ""}`} aria-label={`${listing.name} 관심 ${watched ? "해제" : "등록"}`} aria-pressed={watched} onClick={() => api.toggleWatch(code)}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" /></svg>
           {watched ? "관심 종목" : "관심 등록"}
         </button>
@@ -191,8 +179,17 @@ function StockHead({ code, quote }: { code: string; quote: Quote }) {
         <Delta change={quote.price - quote.prevClose} ratio={sessionRate(quote)} className="nx-head-delta" />
         <RestrictionBadge code={code} />
       </div>
+    </header>
+  );
+}
+
+function StockStats({ quote }: { quote: Quote }) {
+  return (
+    <section className="nx-trade-facts" aria-labelledby="nx-stock-info-title">
+      <h2 id="nx-stock-info-title">종목 정보</h2>
       <dl className="nx-stats">
         <div><dt>전일</dt><dd className="nx-num">{won(quote.prevClose)}</dd></div>
+        <div><dt>시가</dt><dd className="nx-num">{won(quote.open)}</dd></div>
         <OpinionStat quote={quote} />
         <div><dt>고가</dt><dd className="nx-num is-up">{won(quote.high)}</dd></div>
         <div><dt>저가</dt><dd className="nx-num is-down">{won(quote.low)}</dd></div>
@@ -200,7 +197,7 @@ function StockHead({ code, quote }: { code: string; quote: Quote }) {
         <div><dt>하한가</dt><dd className="nx-num">{won(quote.limitDown)}</dd></div>
         <div><dt>거래량</dt><dd className="nx-num">{shares(quote.volume)}</dd></div>
       </dl>
-    </header>
+    </section>
   );
 }
 
@@ -244,21 +241,21 @@ function OpinionStat({ quote }: { quote: Quote }) {
   );
 }
 
-function NewsStrip({ code, quote }: { code: string; quote: Quote }) {
+function StockNews({ code, quote }: { code: string; quote: Quote }) {
   const snapshot = useMarket();
-  const latest = snapshot.news.filter((item) => item.code === code).sort((a, b) => b.at - a.at)[0];
-  if (!latest) return <p className="nx-news is-empty">이 종목의 최근 뉴스가 아직 없어요.</p>;
-  const effect = latest.priceChangeRatio ?? newsEffect(latest.priceAtPublish, quote);
+  const items = useMemo(() => snapshot.news.filter((item) => item.code === code).sort((a, b) => b.at - a.at).slice(0, 4), [snapshot.news, code]);
   return (
-    <Link to={NEWS_PATH(latest.id)} className="nx-news">
-      <span className="nx-news-tag">뉴스</span>
-      <span className="nx-news-title">{latest.title}</span>
-      <span className="nx-news-meta">{latest.source} · {since(latest.at, snapshot.updatedAt || Date.now())}</span>
-      <span className="nx-news-effect">
-        <span className="nx-news-effect-label">발행 후</span>
-        <span className={`nx-num ${effect > 0 ? "is-up" : effect < 0 ? "is-down" : ""}`}>{rate(effect)}</span>
-      </span>
-    </Link>
+    <section className="nx-stock-news" aria-labelledby="nx-stock-news-title">
+      <header><h2 id="nx-stock-news-title">관련 뉴스</h2><Link to="/news">전체 뉴스</Link></header>
+      {items.length === 0 ? <p className="nx-muted">이 종목의 최근 뉴스가 아직 없어요.</p> : items.map((item) => {
+        const effect = item.priceChangeRatio ?? newsEffect(item.priceAtPublish, quote);
+        return <Link key={item.id} to={NEWS_PATH(item.id)} className="nx-stock-article">
+          <span>{item.source} · {since(item.at, snapshot.updatedAt || Date.now())}</span>
+          <h3>{item.title}</h3>
+          <span>발행 후 <strong className={`nx-num ${effect > 0 ? "is-up" : effect < 0 ? "is-down" : ""}`}>{rate(effect)}</strong></span>
+        </Link>;
+      })}
+    </section>
   );
 }
 
@@ -377,9 +374,14 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
   const { setActiveDetailCode } = useMarketApi();
   const [accountTab, setAccountTab] = useState<NxAccountTab>("holdings");
   const [selected, setSelected] = useState<{ code: string; price: number; revision: number } | null>(null);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const accountFocusPending = useRef(false);
   const code = ticker?.toUpperCase() ?? snapshot.codes[0] ?? null;
   const listing = code ? LISTING_BY_CODE[code] : undefined;
   const quote = code ? snapshot.quotes[code] : undefined;
+  const markers = useMemo(() => snapshot.news.filter((item) => item.code === code).map((item) => ({ at: item.at, label: item.title })), [snapshot.news, code]);
+
+  useEffect(() => { setOrderOpen(false); }, [code]);
 
   useEffect(() => {
     if (!code) return undefined;
@@ -394,36 +396,63 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
     return <p className="nx-empty" role="status">시세를 불러오는 중이에요.</p>;
   }
 
-  const markers = snapshot.news.filter((item) => item.code === code).map((item) => ({ at: item.at, label: item.title }));
+  const focusTicket = () => {
+    if (window.matchMedia("(max-width: 960px)").matches) setOrderOpen(true);
+    else {
+      const ticket = document.querySelector<HTMLFormElement>(".nx-ticket");
+      ticket?.focus({ preventScroll: true });
+      ticket?.scrollIntoView({ block: "nearest" });
+    }
+  };
+  const focusAccount = () => {
+    const account = document.querySelector<HTMLElement>(".nx-account");
+    account?.focus({ preventScroll: true });
+    account?.scrollIntoView({ block: "nearest" });
+    accountFocusPending.current = false;
+  };
 
   return (
-    <div className="nx-terminal">
-      {snapshot.portfolioError && <p role="status" className="nx-alert">{snapshot.portfolioError}</p>}
-      <Watchlist current={code} />
-      <div className="nx-main">
-        <section className="nx-panel nx-center" aria-label={`${listing.name} 시세와 차트`}>
+    <div className="nx-trade-page">
+      <MarketTabs active="stocks" />
+      <div className="nx-trade-toolbar">
+        <Link to="/market" className="nx-back-link"><span aria-hidden="true">←</span> 주식 목록</Link>
+        <StockSelector current={code} />
+      </div>
+      <div className="nx-workspace">
+        {snapshot.portfolioError && <p role="status" className="nx-alert">{snapshot.portfolioError}</p>}
+        <div className="nx-trade-main">
+        <section className="nx-trade-chart" aria-label={`${listing.name} 시세와 차트`}>
           <StockHead code={code} quote={quote} />
           <div className="nx-chart integration-tools">
-            <SeriesChart code={code} markers={markers} />
+            <SeriesChart key={code} code={code} markers={markers} initialMode="candle" />
           </div>
-          <NewsStrip code={code} quote={quote} />
         </section>
-        <section className="nx-panel nx-account" aria-label="내 잔고와 주문 내역">
+        <StockStats quote={quote} />
+        <section className="nx-panel nx-account" aria-label="내 잔고와 주문 내역" tabIndex={-1}>
           <NxAccountPanel code={code} tab={accountTab} onTabChange={setAccountTab}
-            onFocusTicket={() => { const ticket = document.querySelector<HTMLFormElement>(".nx-ticket"); ticket?.focus({ preventScroll: true }); ticket?.scrollIntoView({ block: "nearest" }); }} />
+            onFocusTicket={focusTicket} />
         </section>
-      </div>
-      <div className="nx-rail">
-        <Book quote={quote} onPriceSelect={(price) => setSelected((previous) => ({ code, price, revision: (previous?.revision ?? 0) + 1 }))} />
-        <aside className="nx-panel nx-order" aria-label={`${listing.name} 매수·매도 주문`}>
+        <div className="nx-trade-details">
+          <Book quote={quote} onPriceSelect={(price) => { setSelected((previous) => ({ code, price, revision: (previous?.revision ?? 0) + 1 })); focusTicket(); }} />
+          <StockNews code={code} quote={quote} />
+        </div>
+        <p className="nx-trade-disclaimer">게임 뉴스와 모의 주문으로 형성되는 시세입니다. 실제 금융상품이나 투자 수익과 관계없습니다.</p>
+        </div>
+        <OrderDock title={listing.name} quote={won(quote.price)} open={orderOpen} onOpenChange={setOrderOpen}
+          onAfterClose={() => { if (accountFocusPending.current) focusAccount(); }}>
           <NxOrderTicket
             key={code}
             code={code}
-            onShowOrders={() => { setAccountTab("orders"); document.querySelector(".nx-account")?.scrollIntoView({ block: "nearest" }); }}
+            onShowOrders={() => {
+              setAccountTab("orders");
+              if (orderOpen) accountFocusPending.current = true;
+              else window.requestAnimationFrame(focusAccount);
+              setOrderOpen(false);
+            }}
             selectedLimitPrice={selected?.code === code ? selected.price : null}
             selectedLimitPriceRevision={selected?.code === code ? selected.revision : undefined}
           />
-        </aside>
+        </OrderDock>
       </div>
     </div>
   );

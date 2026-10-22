@@ -30,7 +30,7 @@ import static com.gamestock.backend.market.MarketModels.OrderRequest;
  *   <li>한도: 순자산(총 자산 − 대출 잔액)의 50%</li>
  *   <li>이자: 한국시간 하루 0.1%, 자정이 지나면 잔액에 붙는다</li>
  *   <li>담보비율(총 자산 ÷ 대출 잔액)이 140% 밑이면 경고하고 새 대출을 막는다</li>
- *   <li>120% 밑이면 미체결 주문을 취소하고 보유 주식을 시장가로 팔아 140%까지 갚는다(반대매매)</li>
+ *   <li>120% 밑이면 미체결 주문을 취소하고 주식·파생자산을 청산해 140%까지 갚는다(반대매매)</li>
  * </ul>
  * 대출 잔액은 투자 성과가 아니므로 수익률·랭킹·칭호 계산에서 모두 뺀다.
  */
@@ -50,22 +50,14 @@ public class LoanService {
 
     /** 봇·시연용·관리자 계정은 대출 대상이 아니다. 랭킹의 투자자 기준과 같다. */
     private static final String HUMAN_FILTER = "u.password_hash NOT IN ('BOT', 'TRADER') AND u.username <> 'demo' AND COALESCE(u.role, 'USER') <> 'ADMIN'";
-    private static final String GROSS_ASSET = """
-            u.cash
-            + COALESCE((SELECT SUM(o.reserved_cash) FROM orders o WHERE o.user_id = u.id AND o.status = 'OPEN'), 0)
-            + COALESCE((SELECT SUM(st.gross_amount - st.seller_fee) FROM settlements st WHERE st.seller_id = u.id AND st.status = 'PENDING'), 0)
-            + COALESCE((SELECT SUM(p.quantity * COALESCE(pm.mark_price, s.current_price))
-                        FROM portfolios p JOIN stocks s ON s.id = p.stock_id
-                        LEFT JOIN market_price_metrics pm ON pm.stock_id = s.id
-                        WHERE p.user_id = u.id AND p.quantity > 0), 0)
-            """;
+    private static final String GROSS_ASSET = AccountValuation.GROSS_ASSET;
 
     public record LoanEntry(long id, String kind, long amount, long balanceAfter, String createdAt) { }
     public record LoanStatus(long balance, long limit, long available, long grossAsset, long netAsset, long cash,
                              Double collateralRatio, boolean warning, boolean borrowBlocked,
                              double limitRatio, double dailyInterestRate, double warningRatio, double liquidationRatio,
                              long minAmount, List<LoanEntry> history) { }
-    public record LoanRequest(Long amount) { }
+    public record LoanRequest(@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictLongDeserializer.class) Long amount) { }
     public record LoanActionResult(String message, LoanStatus loan, MarketModels.Portfolio portfolio) { }
 
     private record Account(long cash, long balance, long grossAsset, boolean human) { }
@@ -74,16 +66,18 @@ public class LoanService {
     private final JdbcTemplate jdbc;
     private final MarketService market;
     private final OrderService orders;
+    private final DerivativeService derivatives;
     private final ApplicationEventPublisher events;
     private final TransactionTemplate transaction;
     private final Map<Long, Deque<Long>> recentActions = new ConcurrentHashMap<>();
     private Clock clock = Clock.systemUTC();
 
-    public LoanService(JdbcTemplate jdbc, MarketService market, OrderService orders, ApplicationEventPublisher events,
+    public LoanService(JdbcTemplate jdbc, MarketService market, OrderService orders, DerivativeService derivatives, ApplicationEventPublisher events,
                        PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.market = market;
         this.orders = orders;
+        this.derivatives = derivatives;
         this.events = events;
         this.transaction = new TransactionTemplate(transactions);
     }
@@ -242,15 +236,35 @@ public class LoanService {
                         (long) Math.ceil(need * LIQUIDATION_BUFFER / holding.price()));
                 try {
                     orders.submit(userId, new OrderRequest(holding.code(), "SELL", quantity, "MARKET", null)).join();
-                    need -= (long) quantity * holding.price();
+                    // A submitted/cancelled order is not cash. Re-read settled cash and current collateral.
+                    Account after = account(userId, false);
+                    need = repayTarget(after.grossAsset(), after.balance()) - after.cash();
                 } catch (RuntimeException error) {
                     log.info("사용자 {} 반대매매 매도({})가 접수되지 않았습니다: {}", userId, holding.code(), error.getMessage());
                 }
             }
         }
+        if (need > 0) {
+            // Derivatives count as collateral, so accounts holding only derivatives must also
+            // be able to repay. Use the same fees, immutable expiry fixing and user/position locks.
+            List<long[]> positions = jdbc.query("""
+                    SELECT id,quantity FROM derivative_positions
+                    WHERE user_id=? AND status='OPEN' AND quantity>0 ORDER BY mark_value DESC,id
+                    """, (rs, row) -> new long[]{rs.getLong(1), rs.getLong(2)}, userId);
+            for (long[] position : positions) {
+                if (need <= 0) break;
+                try {
+                    transaction.executeWithoutResult(state -> derivatives.close(userId, position[0], (int) position[1]));
+                    Account after = account(userId, false);
+                    need = repayTarget(after.grossAsset(), after.balance()) - after.cash();
+                } catch (RuntimeException error) {
+                    log.info("사용자 {} 반대매매 파생 청산({})이 보류됐습니다: {}", userId, position[0], error.getMessage());
+                }
+            }
+        }
         transaction.executeWithoutResult(state -> {
             Account current = account(userId, true);
-            long pay = Math.min(Math.min(current.cash(), current.balance()), Math.max(target, 0));
+            long pay = Math.min(Math.min(current.cash(), current.balance()), Math.max(repayTarget(current.grossAsset(), current.balance()), 0));
             if (pay > 0) settle(userId, pay, current.balance(), "LIQUIDATION");
         });
         events.publishEvent(new UserMarketEvent(userId, "LOAN_LIQUIDATED", Map.of("portfolio", market.portfolio(userId))));

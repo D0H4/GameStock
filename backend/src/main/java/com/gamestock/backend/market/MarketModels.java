@@ -89,10 +89,17 @@ public final class MarketModels {
                                      List<String> completedMissionIds) { }
     public record MissionRewardResult(long rewardCash, boolean awarded, Portfolio portfolio,
                                       DailyMissionStatus missions) { }
-    public record OrderRequest(@NotBlank String stockCode, @NotBlank String side, @Min(1) @Max(1000) int quantity, String orderType, Long price) { }
+    public record OrderRequest(@NotBlank String stockCode, @NotBlank String side,
+                               @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictIntegerDeserializer.class) @Min(1) @Max(1000) int quantity,
+                               String orderType,
+                               @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictLongDeserializer.class) Long price) { }
     public record OrderResult(String message, String stockCode, String side, int quantity, long price,
                               String status, Portfolio portfolio, long fee, String settlementStatus,
-                              String settlementAt) {
+                              String settlementAt, Long orderId) {
+        public OrderResult(String message, String stockCode, String side, int quantity, long price,
+                           String status, Portfolio portfolio, long fee, String settlementStatus, String settlementAt) {
+            this(message, stockCode, side, quantity, price, status, portfolio, fee, settlementStatus, settlementAt, null);
+        }
         public OrderResult(String message, String stockCode, String side, int quantity, long price,
                            String status, Portfolio portfolio) {
             this(message, stockCode, side, quantity, price, status, portfolio, 0, "NONE", null);
@@ -114,7 +121,7 @@ public final class MarketModels {
     public record OrderBook(String stockCode, List<OrderBookLevel> bids, List<OrderBookLevel> asks) { }
     public record PricePoint(long price, String recordedAt) { }
     public record ChartCandle(String recordedAt, long openPrice, long highPrice, long lowPrice,
-                              long closePrice, long volume) { }
+                              long closePrice, long volume, String updatedAt) { }
     /**
      * Public explanation of the inputs that are currently shaping a stock's
      * virtual price. Volumes cover the recent 24-hour window and are split

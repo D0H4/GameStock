@@ -49,6 +49,7 @@ final class BatchOrderBook {
     final Map<PositionKey,Holding> holdings;
     final Map<PositionKey,Long> holdingIds=new HashMap<>();
     final Map<Long,Long> lpCashBudgets=new HashMap<>();
+    final Map<Long,Long> issuedShares=new HashMap<>();
     final Map<Long,List<BotLedgerJournal.Print>> lastPrints=new HashMap<>();
     final List<Order> accepted=new ArrayList<>();
     final List<Fill> fills=new ArrayList<>();
@@ -94,7 +95,7 @@ final class BatchOrderBook {
     /** Start another transaction on a committed book. A rolled back book is discarded by its owner. */
     void beginBatch(long now) {
         for(Order order:accepted)sequence=Math.max(sequence,order.id);
-        accepted.clear();fills.clear();prices.clear();changedOrders.clear();changedAccounts.clear();changedHoldings.clear();
+        accepted.clear();fills.clear();prices.clear();changedOrders.clear();changedAccounts.clear();changedHoldings.clear();issuedShares.clear();
         accounts.values().forEach(a->{a.openingCash=a.cash;a.minimumCash=a.cash;});
         while(!expirations.isEmpty() && expirations.peek().expiresAt<=now)cancel(expirations.remove());
     }
@@ -115,6 +116,7 @@ final class BatchOrderBook {
         holdings.put(key,new Holding(oldQuantity+refill,oldSettled+refill,
                 Math.round((oldCost+average*(double)refill)/(oldQuantity+refill)),current==null?0:current.realized()));
         symbol.circulatingShares+=refill;
+        issuedShares.merge(stock,(long)refill,Long::sum);
         changedHoldings.add(key);
     }
     int available(long user,long stock) {return holding(user,stock).settled-reservedSells.getOrDefault(new PositionKey(user,stock),0);}

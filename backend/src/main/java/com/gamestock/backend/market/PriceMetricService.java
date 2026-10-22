@@ -7,7 +7,8 @@ import static com.gamestock.backend.market.MarketEnvironment.clamp;
 /** Reads executed trades only. Sparse history returns neutral indicators, never synthetic candles. */
 public final class PriceMetricService {
     /** A print or an observed one-second bucket; notional/extremes retain every real fill. */
-    public record Trade(long time, double price, long quantity, double notional, double high, double low) {
+    public record Trade(long time, double price, long quantity, double notional, double high, double low, long sequence) {
+        public Trade(long time,double price,long quantity,double notional,double high,double low) { this(time,price,quantity,notional,high,low,0); }
         public Trade(long time,double price,long quantity) { this(time,price,quantity,price*quantity,price,price); }
     }
     public record Metrics(double lastPrice, double midPrice, double microPrice, double vwap, double markPrice,
@@ -20,7 +21,7 @@ public final class PriceMetricService {
     private final JdbcTemplate jdbc;
     public PriceMetricService(JdbcTemplate jdbc) { this.jdbc=jdbc; }
     void ensureTables() {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS market_trade_buckets (stock_id BIGINT NOT NULL,created_at TIMESTAMP NOT NULL,last_id BIGINT NOT NULL,quantity BIGINT NOT NULL,notional DOUBLE NOT NULL,high BIGINT NOT NULL,low BIGINT NOT NULL,PRIMARY KEY(stock_id,created_at))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS market_trade_buckets (stock_id BIGINT NOT NULL,created_at TIMESTAMP(3) NOT NULL,last_id BIGINT NOT NULL,quantity BIGINT NOT NULL,notional DOUBLE NOT NULL,high BIGINT NOT NULL,low BIGINT NOT NULL,PRIMARY KEY(stock_id,created_at))");
         if(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='market_trade_buckets' AND index_name='ix_retention_time'",Integer.class)==0)
             jdbc.execute("CREATE INDEX ix_retention_time ON market_trade_buckets(created_at)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS market_metric_cursors (stock_id BIGINT PRIMARY KEY,last_id BIGINT NOT NULL DEFAULT 0)");
@@ -52,7 +53,7 @@ public final class PriceMetricService {
     public Metrics read(long stockId, long last, long now, long latency) {
         long cutoff=now-latency;
         List<Trade> trades=jdbc.query("""
-                SELECT b.created_at,last.price,b.quantity,b.notional,b.high,b.low
+                SELECT b.created_at,last.price,b.quantity,b.notional,b.high,b.low,last.execution_sequence
                 FROM (
                   SELECT created_at,MAX(last_id) last_id,SUM(quantity) quantity,SUM(notional) notional,MAX(high) high,MIN(low) low
                   FROM (
@@ -65,11 +66,11 @@ public final class PriceMetricService {
                       AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.trade_id=t.id AND s.status='CANCELLED')
                   ) observed GROUP BY created_at
                 ) b JOIN trades last ON last.id=b.last_id ORDER BY b.created_at
-                """, (rs,n)->new Trade(rs.getTimestamp(1).getTime(),rs.getDouble(2),rs.getLong(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6)),
+                """, (rs,n)->new Trade(rs.getTimestamp(1).getTime(),rs.getDouble(2),rs.getLong(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6),rs.getLong(7)),
                 stockId,new java.sql.Timestamp(cutoff-600_000),new java.sql.Timestamp(cutoff),stockId,stockId,new java.sql.Timestamp(cutoff-600_000),new java.sql.Timestamp(cutoff));
         trades=new ArrayList<>(trades);
         trades.addAll(new BotLedgerJournal(jdbc).observations(stockId,cutoff));
-        trades.sort(Comparator.comparingLong(Trade::time));
+        trades.sort(Comparator.comparingLong(Trade::time).thenComparingLong(Trade::sequence));
         List<long[]> bids=levels(stockId,"BUY"), asks=levels(stockId,"SELL");
         double bid=bids.isEmpty()?last:bids.get(0)[0], ask=asks.isEmpty()?last:asks.get(0)[0];
         long bd=bids.stream().mapToLong(a->a[1]).sum(), ad=asks.stream().mapToLong(a->a[1]).sum();

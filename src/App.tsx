@@ -9,7 +9,7 @@ import { SuspensionNotice, useSuspendedUntil } from "./components/SuspensionNoti
 import { useProfile } from "./lib/profile";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
-import { MARKET_PATH, useRoute } from "./router";
+import { ETF_PATH, MARKET_PATH, navigate, useRoute } from "./router";
 import { Link } from "./components/Link";
 import { NxTabbar, NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
 import { HomeBoard } from "./next/HomeBoard";
@@ -32,16 +32,17 @@ const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "
 function titleFor(route: Route): string {
   if (route.name === "market") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
-    return name ? `${name} · 시장 · 슈엔증권` : "시장 · 슈엔증권";
+    return name ? `${name} · 주식 · 슈엔증권` : "주식 · 슈엔증권";
   }
   if (route.name === "trade") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
     return name ? `${name} · 거래 · 슈엔증권` : "거래 · 슈엔증권";
   }
   if (route.name === "derivatives") {
-    const label = route.tab === "etf" ? "ETF" : route.tab === "futures" ? "선물" : "옵션";
+    const label = route.tab === "futures" ? "선물" : "옵션";
     return `${label} · 슈엔증권`;
   }
+  if (route.name === "etf") return `${route.ticker ? `${route.ticker} · ` : ""}ETF · 주식 · 슈엔증권`;
   if (route.name === "news") return "뉴스 · 슈엔증권";
   if (route.name === "ranking") return "투자 랭킹 · 슈엔증권";
   if (route.name === "mypage") return "내 계좌 · 슈엔증권";
@@ -66,6 +67,12 @@ export default function App() {
   useNxRoot();
   const main = useRef<HTMLElement>(null);
   const previous = useRef(route);
+
+  useEffect(() => {
+    if (route.name === "etf" && window.location.pathname.startsWith("/derivatives")) {
+      navigate(`${ETF_PATH(route.ticker)}${window.location.search}`, { replace: true });
+    }
+  }, [route]);
 
   useEffect(() => {
     if (PRIVATE_ROUTES.has(route.name) && auth.ready && !auth.user) openLoginPrompt(`/${route.name}`);
@@ -99,7 +106,8 @@ export default function App() {
         {route.name === "home" && <HomeBoard />}
         {terminal && <TradeTerminal ticker={route.name === "trade" || route.name === "market" ? route.ticker : null} />}
         {route.name === "market" && !terminal && <MarketBoard />}
-        {route.name === "derivatives" && <DerivativesPage tab={route.tab} />}
+        {route.name === "etf" && <DerivativesPage key={`etf:${route.ticker ?? "list"}`} tab="etf" etfTicker={route.ticker} />}
+        {route.name === "derivatives" && <DerivativesPage key={route.tab} tab={route.tab} />}
         {route.name === "news" && <NxNewsPage id={route.id} />}
         {route.name === "ranking" && <NxRankingPage />}
         {PRIVATE_ROUTES.has(route.name) && !auth.user && (auth.ready ? (

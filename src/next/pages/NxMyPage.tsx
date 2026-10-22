@@ -99,7 +99,7 @@ export function NxMyPage() {
         <dl className="nx-figures">
           <div><dt>현금</dt><dd className="nx-num">{won(money.cash)}</dd></div>
           <div><dt>주식 평가액</dt><dd className="nx-num">{won(money.stockValue)}</dd></div>
-          <div><dt>ETF·파생</dt><dd className="nx-num">{won(money.derivativeValue)} <Link to="/derivatives" className="nx-link-button">관리</Link></dd></div>
+          <div><dt>ETF·파생</dt><dd className="nx-num">{won(money.derivativeValue)} <Link to="/market/etf" className="nx-link-button">ETF</Link> <Link to="/derivatives" className="nx-link-button">파생</Link></dd></div>
           <div><dt>실현 손익</dt><dd className={`nx-num ${tone(snapshot.portfolio.realized)}`}>{signedWon(snapshot.portfolio.realized)}</dd></div>
           {money.loan > 0 && <div><dt>대출 잔액</dt><dd className="nx-num is-up">−{won(money.loan)} <Link to="/loan" className="nx-link-button">관리</Link></dd></div>}
         </dl>

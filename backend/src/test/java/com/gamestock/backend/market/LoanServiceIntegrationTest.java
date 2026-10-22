@@ -25,6 +25,7 @@ class LoanServiceIntegrationTest {
     private String schema;
     private JdbcTemplate db;
     private LoanService loans;
+    private OrderService orders;
     private long human, bot;
 
     @BeforeEach
@@ -45,6 +46,7 @@ class LoanServiceIntegrationTest {
         db.execute("CREATE TABLE users (id BIGINT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50), password_hash VARCHAR(100), role VARCHAR(20) NOT NULL DEFAULT 'USER', cash BIGINT NOT NULL, loan_balance BIGINT NOT NULL DEFAULT 0, loan_interest_on DATE NULL)");
         db.execute("CREATE TABLE stocks (id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10), current_price BIGINT)");
         db.execute("CREATE TABLE market_price_metrics (stock_id BIGINT PRIMARY KEY, mark_price BIGINT)");
+        db.execute("CREATE TABLE derivative_positions(id BIGINT AUTO_INCREMENT PRIMARY KEY,user_id BIGINT,mark_value BIGINT,status VARCHAR(12),quantity INT DEFAULT 1)");
         db.execute("CREATE TABLE portfolios (id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT, stock_id BIGINT, quantity INT, settled_quantity INT)");
         db.execute("CREATE TABLE orders (id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT, stock_id BIGINT, side VARCHAR(4), status VARCHAR(10), reserved_cash BIGINT, reserved_quantity INT)");
         db.execute("CREATE TABLE settlements (id BIGINT AUTO_INCREMENT PRIMARY KEY, seller_id BIGINT, gross_amount BIGINT, seller_fee BIGINT, status VARCHAR(10))");
@@ -58,7 +60,8 @@ class LoanServiceIntegrationTest {
         bot = db.queryForObject("SELECT id FROM users WHERE username='lp'", Long.class);
         MarketService market = Mockito.mock(MarketService.class);
         Mockito.when(market.portfolio(Mockito.anyLong())).thenReturn(new MarketModels.Portfolio(0, 0, 0, java.util.List.of()));
-        loans = new LoanService(db, market, Mockito.mock(OrderService.class),
+        orders=Mockito.mock(OrderService.class);
+        loans = new LoanService(db, market, orders, Mockito.mock(DerivativeService.class),
                 Mockito.mock(ApplicationEventPublisher.class), new DataSourceTransactionManager(source));
         loans.setClock(Clock.fixed(Instant.parse("2026-10-15T03:00:00Z"), ZoneOffset.UTC));
     }
@@ -110,6 +113,33 @@ class LoanServiceIntegrationTest {
         assertThrows(IllegalArgumentException.class, () -> loans.borrow(bot, 10_000L));
         assertEquals(0, loans.status(bot).available());
         assertEquals(0, balance(bot));
+    }
+
+    @Test void derivativeCollateralPreventsFalseLiquidationAndNegativeFutureMarksAreFloored() {
+        loans.borrow(human,500_000L);
+        db.update("UPDATE users SET cash=499000 WHERE id=?",human);
+        db.update("INSERT INTO derivative_positions(user_id,mark_value,status) VALUES(?,1000000,'OPEN'),(?,-100000,'OPEN')",human,human);
+        assertEquals(1_499_000,loans.status(human).grossAsset());
+        assertFalse(loans.status(human).warning());
+        loans.liquidate(human);
+        assertEquals(499_000,cash(human));
+        assertEquals(500_000,balance(human));
+        Mockito.verifyNoInteractions(orders);
+    }
+
+    @Test void cancelledLiquidationOrderDoesNotPreventTryingTheNextHolding() {
+        db.update("UPDATE users SET cash=0,loan_balance=500000 WHERE id=?",human);
+        for(String code:java.util.List.of("GI","UMA")) {
+            db.update("INSERT INTO stocks(stock_code,current_price) VALUES(?,10000)",code);
+            long stock=db.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+            db.update("INSERT INTO portfolios(user_id,stock_id,quantity,settled_quantity) VALUES(?,?,20,20)",human,stock);
+        }
+        Mockito.when(orders.submit(Mockito.eq(human),Mockito.any())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(Mockito.mock(MarketModels.OrderResult.class)));
+        loans.liquidate(human);
+        var request=org.mockito.ArgumentCaptor.forClass(MarketModels.OrderRequest.class);
+        Mockito.verify(orders,Mockito.times(2)).submit(Mockito.eq(human),request.capture());
+        assertEquals(java.util.Set.of("GI","UMA"),request.getAllValues().stream().map(MarketModels.OrderRequest::stockCode).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(500_000,balance(human));
     }
 
     @Test

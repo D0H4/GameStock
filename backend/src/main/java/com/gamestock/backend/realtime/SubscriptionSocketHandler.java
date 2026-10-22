@@ -25,7 +25,9 @@ public class SubscriptionSocketHandler extends TextWebSocketHandler {
     }
     @Override protected void handleTextMessage(WebSocketSession socket,TextMessage message)throws Exception{
         try{
+            if(message.getPayloadLength()>8192 || !connections.acceptMessage(socket.getId(),false)){connections.disconnect(socket.getId());return;}
             var request=json.readTree(message.getPayload());
+            if("AUTH".equals(request.path("type").asText())&&!connections.acceptMessage(socket.getId(),true))return;
             switch(request.path("type").asText()){
                 case "AUTH"->{
                     var user=auth.requireUser("Bearer "+request.path("token").asText());connections.authenticate(socket.getId(),user.id());

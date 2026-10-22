@@ -277,7 +277,7 @@ class AuthServiceTest {
         when(token.getUid()).thenReturn("uid-7");
         when(token.getEmail()).thenReturn(email);
         when(token.isEmailVerified()).thenReturn(true);
-        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        when(firebase.verifyIdToken("valid", true)).thenReturn(token);
         try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
             statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
             body.run(auth);
@@ -335,7 +335,7 @@ class AuthServiceTest {
         com.google.firebase.auth.FirebaseAuth firebase = mock(com.google.firebase.auth.FirebaseAuth.class);
         com.google.firebase.auth.FirebaseToken token = mock(com.google.firebase.auth.FirebaseToken.class);
         when(token.getUid()).thenReturn("uid-7");
-        when(firebase.verifyIdToken("valid")).thenReturn(token);
+        when(firebase.verifyIdToken("valid", true)).thenReturn(token);
         try (var statics = mockStatic(com.google.firebase.auth.FirebaseAuth.class)) {
             statics.when(com.google.firebase.auth.FirebaseAuth::getInstance).thenReturn(firebase);
             var error = assertThrows(ResponseStatusException.class, () -> auth.login("Bearer valid"));

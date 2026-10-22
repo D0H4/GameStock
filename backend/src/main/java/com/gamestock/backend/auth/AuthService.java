@@ -130,6 +130,7 @@ public class AuthService {
         return new MobileToken(pending.customToken());
     }
 
+    @Transactional
     public LoginUser requireAdmin(String authorization) {
         LoginUser user = requireUser(authorization);
         if (!"ADMIN".equalsIgnoreCase(user.role()))

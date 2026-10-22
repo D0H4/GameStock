@@ -10,6 +10,7 @@ import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { sessionRate, sortCodes, type SortDirection, type SortKey } from "../market/selectors";
 import { LISTING_BY_CODE } from "../market/universe";
 import { MARKET_PATH } from "../router";
+import { MarketTabs } from "./MarketTabs";
 
 type View = "all" | "up" | "down" | "watch";
 
@@ -114,8 +115,9 @@ export function MarketBoard() {
 
   return (
     <div className="nx-market">
+      <MarketTabs active="stocks" />
       <header className="nx-page-head">
-        <h1 className="nx-page-title">시장</h1>
+        <h1 className="nx-page-title">주식</h1>
         <div className="nx-filters" role="group" aria-label="종목 필터">
           {VIEWS.map((item) => (
             <button key={item.id} type="button" className={`nx-chip${view === item.id ? " is-active" : ""}`} aria-pressed={view === item.id} onClick={() => setView(item.id)}>

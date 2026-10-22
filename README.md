@@ -519,6 +519,7 @@ docs/                      설계·검증·운영 문서
 
 ## 관련 문서
 
+- [외부 시세·주문 OpenAPI](docs/openapi.md)
 - [프로젝트 범위](docs/project-scope.md)
 - [가격 형성 모델](docs/price-formation-model.md)
 - [실시간 구조](docs/realtime-architecture.md)

@@ -21,9 +21,10 @@ public class ConnectionManager {
         Set<String> symbols=Set.of();
         Set<String> details=Set.of();
         Long user,identity;
-        long authUntil,sendStarted;
+        long authUntil,sendStarted,receiveWindow,authWindow;
+        int received,authRequests;
         boolean sending;
-        Client(WebSocketSession socket){this.socket=socket;}
+        Client(WebSocketSession socket){this.socket=socket;receiveWindow=System.nanoTime();authWindow=receiveWindow;}
     }
     private final Map<String,Client> clients=new ConcurrentHashMap<>();
     private final Map<Long,Set<String>> users=new ConcurrentHashMap<>();
@@ -37,7 +38,25 @@ public class ConnectionManager {
         protected boolean removeEldestEntry(Map.Entry<String,Boolean> entry){return size()>8192;}
     });
     public ConnectionManager(EventFanout fanout,MarketMetrics metrics,MarketService market){this.metrics=metrics;this.market=market;listener=fanout.listen(this::receive);}
-    public void connect(WebSocketSession socket){clients.put(socket.getId(),new Client(socket));metrics.gauge("ws.active",clients.size());}
+    @org.springframework.beans.factory.annotation.Value("${gamestock.websocket.max-connections:2048}")
+    private int maxConnections=2048;
+    public synchronized void connect(WebSocketSession socket){
+        if(clients.size()>=maxConnections) {
+            try{socket.close(CloseStatus.POLICY_VIOLATION);}catch(IOException ignored){}
+            throw new IllegalArgumentException("WebSocket capacity reached");
+        }
+        clients.put(socket.getId(),new Client(socket));metrics.gauge("ws.active",clients.size());
+    }
+    boolean acceptMessage(String id, boolean authentication) {
+        Client client=required(id);
+        synchronized(client) {
+            long now=System.nanoTime();
+            if(now-client.receiveWindow>=TimeUnit.SECONDS.toNanos(1)){client.receiveWindow=now;client.received=0;}
+            if(now-client.authWindow>=TimeUnit.MINUTES.toNanos(1)){client.authWindow=now;client.authRequests=0;}
+            if(!authentication&&++client.received>20 || authentication&&++client.authRequests>6){disconnect(id);return false;}
+            return true;
+        }
+    }
     public void authenticate(String id,long user){
         Client client=required(id);synchronized(client){
             if(client.identity!=null&&client.identity!=user)throw new IllegalArgumentException("Reconnect to switch identity");

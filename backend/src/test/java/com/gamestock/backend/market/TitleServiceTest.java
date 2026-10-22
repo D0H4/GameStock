@@ -56,6 +56,7 @@ class TitleServiceTest {
             String method = call.getMethod().getName();
             Object[] args = call.getArguments();
             String sql = args.length > 0 && args[0] instanceof String ? (String) args[0] : "";
+            if(method.equals("queryForObject") && sql.startsWith("SELECT COALESCE((SELECT SUM(GREATEST(dp.mark_value"))return 0L;
             // Text blocks drop trailing spaces, so concatenated SQL must not glue keywords together.
             assertFalse(java.util.regex.Pattern.compile("\\b(WHERE|AND|FROM)[^\\s(]").matcher(sql).find(), sql);
             if (method.equals("update")) {

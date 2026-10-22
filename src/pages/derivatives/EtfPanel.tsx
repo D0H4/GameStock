@@ -1,83 +1,64 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Sparkline } from "../../components/Sparkline";
 import { Delta } from "../../components/Delta";
+import { Link } from "../../components/Link";
+import { OrderDock } from "../../next/trade/OrderDock";
+import { MARKET_PATH } from "../../router";
 import { won, rate, indexValue } from "../../market/format";
-import type { DerivativeAccount, DerivativeOrderRequest, DerivativeSnapshot, EtfQuote } from "../../market/derivatives";
+import type { DerivativeAccount, DerivativeOrderRequest, EtfQuote } from "../../market/derivatives";
 
 interface Props {
-  snapshot: DerivativeSnapshot;
+  selected: EtfQuote;
   account: DerivativeAccount | null;
   busy: boolean;
   onOpen: (request: DerivativeOrderRequest) => void;
   onClose: (positionId: number, quantity: number) => void;
+  notice?: { tone: "ok" | "error"; text: string } | null;
 }
 
 function tone(changePercent: number): "up" | "down" | "flat" {
   return changePercent > 0 ? "up" : changePercent < 0 ? "down" : "flat";
 }
 
-/** 카테고리별 ETF의 NAV, 구성 종목, 매수·매도 티켓, 보유 ETF를 한 화면에 보여 준다. */
-export function EtfPanel({ snapshot, account, busy, onOpen, onClose }: Props) {
-  const [selectedCode, setSelectedCode] = useState(snapshot.etfs[0]?.code ?? "ETFIDX");
+/** 목록에서 고른 ETF의 시세와 주문. 종목은 주소로 결정해 새로고침해도 유지한다. */
+export function EtfPanel({ selected, account, busy, onOpen, onClose, notice }: Props) {
+  const [orderOpen, setOrderOpen] = useState(false);
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [quantityInput, setQuantityInput] = useState("10");
-  const selected: EtfQuote | undefined = snapshot.etfs.find((etf) => etf.code === selectedCode) ?? snapshot.etfs[0];
-  const holdings = account?.positions.filter((position) => position.kind === "ETF") ?? [];
+  const holdings = account?.positions.filter((position) => position.kind === "ETF" && position.symbol === selected.code) ?? [];
   const quantity = Number(quantityInput);
   const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= 100;
-  const amount = selected ? Math.round(selected.price * (validQuantity ? quantity : 0)) : 0;
+  const amount = Math.round(selected.price * (validQuantity ? quantity : 0));
   const fee = Math.ceil(amount * 0.001);
   const total = side === "BUY" ? amount + fee : amount - fee;
 
-  useEffect(() => {
-    if (!snapshot.etfs.some((etf) => etf.code === selectedCode)) {
-      setSelectedCode(snapshot.etfs[0]?.code ?? "ETFIDX");
-    }
-  }, [snapshot.etfs, selectedCode]);
-
   return (
-    <div className="derivative-panel">
-      <section className="etf-grid" aria-label="ETF 목록">
-        {snapshot.etfs.map((etf) => {
-          const active = selected?.code === etf.code;
-          return (
-            <button
-              type="button"
-              key={etf.code}
-              className={`etf-card${active ? " is-active" : ""}`}
-              aria-pressed={active}
-              onClick={() => setSelectedCode(etf.code)}
-            >
-              <span className="etf-card-theme">{etf.theme}</span>
-              <strong className="etf-card-name">{etf.name}</strong>
-              <span className="etf-card-code">{etf.code}</span>
-              <span className="etf-card-price num">{indexValue(etf.price)}</span>
-              <span className={`etf-card-change is-${tone(etf.changePercent)}`}>
-                {rate(etf.changePercent / 100)}
-              </span>
-              <Sparkline series={etf.series} prevClose={etf.prevClose} tone={tone(etf.changePercent)} width={132} height={28} />
-            </button>
-          );
-        })}
-      </section>
-
-      {selected && (
-        <section className="etf-detail-grid">
-          <div className="derivative-card">
+    <div className="derivative-panel nx-etf-panel">
+        <section className="nx-workspace">
+          <div className="nx-trade-main">
             <header className="derivative-card-head">
               <div>
-                <h2>{selected.name}</h2>
+                <h1 className="nx-etf-name">{selected.name}</h1>
+                <p className="nx-etf-code nx-num">{selected.code} · {selected.theme}</p>
                 <p>{selected.description}</p>
               </div>
-              <span className="derivative-badge">{selected.theme}</span>
             </header>
+            <div className="nx-etf-price">
+              <strong className="nx-num">{won(selected.price)}</strong>
+              <Delta change={selected.price - selected.prevClose} ratio={selected.changePercent / 100} />
+            </div>
+            <figure className="nx-etf-chart" aria-label={`${selected.name} 최근 가격 흐름`}>
+              {selected.series.length > 1 ? <Sparkline series={selected.series} prevClose={selected.prevClose} tone={tone(selected.changePercent)} width={760} height={260} /> : <p className="empty">가격 기록을 모으고 있어요.</p>}
+              <figcaption>최근 가격 흐름 · 기준가 {won(selected.prevClose)}</figcaption>
+            </figure>
             <dl className="derivative-facts">
               <div><dt>NAV</dt><dd className="num">{indexValue(selected.price)}</dd></div>
               <div><dt>기준가</dt><dd className="num">{indexValue(selected.prevClose)}</dd></div>
               <div><dt>구성 종목</dt><dd className="num">{selected.constituents.length}개</dd></div>
               <div><dt>괴리율</dt><dd className="num">0.00%</dd></div>
             </dl>
-            <div className="table-scroll">
+            <h2 className="nx-etf-constituents-title">구성 종목</h2>
+            <div className="table-scroll" tabIndex={0} role="region" aria-label={`${selected.name} 구성 종목 표`}>
               <table className="table etf-constituents">
                 <caption className="vh">{selected.name} 구성 종목</caption>
                 <thead>
@@ -89,7 +70,7 @@ export function EtfPanel({ snapshot, account, busy, onOpen, onClose }: Props) {
                   )}
                   {selected.constituents.map((item) => (
                     <tr key={item.code}>
-                      <td>{item.name} <span className="muted-code">{item.code}</span></td>
+                      <td><Link to={MARKET_PATH(item.code)}>{item.name} <span className="muted-code">{item.code}</span></Link></td>
                       <td className="num">{(item.weight * 100).toFixed(1)}%</td>
                       <td className={`cell-num is-${tone(item.changePercent)}`}>{rate(item.changePercent / 100)}</td>
                     </tr>
@@ -99,15 +80,16 @@ export function EtfPanel({ snapshot, account, busy, onOpen, onClose }: Props) {
             </div>
           </div>
 
+          <OrderDock title={selected.name} quote={won(selected.price)} open={orderOpen} onOpenChange={setOrderOpen}>
           <form
-            className="derivative-ticket"
+            className="derivative-ticket nx-etf-ticket"
+            aria-label="ETF 주문 입력" aria-busy={busy}
             onSubmit={(event) => {
               event.preventDefault();
-              if (!selected || !validQuantity) return;
+              if (!validQuantity || busy) return;
               onOpen({ kind: "ETF", side, symbol: selected.code, quantity });
             }}
           >
-            <h2>ETF 주문</h2>
             <div className="terminal-tabs derivative-side-tabs" role="group" aria-label="매수·매도">
               <button type="button" className={`terminal-tab is-buy${side === "BUY" ? " is-active" : ""}`}
                 aria-pressed={side === "BUY"} onClick={() => setSide("BUY")}>매수</button>
@@ -120,7 +102,8 @@ export function EtfPanel({ snapshot, account, busy, onOpen, onClose }: Props) {
                 onChange={(event) => setQuantityInput(event.target.value)} />
             </label>
             <dl className="derivative-order-summary">
-              <div><dt>NAV</dt><dd className="num">{selected ? indexValue(selected.price) : "–"}</dd></div>
+              <div><dt>주문 가능 현금</dt><dd className="num">{account ? won(account.cash) : "로그인 후 확인"}</dd></div>
+              <div><dt>NAV</dt><dd className="num">{indexValue(selected.price)}</dd></div>
               <div><dt>주문 금액</dt><dd className="num">{won(amount)}</dd></div>
               <div><dt>수수료 0.1%</dt><dd className="num">{won(fee)}</dd></div>
               <div className="is-emphasis"><dt>정산 예정</dt><dd className="num">{won(total)}</dd></div>
@@ -130,17 +113,17 @@ export function EtfPanel({ snapshot, account, busy, onOpen, onClose }: Props) {
               {busy ? "처리 중…" : side === "BUY" ? "ETF 매수" : "ETF 매도"}
             </button>
             <p className="derivative-note">ETF는 NAV로 즉시 체결되며, 보유 수량은 보유 목록에서도 청산할 수 있어요.</p>
+            {notice && <p className={`derivative-notice is-${notice.tone}`} role="status">{notice.text}</p>}
           </form>
+          </OrderDock>
         </section>
-      )}
 
       <section className="derivative-card">
         <header className="derivative-card-head">
-          <div><h2>보유 ETF</h2><p>평가손익은 현재 NAV 기준입니다.</p></div>
-          <span className="derivative-badge">{holdings.length}종</span>
+          <div><h2>보유 내역</h2><p>{selected.name} · 현재 NAV 기준입니다.</p></div>
         </header>
         {holdings.length === 0 ? (
-          <p className="empty">보유 중인 ETF가 없습니다.</p>
+          <p className="empty">{account ? "보유 중인 수량이 없습니다." : "로그인하면 보유 내역을 확인할 수 있어요."}</p>
         ) : (
           <div className="table-scroll">
             <table className="table derivative-table">

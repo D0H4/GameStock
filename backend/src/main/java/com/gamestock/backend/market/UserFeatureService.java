@@ -55,6 +55,24 @@ public class UserFeatureService {
                   CONSTRAINT fk_tag_user FOREIGN KEY (created_by) REFERENCES users(id)
                 )
                 """);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS user_feature_limits(user_id BIGINT NOT NULL,feature VARCHAR(12) NOT NULL,window_no BIGINT NOT NULL,actions INT NOT NULL,PRIMARY KEY(user_id,feature),FOREIGN KEY(user_id) REFERENCES users(id))");
+        for(String[] index:List.of(new String[]{"stock_comments","ix_comment_user_time","user_id,created_at"},new String[]{"stock_tags","ix_tag_user_time","created_by,created_at"}))
+            if(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? AND index_name=?",Integer.class,index[0],index[1])==0)
+                jdbc.execute("CREATE INDEX "+index[1]+" ON "+index[0]+" ("+index[2]+")");
+    }
+
+    private void reserveWrite(long userId, String feature) {
+        // The account lock serializes both quotas and counters across application instances.
+        jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",Long.class,userId);
+        jdbc.update("""
+                INSERT INTO user_feature_limits(user_id,feature,window_no,actions) VALUES(?,?,UNIX_TIMESTAMP() DIV 60,1)
+                ON DUPLICATE KEY UPDATE actions=IF(window_no=VALUES(window_no),actions+1,1),window_no=VALUES(window_no)
+                """,userId,feature);
+        if(jdbc.queryForObject("SELECT actions FROM user_feature_limits WHERE user_id=? AND feature=?",Integer.class,userId,feature)>10)
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,"잠시 후 다시 시도해 주세요.");
+    }
+    private void quota(String sql, long id, int limit, String message) {
+        if(jdbc.queryForObject(sql,Integer.class,id)>=limit)throw new IllegalArgumentException(message);
     }
 
     public void ensureDefaultTags() {
@@ -93,6 +111,9 @@ public class UserFeatureService {
     public PriceAlert addAlert(long userId, PriceAlertRequest request) {
         long stockId = stockId(request.stockCode());
         if (request.targetPrice() <= 0) throw new IllegalArgumentException("알림 가격은 1원 이상이어야 합니다.");
+        reserveWrite(userId,"ALERT");
+        quota("SELECT COUNT(*) FROM price_alerts WHERE user_id=?",userId,200,"알림은 최대 200개까지 보관할 수 있습니다. 이전 알림을 삭제해 주세요.");
+        quota("SELECT COUNT(*) FROM price_alerts WHERE user_id=? AND active=TRUE",userId,50,"활성 알림은 최대 50개입니다.");
         jdbc.update("INSERT INTO price_alerts (user_id, stock_id, target_price) VALUES (?, ?, ?)", userId, stockId, request.targetPrice());
         return jdbc.queryForObject("SELECT a.id, s.stock_code, a.target_price, a.active, a.created_at, a.triggered_at FROM price_alerts a JOIN stocks s ON s.id = a.stock_id WHERE a.id = ?",
                 (rs, row) -> new PriceAlert(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getBoolean(4), iso(rs.getTimestamp(5)), iso(rs.getTimestamp(6))), jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
@@ -113,6 +134,8 @@ public class UserFeatureService {
         String text = request.text() == null ? "" : request.text().trim();
         if (text.length() < 1 || text.length() > 240) throw new IllegalArgumentException("댓글은 1~240자로 입력해 주세요.");
         long stockId = stockId(code);
+        reserveWrite(userId,"COMMENT");
+        quota("SELECT COUNT(*) FROM stock_comments WHERE user_id=?",userId,1000,"댓글 보관 한도에 도달했습니다.");
         jdbc.update("INSERT INTO stock_comments (user_id, stock_id, comment_text) VALUES (?, ?, ?)", userId, stockId, text);
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         return jdbc.queryForObject("SELECT c.id, s.stock_code, u.nickname, c.comment_text, c.created_at FROM stock_comments c JOIN stocks s ON s.id = c.stock_id JOIN users u ON u.id = c.user_id WHERE c.id = ?",
@@ -120,7 +143,7 @@ public class UserFeatureService {
     }
 
     public List<StockTag> tags(String code) {
-        return jdbc.query("SELECT s.stock_code, t.tag, t.created_at FROM stock_tags t JOIN stocks s ON s.id = t.stock_id WHERE s.stock_code = ? ORDER BY t.created_at, t.tag",
+        return jdbc.query("SELECT s.stock_code, t.tag, t.created_at FROM stock_tags t JOIN stocks s ON s.id = t.stock_id WHERE s.stock_code = ? ORDER BY t.created_at, t.tag LIMIT 100",
                 (rs, row) -> new StockTag(rs.getString(1), rs.getString(2), iso(rs.getTimestamp(3))), normalize(code));
     }
 
@@ -129,6 +152,13 @@ public class UserFeatureService {
         String tag = request.tag() == null ? "" : request.tag().trim().replaceFirst("^#", "");
         if (tag.length() < 1 || tag.length() > 40) throw new IllegalArgumentException("태그는 1~40자로 입력해 주세요.");
         long stockId = stockId(code);
+        // Match stock -> account lock order used by matching; concurrent users share the stock quota.
+        jdbc.queryForObject("SELECT id FROM stocks WHERE id=? FOR UPDATE",Long.class,stockId);
+        reserveWrite(userId,"TAG");
+        if(jdbc.queryForObject("SELECT COUNT(*) FROM stock_tags WHERE stock_id=? AND tag=?",Integer.class,stockId,tag)==0) {
+            quota("SELECT COUNT(*) FROM stock_tags WHERE created_by=?",userId,100,"계정별 태그는 최대 100개입니다.");
+            quota("SELECT COUNT(*) FROM stock_tags WHERE stock_id=?",stockId,100,"종목별 태그는 최대 100개입니다.");
+        }
         jdbc.update("INSERT IGNORE INTO stock_tags (stock_id, tag, created_by) VALUES (?, ?, ?)", stockId, tag, userId);
         return jdbc.queryForObject("SELECT s.stock_code, t.tag, t.created_at FROM stock_tags t JOIN stocks s ON s.id = t.stock_id WHERE t.stock_id = ? AND t.tag = ?",
                 (rs, row) -> new StockTag(rs.getString(1), rs.getString(2), iso(rs.getTimestamp(3))), stockId, tag);
@@ -136,6 +166,7 @@ public class UserFeatureService {
 
     @Transactional
     public void deleteUserData(long userId) {
+        jdbc.update("DELETE FROM user_feature_limits WHERE user_id=?",userId);
         jdbc.update("DELETE FROM price_alerts WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_comments WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_tags WHERE created_by = ?", userId);

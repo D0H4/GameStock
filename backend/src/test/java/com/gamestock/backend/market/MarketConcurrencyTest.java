@@ -161,7 +161,7 @@ class MarketConcurrencyTest {
             assertEquals("FILLED",result.status());filled.incrementAndGet();
         } catch(IllegalArgumentException expected){assertTrue(expected.getMessage().contains("현금"));rejected.incrementAndGet();}});
         assertEquals(10,filled.get());assertEquals(30,rejected.get());
-        assertEquals(0,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,buyer));
+        assertEquals(100,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,buyer));
         assertEquals(10,db.queryForObject("SELECT SUM(quantity) FROM portfolios WHERE user_id=?",Integer.class,buyer));
     }
     @Test void cachedBookReusesCommittedStateAndReloadsAfterExternalOrderAndRollback() {
@@ -214,7 +214,7 @@ class MarketConcurrencyTest {
             });committed.incrementAndGet();}catch(org.springframework.dao.CannotAcquireLockException expected){retried.incrementAndGet();}
         });
         assertEquals(1,committed.get());assertEquals(1,retried.get());
-        assertEquals(0,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,buyer));
+        assertEquals(10,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,buyer));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM trades WHERE buyer_id=?",Integer.class,buyer));
         assertEquals(1,db.queryForObject("SELECT SUM(quantity) FROM portfolios WHERE user_id=?",Integer.class,buyer));
     }
@@ -229,7 +229,7 @@ class MarketConcurrencyTest {
             planned.countDown();try{assertTrue(planned.await(5,TimeUnit.SECONDS));}catch(InterruptedException e){throw new RuntimeException(e);}
             repository.persist(book,now);
         }));
-        assertEquals(19980,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,seller));
+        assertEquals(20000,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,seller));
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM trades WHERE seller_id=?",Integer.class,seller));
     }
     @Test void sharedInventoryCannotBeSoldTwice() throws Exception {
@@ -242,7 +242,7 @@ class MarketConcurrencyTest {
         } catch(IllegalArgumentException expected){assertTrue(expected.getMessage().contains("수량"));}});
         assertEquals(10,filled.get());
         assertEquals(0,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=?",Integer.class,seller));
-        assertEquals(99900,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,seller));
+        assertEquals(100000,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,seller));
     }
     @Test void timePrioritySurvivesConcurrentTakers() throws Exception {
         long seller=user(0);shares(seller,"UMA",20);

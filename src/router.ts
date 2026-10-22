@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 export type Route =
   | { name: "home" }
   | { name: "market"; ticker: string | null }
+  | { name: "etf"; ticker: string | null }
   | { name: "derivatives"; tab: DerivativesTab }
   | { name: "trade"; ticker: string | null }
   | { name: "news"; id: number | null }
@@ -17,8 +18,8 @@ export type Route =
   | { name: "login"; method: LoginMethod }
   | { name: "notFound" };
 
-export type DerivativesTab = "etf" | "futures" | "options";
-const DERIVATIVE_TABS: readonly DerivativesTab[] = ["etf", "futures", "options"];
+export type DerivativesTab = "futures" | "options";
+const DERIVATIVE_TABS: readonly DerivativesTab[] = ["futures", "options"];
 
 export type AdminSection = "users" | "orders" | "notices" | "promos" | "audit";
 const ADMIN_SECTIONS: readonly AdminSection[] = ["users", "orders", "notices", "promos", "audit"];
@@ -33,9 +34,13 @@ function parse(pathname: string): Route {
     const method = parts[1];
     return { name: "login", method: method === "google" || method === "email" || method === "register" || method === "reset" ? method : "choose" };
   }
+  if (parts[0] === "market" && parts[1]?.toLowerCase() === "etf") {
+    return parts.length <= 3 ? { name: "etf", ticker: parts[2]?.toUpperCase() ?? null } : { name: "notFound" };
+  }
   if (parts[0] === "market") return { name: "market", ticker: parts[1] ? parts[1].toUpperCase() : null };
   if (parts[0] === "derivatives") {
-    const tab = DERIVATIVE_TABS.find((name) => name === parts[1]) ?? "etf";
+    if (parts[1] === "etf") return parts.length <= 3 ? { name: "etf", ticker: parts[2]?.toUpperCase() ?? null } : { name: "notFound" };
+    const tab = DERIVATIVE_TABS.find((name) => name === parts[1]) ?? "futures";
     return { name: "derivatives", tab };
   }
   if (parts[0] === "trade") return { name: "trade", ticker: parts[1] ? parts[1].toUpperCase() : null };
@@ -96,5 +101,6 @@ export function navigate(to: string, options: { replace?: boolean } = {}): void 
 }
 
 export const MARKET_PATH = (ticker: string | null): string => (ticker ? `/market/${ticker}` : "/market");
+export const ETF_PATH = (ticker: string | null = null): string => (ticker ? `/market/etf/${ticker}` : "/market/etf");
 export const NEWS_PATH = (id: number | null): string => (id === null ? "/news" : `/news/${id}`);
 export const TRADE_PATH = (ticker: string | null): string => (ticker ? `/trade/${ticker}` : "/trade");

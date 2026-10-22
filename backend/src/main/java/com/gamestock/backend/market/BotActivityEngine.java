@@ -51,6 +51,8 @@ final class BotActivityEngine {
         for(var group:bySymbol.values())Collections.shuffle(group,random);
     }
 
+    Map<Long,MarketConsensusValue.Checkpoint> consensusCheckpoint(){return consensus.checkpoint();}
+    void restoreConsensus(Map<Long,MarketConsensusValue.Checkpoint> saved){consensus.restore(saved);}
     private double traderShare=1;
 
     /** A wake/pulse starts fresh pacing; elapsed idle time never creates a backlog of orders. */

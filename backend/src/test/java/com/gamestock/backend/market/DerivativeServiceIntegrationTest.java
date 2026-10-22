@@ -19,6 +19,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.DerivativeModels.*;
@@ -82,6 +85,8 @@ class DerivativeServiceIntegrationTest {
     @BeforeEach
     void begin() {
         transaction = manager.getTransaction(new DefaultTransactionDefinition());
+        derivatives.setClock(Clock.systemUTC());
+        new DerivativeIndexHistory(jdbc).initializeBases();
     }
 
     @AfterEach
@@ -156,6 +161,8 @@ class DerivativeServiceIntegrationTest {
     @Test
     @Order(4)
     void optionExpiryPaysIntrinsicValue() {
+        Instant beforeExpiry=Instant.parse("2030-01-01T10:09:58Z");
+        derivatives.setClock(Clock.fixed(beforeExpiry,ZoneOffset.UTC));
         long before = jdbc.queryForObject("SELECT cash FROM users WHERE id=?", Long.class, user);
         OrderResult opened = inTransaction(() -> derivatives.open(user,
                 new OrderRequest("OPTION", "CALL", 5, null, null, "10M", 1000.0, null)));
@@ -163,7 +170,9 @@ class DerivativeServiceIntegrationTest {
         assertEquals("OPTION", position.kind());
         assertTrue(opened.account().cash() < before);
         moveIndex(1.10);
-        jdbc.update("UPDATE derivative_positions SET expiry_at = DATE_SUB(NOW(3), INTERVAL 1 SECOND) WHERE id = ?", position.id());
+        derivatives.setClock(Clock.fixed(beforeExpiry.plusSeconds(1),ZoneOffset.UTC));
+        derivatives.refreshMarks();
+        derivatives.setClock(Clock.fixed(beforeExpiry.plusSeconds(3),ZoneOffset.UTC));
         derivatives.refreshMarks();
         assertEquals("EXPIRED", jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?", String.class, position.id()));
         long after = jdbc.queryForObject("SELECT cash FROM users WHERE id=?", Long.class, user);
@@ -212,5 +221,85 @@ class DerivativeServiceIntegrationTest {
         assertEquals("LIQUIDATED", jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?", String.class, position.id()));
         long cash = jdbc.queryForObject("SELECT cash FROM users WHERE id=?", Long.class, user);
         assertTrue(cash >= 0, "강제청산 뒤 현금이 음수가 되면 안 된다");
+    }
+
+    @Test void missingPreExpiryHistoryDefersSettlementInsteadOfUsingTheCurrentPrice() {
+        var history=new DerivativeIndexHistory(jdbc);
+        Instant expiry=Instant.parse("2030-01-01T11:00:00Z");
+        history.observe(1100,expiry.plusSeconds(1));
+        assertThrows(IllegalStateException.class,()->history.fixing(expiry));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_expiry_fixings",Integer.class));
+    }
+
+    @Test void historyRetentionPreservesThePreCutoffObservationAndImmutableFixing() {
+        var history=new DerivativeIndexHistory(jdbc);
+        Instant now=Instant.parse("2030-03-01T11:00:00Z"),cutoff=now.minusSeconds(30L*86400);
+        history.observe(900,cutoff.minusSeconds(20));
+        history.observe(1000,cutoff.minusSeconds(1));
+        history.observe(1100,now);
+        assertEquals(1000,history.fixing(cutoff));
+        history.retain(now);
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations",Integer.class));
+        assertEquals(1000,history.fixing(cutoff));
+    }
+
+    @Test void dailyReferenceRollDoesNotChangeDerivativePricesOrCreateProfit() {
+        moveIndex(.9);
+        var before=derivatives.snapshot();
+        var bought=derivatives.open(user,new OrderRequest("FUTURE","LONG",1,"FUTIDX",10,null,null,null));
+        long initialCash=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user)+bought.account().positions().get(0).margin();
+        jdbc.update("UPDATE stock_protection_state p JOIN stocks s ON s.id=p.stock_id SET p.day_reference=s.current_price");
+        assertEquals(before.indexValue(),derivatives.snapshot().indexValue(),1e-9);
+        assertEquals(before.etfs().get(0).price(),derivatives.snapshot().etfs().get(0).price(),1e-9);
+        long after=derivatives.close(user,bought.account().positions().get(0).id(),1).account().cash();
+        assertTrue(after<=initialCash,"Unchanged market cannot create a rollover profit");
+    }
+
+    @Test void delayedAndManualExpiryUseTheSameImmutableFixingWithoutAnExpiryFee() {
+        Instant openedAt=Instant.parse("2030-01-01T10:59:58Z");
+        derivatives.setClock(Clock.fixed(openedAt,ZoneOffset.UTC));
+        long a=derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"1H",1000.0,null)).account().positions().get(0).id();
+        long b=derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"1H",1000.0,null)).account().positions().get(0).id();
+        derivatives.setClock(Clock.fixed(openedAt.plusSeconds(1),ZoneOffset.UTC));
+        derivatives.refreshMarks(); // final observed index before expiry = 1000
+        long cash=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        moveIndex(1.05);
+        derivatives.setClock(Clock.fixed(openedAt.plusSeconds(3602),ZoneOffset.UTC));
+        derivatives.close(user,a,1);
+        derivatives.refreshMarks();
+        assertEquals(cash,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user));
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_positions WHERE id IN (?,?) AND status='EXPIRED'",Integer.class,a,b));
+        assertEquals(0,jdbc.queryForObject("SELECT SUM(fee) FROM derivative_trades WHERE action='EXPIRE'",Long.class));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_expiry_fixings",Integer.class));
+    }
+
+    @Test void fiveThousandEtfsCannotStarveLaterExpiriesOrLiquidations() {
+        Instant now=Instant.parse("2030-01-01T10:59:58Z");
+        derivatives.setClock(Clock.fixed(now,ZoneOffset.UTC));
+        var rows=new java.util.ArrayList<Object[]>();
+        for(int account=0;account<84;account++) {
+            jdbc.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES(?,'TEST',?,1000000)","page-"+account,"page-"+account);
+            long owner=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+            for(int j=0;j<60 && rows.size()<5000;j++)rows.add(new Object[]{owner});
+        }
+        jdbc.batchUpdate("INSERT INTO derivative_positions(user_id,kind,symbol,name,side,quantity,entry_price,entry_notional,mark_price,mark_value) VALUES(?,'ETF','ETFIDX','index','LONG',1,1000,1000,1000,1000)",rows);
+        long future=derivatives.open(user,new OrderRequest("FUTURE","LONG",1,"FUTIDX",10,null,null,null)).account().positions().get(0).id();
+        long option=derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"1H",1000.0,null)).account().positions().get(0).id();
+        moveIndex(.8);
+        derivatives.setClock(Clock.fixed(now.plusSeconds(3),ZoneOffset.UTC));
+        derivatives.refreshMarks();
+        assertEquals("LIQUIDATED",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,future));
+        assertEquals("EXPIRED",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,option));
+    }
+
+    @Test void invalidEtfSideCannotMoveCashAndCashFlowReconcilesIncludingFees() throws Exception {
+        long before=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","SELL_TYPO",1,"ETFIDX",null,null,null,null)));
+        assertThrows(com.fasterxml.jackson.core.JsonProcessingException.class,()->new ObjectMapper().readValue("{\"kind\":\"ETF\",\"side\":\"BUY\",\"quantity\":1.9}",OrderRequest.class));
+        assertEquals(before,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user));
+        var bought=derivatives.open(user,new OrderRequest("ETF","BUY",2,"ETFIDX",null,null,null,null));
+        derivatives.close(user,bought.account().positions().get(0).id(),1);
+        long actual=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user)-before;
+        assertEquals(actual,jdbc.queryForObject("SELECT SUM(cash_flow) FROM derivative_trades WHERE user_id=?",Long.class,user));
     }
 }

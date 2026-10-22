@@ -57,11 +57,13 @@ public final class DerivativeModels {
      * cycleId: OPTION일 때 10M | 1H | SUN
      */
     public record OrderRequest(@NotBlank String kind, @NotBlank String side,
-                               @Min(1) @Max(100) int quantity,
-                               String symbol, Integer leverage,
-                               String cycleId, Double strike, Long expiryEpoch) { }
+                               @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictIntegerDeserializer.class) @Min(1) @Max(100) int quantity,
+                               String symbol,
+                               @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictIntegerDeserializer.Nullable.class) Integer leverage,
+                               String cycleId, Double strike,
+                               @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictLongDeserializer.class) Long expiryEpoch) { }
 
-    public record CloseRequest(@Min(1) @Max(100) int quantity) { }
+    public record CloseRequest(@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictIntegerDeserializer.class) @Min(1) @Max(100) int quantity) { }
 
     public record OrderResult(String message, Account account) { }
 }

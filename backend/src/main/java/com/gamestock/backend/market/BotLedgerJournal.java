@@ -44,6 +44,11 @@ final class BotLedgerJournal {
                 +"stock_id BIGINT NOT NULL,bucket_at BIGINT NOT NULL,first_at BIGINT NOT NULL,last_at BIGINT NOT NULL,"
                 +"open_price BIGINT NOT NULL,high_price BIGINT NOT NULL,low_price BIGINT NOT NULL,close_price BIGINT NOT NULL,"
                 +"quantity BIGINT NOT NULL,notional DOUBLE NOT NULL,fills BIGINT NOT NULL,PRIMARY KEY(stock_id,bucket_at))");
+        for(String table:List.of("trades","stock_price_history","bot_trade_seconds","bot_trade_minutes","bot_trade_hours")) {
+            List<String> columns=table.startsWith("bot_")?List.of("first_sequence","last_sequence"):List.of("execution_sequence");
+            for(String column:columns)if(db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?",Integer.class,table,column)==0)
+                db.execute("ALTER TABLE "+table+" ADD COLUMN "+column+" BIGINT NOT NULL DEFAULT 0");
+        }
         // Retention runs across symbols. Time indexes avoid rescanning days of retained candles.
         for(String table:List.of("bot_trade_seconds","bot_trade_minutes","bot_trade_hours")) {
             if(db.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? AND index_name='ix_retention_time'",Integer.class,table)==0)
@@ -57,7 +62,8 @@ final class BotLedgerJournal {
     boolean compact(Fill fill,BatchOrderBook book) {
         return book.accounts.get(fill.buy().user).bot && book.accounts.get(fill.sell().user).bot;
     }
-    void write(BatchOrderBook book,List<Fill> compact,long now) {
+    void write(BatchOrderBook book,List<Fill> compact,long now) { write(book,compact,now,Map.of()); }
+    void write(BatchOrderBook book,List<Fill> compact,long now,Map<Fill,Long> sequences) {
         Map<Long,List<Fill>> groups=new LinkedHashMap<>();
         compact.forEach(f->groups.computeIfAbsent(f.buy().stock,k->new ArrayList<>()).add(f));
         book.changedOrders.stream().filter(o->book.accounts.get(o.user).bot).forEach(o->groups.computeIfAbsent(o.stock,k->new ArrayList<>()));
@@ -87,7 +93,7 @@ final class BotLedgerJournal {
                 if(book.accounts.get(f.sell().user).liquidityProvider)lpDelta+=f.quantity()*f.price()-f.sellerFee();
             }
             totals.add(new Object[]{stock,fills.size(),quantity,totalFees,lpDelta,new Timestamp(now)});
-            Object[] row={stock,now/1000,now,now,fills.get(0).price(),high,low,fills.get(fills.size()-1).price(),quantity,notional,fills.size()};
+            Object[] row={stock,now/1000,now,now,fills.get(0).price(),high,low,fills.get(fills.size()-1).price(),quantity,notional,fills.size(),sequences.getOrDefault(fills.get(0),0L),sequences.getOrDefault(fills.get(fills.size()-1),0L)};
             seconds.add(row);Object[] minute=row.clone();minute[1]=now/60000*60;minutes.add(minute);
             Object[] hour=row.clone();hour[1]=now/3600000*3600;hours.add(hour);
         }
@@ -100,14 +106,17 @@ final class BotLedgerJournal {
         writeBuckets(writer,"bot_trade_seconds",seconds);writeBuckets(writer,"bot_trade_minutes",minutes);writeBuckets(writer,"bot_trade_hours",hours);
     }
     private void writeBuckets(BatchMarketRepository writer,String table,List<Object[]> rows) {
-        writer.insert(table,"stock_id,bucket_at,first_at,last_at,open_price,high_price,low_price,close_price,quantity,notional,fills",rows,false,
-                " ON DUPLICATE KEY UPDATE open_price=IF(VALUES(first_at)<first_at,VALUES(open_price),open_price),"
-                +"close_price=IF(VALUES(last_at)>=last_at,VALUES(close_price),close_price),first_at=LEAST(first_at,VALUES(first_at)),last_at=GREATEST(last_at,VALUES(last_at)),"
+        writer.insert(table,"stock_id,bucket_at,first_at,last_at,open_price,high_price,low_price,close_price,quantity,notional,fills,first_sequence,last_sequence",rows,false,
+                " ON DUPLICATE KEY UPDATE open_price=IF(VALUES(first_at)<first_at OR VALUES(first_at)=first_at AND VALUES(first_sequence)<first_sequence,VALUES(open_price),open_price),"
+                +"close_price=IF(VALUES(last_at)>last_at OR VALUES(last_at)=last_at AND VALUES(last_sequence)>=last_sequence,VALUES(close_price),close_price),"
+                +"first_sequence=IF(VALUES(first_at)<first_at OR VALUES(first_at)=first_at AND VALUES(first_sequence)<first_sequence,VALUES(first_sequence),first_sequence),"
+                +"last_sequence=IF(VALUES(last_at)>last_at OR VALUES(last_at)=last_at AND VALUES(last_sequence)>=last_sequence,VALUES(last_sequence),last_sequence),"
+                +"first_at=LEAST(first_at,VALUES(first_at)),last_at=GREATEST(last_at,VALUES(last_at)),"
                 +"high_price=GREATEST(high_price,VALUES(high_price)),low_price=LEAST(low_price,VALUES(low_price)),quantity=quantity+VALUES(quantity),notional=notional+VALUES(notional),fills=fills+VALUES(fills)");
     }
     List<PriceMetricService.Trade> observations(long stock,long cutoff) {
-        return db.query("SELECT bucket_at,close_price,quantity,notional,high_price,low_price FROM bot_trade_seconds WHERE stock_id=? AND bucket_at>=? AND bucket_at<=? ORDER BY bucket_at",
-                (rs,n)->new PriceMetricService.Trade(rs.getLong(1)*1000,rs.getDouble(2),rs.getLong(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6)),stock,(cutoff-600000)/1000,cutoff/1000);
+        return db.query("SELECT last_at,close_price,quantity,notional,high_price,low_price,last_sequence FROM bot_trade_seconds WHERE stock_id=? AND bucket_at>=? AND bucket_at<=? AND last_at<=? ORDER BY last_at",
+                (rs,n)->new PriceMetricService.Trade(rs.getLong(1),rs.getDouble(2),rs.getLong(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6),rs.getLong(7)),stock,(cutoff-600000)/1000,cutoff/1000,cutoff);
     }
     List<Print> recent(long stock) {
         return db.query("SELECT payload FROM bot_trade_tape WHERE stock_id=?",(rs,n)->decodeTape(rs.getBytes(1)),stock).stream().findFirst().orElse(List.of());
