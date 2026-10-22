@@ -10,6 +10,7 @@ import { AdminNotices } from "./admin/AdminNotices";
 import { AdminMemberDetail, CashAdjustment, MissionRecovery } from "./admin/AdminMember";
 import { AdminRuntime } from "./admin/AdminRuntime";
 import { AdminOrders } from "./admin/AdminOrders";
+import { AdminPromos } from "./admin/AdminPromos";
 
 type AdminUser = {
   id: number;
@@ -28,6 +29,7 @@ export const ADMIN_SECTIONS: { section: AdminSection; label: string; to: string 
   { section: "users", label: "회원", to: "/admin" },
   { section: "orders", label: "주문", to: "/admin/orders" },
   { section: "notices", label: "공지", to: "/admin/notices" },
+  { section: "promos", label: "프로모션 코드", to: "/admin/promos" },
   { section: "audit", label: "감사 기록", to: "/admin/audit" },
 ];
 
@@ -60,6 +62,7 @@ export function AdminPage() {
       {section === "users" && <AdminUsers />}
       {section === "orders" && <AdminOrders />}
       {section === "notices" && <AdminNotices />}
+      {section === "promos" && <AdminPromos />}
       {section === "audit" && <AdminAudit />}
     </div>
   );

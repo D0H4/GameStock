@@ -25,7 +25,7 @@ import static com.gamestock.backend.market.MarketModels.*;
 class AdminOperationsIntegrationTest {
     JdbcTemplate root,db;HikariDataSource source;String schema;
     MarketService market;AdminSupport support;AdminRuntimeControl runtime;
-    AdminOperationsService operations;AdminContentService content;AdminSeasonService seasons;
+    AdminOperationsService operations;AdminContentService content;AdminSeasonService seasons;TitleService titles;AdminPromoService promos;
     TransactionTemplate transaction;long buyer,seller,admin,stock;
     @BeforeAll void start() throws Exception {
         String url=System.getenv("ADMIN_TEST_JDBC"),user=System.getenv("ADMIN_TEST_USER"),password=System.getenv("ADMIN_TEST_PASSWORD");
@@ -37,17 +37,17 @@ class AdminOperationsIntegrationTest {
         for(String statement:sql.split(";"))if(!statement.isBlank())db.execute(statement);
         var events=mock(ApplicationEventPublisher.class);var protection=new TradingProtectionService(db);
         market=new MarketService(events,db,new UserFeatureService(db),protection);
-        var titles=new TitleService(db,new DataSourceTransactionManager(source));market.configureTitles(titles);market.initializeData();
+        titles=new TitleService(db,new DataSourceTransactionManager(source));market.configureTitles(titles);market.initializeData();
         runtime=new AdminRuntimeControl(db);market.configureAdminRuntime(runtime);protection.configureAdminRuntime(runtime);
         titles.configureAdminRuntime(runtime);
         support=new AdminSupport(db,mock(AuthService.class),new ObjectMapper().findAndRegisterModules());
-        operations=new AdminOperationsService(db,support,market,runtime,events);content=new AdminContentService(db,support);seasons=new AdminSeasonService(db,support,operations,runtime);
+        operations=new AdminOperationsService(db,support,market,runtime,events);content=new AdminContentService(db,support);seasons=new AdminSeasonService(db,support,operations,runtime);promos=new AdminPromoService(db,support);
         db.update("INSERT INTO users(username,password_hash,nickname,google_uid,role,cash) VALUES('admin-test','TEST','admin-test','admin-test','ADMIN',1000000),('buyer-test','TEST','buyer-test','buyer-test','USER',1000000),('seller-test','TEST','seller-test','seller-test','USER',1000000)");
         admin=id("admin-test");buyer=id("buyer-test");seller=id("seller-test");stock=db.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);
     }
     @BeforeEach void reset(){
         tx(()->{
-            for(String table:List.of("admin_season_entries","admin_seasons","user_reports","admin_content","admin_mission_config","admin_cash_epochs","admin_cash_adjustments","admin_permissions","admin_audit","settlements","trades","orders","portfolios","mission_rewards","attendance_rewards"))db.update("DELETE FROM "+table);
+            for(String table:List.of("admin_season_entries","admin_seasons","user_reports","admin_content","admin_mission_config","admin_cash_epochs","admin_cash_adjustments","admin_permissions","admin_audit","settlements","trades","orders","portfolios","mission_rewards","attendance_rewards","promo_redemptions","user_titles"))db.update("DELETE FROM "+table);
             db.update("DELETE FROM admin_stock_state");db.update("UPDATE admin_runtime SET bots_paused=FALSE,traders_paused=FALSE,market_paused=FALSE,cadence_ms=NULL,target_per_symbol=NULL,trader_ramp_seconds=NULL,traders_resumed_at=NULL");
             db.update("UPDATE users SET cash=1000000,loan_balance=0,account_reset_at=NULL WHERE id IN (?,?)",buyer,seller);
             db.update("UPDATE stocks SET current_price=10000,previous_price=10000 WHERE id=?",stock);
@@ -61,6 +61,28 @@ class AdminOperationsIntegrationTest {
     private <T>T tx(Supplier<T> task){return transaction.execute(status->task.get());}
     private long cash(long id){return db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,id);}
     private void pause(){tx(()->operations.runtime(admin,new RuntimeChange(true,false,true,500,20,null,"복구 점검")));}
+
+    @Test void adminPromoCodePaysCashAndTitlesOnceAndHonoursItsLimit(){
+        db.update("DELETE FROM promo_codes WHERE code<>'syuen'");
+        var request=new AdminPromoService.Promo("Launch-1",200000,List.of("special_syuaga"),1,null,null,true,"오픈 기념","오픈 이벤트");
+        tx(()->promos.create(admin,request));
+        assertThrows(IllegalArgumentException.class,()->tx(()->promos.create(admin,request)));
+        assertThrows(IllegalArgumentException.class,()->promos.create(admin,new AdminPromoService.Promo("empty",0,List.of(),null,null,null,true,"","보상 없음")));
+        assertThrows(IllegalArgumentException.class,()->promos.create(admin,new AdminPromoService.Promo("weekly",0,List.of("weekly_1"),null,null,null,true,"","주간 칭호")));
+        var paid=titles.redeem(buyer,"LAUNCH-1");
+        assertEquals(200000,paid.rewardCash());assertEquals(1200000,cash(buyer));
+        assertTrue(paid.titles().stream().anyMatch(title->title.id().equals("special_syuaga")&&title.owned()));
+        assertEquals(200000L,runtime.externalCash(buyer));
+        assertThrows(IllegalArgumentException.class,()->titles.redeem(buyer,"launch-1"));
+        assertThrows(IllegalArgumentException.class,()->titles.redeem(seller,"launch-1"));
+        tx(()->promos.update(admin,"launch-1",new AdminPromoService.Promo("ignored",200000,List.of("special_syuaga"),null,null,null,false,"","중지")));
+        assertThrows(IllegalArgumentException.class,()->titles.redeem(seller,"launch-1"));
+        var listed=promos.promos();
+        @SuppressWarnings("unchecked") var codes=(List<Map<String,Object>>)listed.get("codes");
+        assertEquals(1L,((Number)codes.stream().filter(row->"launch-1".equals(row.get("code"))).findFirst().orElseThrow().get("used_count")).longValue());
+        assertEquals(1,promos.redemptions("launch-1").size());
+        assertEquals(0,titles.redeem(seller,"syuen").rewardCash());
+    }
 
     @Test void cashAdjustmentIsIdempotentAndCannotOverdraw(){
         var request=new CashChange("incident-1",50000,"장애 보상");

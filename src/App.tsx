@@ -23,9 +23,10 @@ import { NxNewsPage } from "./next/pages/NxNewsPage";
 import { NxRankingPage } from "./next/pages/NxRankingPage";
 import { NxSettingsPage } from "./next/pages/NxSettingsPage";
 import { NxTitlesPage } from "./next/pages/NxTitlesPage";
+import { NxAttendancePage } from "./next/pages/NxAttendancePage";
 import type { Route } from "./router";
 
-const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "charge", "loan", "admin"]);
+const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "attendance", "charge", "loan", "admin"]);
 
 function titleFor(route: Route): string {
   if (route.name === "market") {
@@ -41,6 +42,7 @@ function titleFor(route: Route): string {
   if (route.name === "mypage") return "내 계좌 · 슈엔증권";
   if (route.name === "settings") return "설정 · 슈엔증권";
   if (route.name === "titles") return "칭호 설정 · 슈엔증권";
+  if (route.name === "attendance") return "출석체크 · 슈엔증권";
   if (route.name === "charge") return "충전하기 · 슈엔증권";
   if (route.name === "loan") return "대출 · 슈엔증권";
   if (route.name === "admin") return "관리자 · 슈엔증권";
@@ -118,6 +120,7 @@ export default function App() {
         {route.name === "mypage" && auth.user && <NxMyPage />}
         {route.name === "settings" && auth.user && <NxSettingsPage />}
         {route.name === "titles" && auth.user && <NxTitlesPage />}
+        {route.name === "attendance" && auth.user && <NxAttendancePage />}
         {route.name === "charge" && auth.user && <NxChargePage />}
         {route.name === "loan" && auth.user && <NxLoanPage />}
         {route.name === "admin" && auth.user && <NxAdminPage />}

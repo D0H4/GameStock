@@ -36,6 +36,20 @@ class TitleServiceTest {
     private final Map<Long, Long> closingAssets = new LinkedHashMap<>();
     /** user id → weekly titles awarded to that user. */
     private final Map<Long, List<String>> weeklyWinners = new LinkedHashMap<>();
+    /** promo_codes rows by code, and the "code:user" pairs in promo_redemptions. */
+    private final Map<String, Map<String, Object>> promos = new LinkedHashMap<>(Map.of("syuen", promo(0, "special_syuangel,special_misilis_holder,special_syuaga", null)));
+    private final List<String> redemptions = new ArrayList<>();
+    private final List<Long> cashPaid = new ArrayList<>();
+
+    private static Map<String, Object> promo(long cash, String titleIds, Integer maxUses) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("active", true);
+        row.put("reward_cash", cash);
+        row.put("title_ids", titleIds);
+        row.put("max_uses", maxUses);
+        row.put("created_by", 1L);
+        return row;
+    }
 
     private TitleService service() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class, call -> {
@@ -45,6 +59,14 @@ class TitleServiceTest {
             // Text blocks drop trailing spaces, so concatenated SQL must not glue keywords together.
             assertFalse(java.util.regex.Pattern.compile("\\b(WHERE|AND|FROM)[^\\s(]").matcher(sql).find(), sql);
             if (method.equals("update")) {
+                if (sql.startsWith("INSERT INTO promo_redemptions")) {
+                    redemptions.add(args[1] + ":" + args[2]);
+                    return 1;
+                }
+                if (sql.startsWith("UPDATE users SET cash = cash + ?")) {
+                    cashPaid.add((Long) args[1]);
+                    return 1;
+                }
                 if (sql.startsWith("INSERT IGNORE INTO user_titles"))
                     return titles.putIfAbsent((String) args[2], 1) == null ? 1 : 0;
                 if (sql.contains("INSERT INTO user_titles")) {
@@ -67,7 +89,15 @@ class TitleServiceTest {
                 }
                 return 1;
             }
+            if (method.equals("queryForObject") && sql.contains("FROM promo_redemptions WHERE code = ? AND user_id = ?"))
+                return redemptions.contains(args[2] + ":" + args[3]) ? 1 : 0;
+            if (method.equals("queryForObject") && sql.contains("FROM promo_redemptions WHERE code = ?"))
+                return (int) redemptions.stream().filter(entry -> entry.startsWith(args[2] + ":")).count();
             if (method.equals("queryForList")) {
+                if (sql.contains("FROM promo_codes")) {
+                    var row = promos.get((String) args[1]);
+                    return row == null ? List.of() : List.of(row);
+                }
                 if (sql.contains("FROM user_titles")) return new ArrayList<>(titles.keySet());
                 if (sql.contains("FROM trades")) return tradedLastWeek;
                 return List.of();
@@ -243,6 +273,20 @@ class TitleServiceTest {
         var redeemed = service.redeem(7L, "  SYUEN ");
         assertTrue(titles.keySet().containsAll(List.of("special_syuangel", "special_misilis_holder", "special_syuaga")));
         assertTrue(redeemed.titles().stream().filter(title -> title.category().equals("특별")).allMatch(TitleService.UserTitle::owned));
+        assertThrows(IllegalArgumentException.class, () -> service.redeem(7L, "syuen"));
+    }
+
+    @Test void promoCodePaysCashOncePerAccountAndStopsAtItsLimit() {
+        user.put("cash", 1_000_000L);
+        promos.put("gift", promo(300_000, "", 1));
+        TitleService service = service();
+        var redeemed = service.redeem(7L, "GIFT");
+        assertEquals(300_000L, redeemed.rewardCash());
+        assertEquals(List.of(300_000L), cashPaid);
+        assertThrows(IllegalArgumentException.class, () -> service.redeem(7L, "gift"));
+        var spent = assertThrows(IllegalArgumentException.class, () -> service.redeem(8L, "gift"));
+        assertTrue(spent.getMessage().contains("소진"));
+        promos.get("syuen").put("active", false);
         assertThrows(IllegalArgumentException.class, () -> service.redeem(7L, "syuen"));
     }
 

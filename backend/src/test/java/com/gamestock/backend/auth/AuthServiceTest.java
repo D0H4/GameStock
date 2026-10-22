@@ -100,6 +100,40 @@ class AuthServiceTest {
         verify(jdbc, never()).update(eq("UPDATE users SET cash = cash + ? WHERE id = ?"), any(Object[].class));
     }
 
+    @Test void attendanceKeepsYesterdaysStreakUntilTodayIsChecked() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var yesterday = new AuthService.AttendanceDay("2026-10-01", 6, 500_000L);
+        doReturn(java.util.List.of(yesterday)).when(jdbc).query(contains("BETWEEN"), any(RowMapper.class), any(Object[].class));
+        doReturn(java.util.List.of(yesterday)).when(jdbc).query(contains("LIMIT 1"), any(RowMapper.class), any(Object[].class));
+        when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(java.util.Map.of("days", 9L, "reward", 3_000_000L, "longest", 6));
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var attendance = auth.attendance(7L, null);
+
+        assertEquals("2026-10", attendance.month());
+        assertFalse(attendance.checkedToday());
+        assertEquals(6, attendance.streak());
+        assertEquals(500_000L, attendance.nextReward());
+        assertEquals(9, attendance.totalDays());
+        verify(jdbc).query(contains("BETWEEN"), any(RowMapper.class), eq(7L),
+                eq(java.time.LocalDate.parse("2026-10-01")), eq(java.time.LocalDate.parse("2026-10-31")));
+    }
+
+    @Test void attendanceStreakIsBrokenAfterAMissedDay() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        doReturn(java.util.List.of(new AuthService.AttendanceDay("2026-09-29", 3, 300_000L)))
+                .when(jdbc).query(contains("LIMIT 1"), any(RowMapper.class), any(Object[].class));
+        when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(java.util.Map.of("days", 3L, "reward", 600_000L, "longest", 3));
+        AuthService auth = new AuthService(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var attendance = auth.attendance(7L, "2026-09");
+
+        assertEquals(0, attendance.streak());
+        assertEquals(100_000L, attendance.nextReward());
+        var error = assertThrows(ResponseStatusException.class, () -> auth.attendance(7L, "2026-9"));
+        assertEquals(400, error.getStatusCode().value());
+    }
+
     @Test void databaseFailureIsNotReportedAsExpiredLogin() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))

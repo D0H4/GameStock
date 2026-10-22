@@ -295,6 +295,37 @@ public class AuthService {
         return new LoginUser(user.id(), user.nickname(), user.email(), user.profileImageUrl(), reward, streak, user.requiresNickname(), user.role());
     }
 
+    /** 오늘의 연속 일수와 한 달치 출석 기록. 달을 비우면 한국시간 이번 달을 돌려준다. */
+    public Attendance attendance(long userId, String month) {
+        LocalDate today = LocalDate.now(clock.withZone(ATTENDANCE_ZONE));
+        java.time.YearMonth shown;
+        try {
+            shown = month == null || month.isBlank() ? java.time.YearMonth.from(today) : java.time.YearMonth.parse(month.trim());
+        } catch (java.time.format.DateTimeParseException error) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "달은 2026-10 형식으로 보내 주세요.");
+        }
+        var days = jdbc.query("SELECT rewarded_on, streak_day, reward_cash FROM attendance_rewards WHERE user_id = ? AND rewarded_on BETWEEN ? AND ? ORDER BY rewarded_on",
+                (rs, row) -> new AttendanceDay(rs.getDate(1).toLocalDate().toString(), rs.getInt(2), rs.getLong(3)),
+                userId, shown.atDay(1), shown.atEndOfMonth());
+        var last = jdbc.query("SELECT rewarded_on, streak_day, reward_cash FROM attendance_rewards WHERE user_id = ? ORDER BY rewarded_on DESC LIMIT 1",
+                (rs, row) -> new AttendanceDay(rs.getDate(1).toLocalDate().toString(), rs.getInt(2), rs.getLong(3)), userId);
+        var totals = jdbc.queryForMap("SELECT COUNT(*) AS days, COALESCE(SUM(reward_cash), 0) AS reward, COALESCE(MAX(streak_day), 0) AS longest FROM attendance_rewards WHERE user_id = ?", userId);
+        LocalDate lastDate = last.isEmpty() ? null : LocalDate.parse(last.get(0).date());
+        boolean checkedToday = today.equals(lastDate);
+        // 어제까지 이어 온 연속은 오늘 출석 전까지 살아 있다.
+        int streak = lastDate != null && !lastDate.plusDays(1).isBefore(today) ? last.get(0).streakDay() : 0;
+        long todayReward = checkedToday ? last.get(0).reward() : 0;
+        // 오늘 받았으면 내일 보상, 아직이면 오늘 받을 보상이다. 둘 다 연속을 하루 더 이었을 때의 금액.
+        long nextReward = Math.min(streak + 1, 5) * 100_000L;
+        return new Attendance(today.toString(), checkedToday, streak, todayReward, nextReward,
+                ((Number) totals.get("longest")).intValue(), ((Number) totals.get("days")).intValue(),
+                ((Number) totals.get("reward")).longValue(), shown.toString(), days);
+    }
+
+    public record Attendance(String today, boolean checkedToday, int streak, long todayReward, long nextReward,
+                             int longestStreak, int totalDays, long totalReward, String month, java.util.List<AttendanceDay> days) { }
+    public record AttendanceDay(String date, int streakDay, long reward) { }
+
     public record LoginUser(long id, String nickname, String email, String profileImageUrl, long attendanceReward,
                             int attendanceStreak, boolean requiresNickname, String role) {
         public LoginUser(long id, String nickname, String email, String profileImageUrl, long attendanceReward,

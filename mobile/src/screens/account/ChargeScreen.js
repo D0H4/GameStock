@@ -113,7 +113,7 @@ export function ChargeScreen({ onBack, onGo, onNotify }) {
   );
 }
 
-/** 프로모션 코드를 넣으면 특별 칭호를 받는다. */
+/** 프로모션 코드를 넣으면 관리자가 정한 현금이나 칭호를 받는다. */
 function PromoCode() {
   const [code, setCode] = useState('');
   const [pending, setPending] = useState(false);
@@ -125,8 +125,10 @@ function PromoCode() {
     setMessage(null);
     try {
       const status = await request('/api/titles/promo', { method: 'POST', body: { code: trimmed } });
-      const special = (status?.newlyAwarded ?? []).filter(title => title.category === '특별').map(title => title.name);
-      setMessage({ text: special.length ? `특별 칭호 ${special.join(', ')}을(를) 받았어요.` : '프로모션 코드를 사용했어요.', ok: true });
+      const named = (status?.newlyAwarded ?? []).map(title => title.name);
+      const cash = Number(status?.rewardCash) || 0;
+      const parts = [cash > 0 ? `현금 ${cash.toLocaleString('ko-KR')}원` : '', named.length ? `칭호 ${named.join(', ')}` : ''].filter(Boolean);
+      setMessage({ text: parts.length ? `${parts.join('과 ')}을(를) 받았어요.` : '프로모션 코드를 사용했어요.', ok: true });
       setCode('');
     } catch (failure) {
       setMessage({ text: failure.message, ok: false });
@@ -140,7 +142,7 @@ function PromoCode() {
       <Field
         value={code}
         onChangeText={setCode}
-        placeholder="코드를 넣으면 특별 칭호를 받아요"
+        placeholder="코드를 넣으면 보상을 받아요"
         autoCapitalize="none"
         autoCorrect={false}
         maxLength={40}

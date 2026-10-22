@@ -99,10 +99,6 @@ public class TitleService {
     private static final Map<String, TitleDefinition> BY_ID = new HashMap<>();
     static { for (TitleDefinition title : TITLES) BY_ID.put(title.id(), title); }
 
-    /** Promotion code (lower case) → the special titles it grants. */
-    private static final Map<String, List<String>> PROMO_CODES = Map.of(
-            "syuen", List.of("special_syuangel", "special_misilis_holder", "special_syuaga"));
-
     private static final long[] ASSET_THRESHOLDS = {
             30_000_000L, 50_000_000L, 100_000_000L, 1_000_000_000L, 3_000_000_000L,
             5_000_000_000L, 10_000_000_000L, 100_000_000_000L};
@@ -239,18 +235,63 @@ public class TitleService {
         return status(userId);
     }
 
+    /** A redeemed code's result: the title list as in {@link TitleStatus} plus the cash it paid. */
+    public record PromoResult(List<UserTitle> titles, List<UserTitle> newlyAwarded, int ownedCount, int totalCount,
+                              long rewardCash) { }
+
     /**
-     * Redeems a promotion code: grants its special titles, then runs the regular check
-     * so collector titles that now hold are granted and every new title is announced.
+     * Redeems a promotion code set up on the admin screen. Each account uses a code once.
+     * The code row is locked so a limited code cannot be used past its limit. Cash goes in
+     * as an admin cash adjustment, so ranking returns leave it out like other paid rewards.
+     * Afterwards the regular check runs so collector titles that now hold are granted too.
      */
-    public TitleStatus redeem(long userId, String code) {
+    public PromoResult redeem(long userId, String code) {
         String key = code == null ? "" : code.trim().toLowerCase(java.util.Locale.ROOT);
-        List<String> granted = PROMO_CODES.get(key);
-        if (granted == null) throw new IllegalArgumentException("유효하지 않은 프로모션 코드입니다.");
-        Set<String> owned = ownedIds(userId);
-        if (owned.containsAll(granted)) throw new IllegalArgumentException("이미 사용한 프로모션 코드입니다.");
-        for (String titleId : granted) grantIf(userId, owned, titleId, true);
-        return check(userId);
+        long cash = transactions.execute(status -> {
+            var rows = key.isEmpty() ? List.<Map<String, Object>>of()
+                    : jdbc.queryForList("SELECT * FROM promo_codes WHERE code = ? FOR UPDATE", key);
+            if (rows.isEmpty() || !Boolean.TRUE.equals(asBoolean(rows.get(0).get("active"))))
+                throw new IllegalArgumentException("유효하지 않은 프로모션 코드입니다.");
+            var promo = rows.get(0);
+            Instant now = clock.instant();
+            if (promo.get("starts_at") instanceof Timestamp starts && now.isBefore(starts.toInstant()))
+                throw new IllegalArgumentException("아직 사용할 수 없는 프로모션 코드입니다.");
+            if (promo.get("ends_at") instanceof Timestamp ends && !now.isBefore(ends.toInstant()))
+                throw new IllegalArgumentException("사용 기간이 끝난 프로모션 코드입니다.");
+            Integer used = jdbc.queryForObject("SELECT COUNT(*) FROM promo_redemptions WHERE code = ? AND user_id = ?", Integer.class, key, userId);
+            if (used != null && used > 0) throw new IllegalArgumentException("이미 사용한 프로모션 코드입니다.");
+            long reward = ((Number) promo.get("reward_cash")).longValue();
+            List<String> titleIds = splitTitles((String) promo.get("title_ids"));
+            Set<String> owned = ownedIds(userId);
+            // 사용 기록이 생기기 전에 칭호만 주던 코드를 이미 쓴 계정이다.
+            if (reward == 0 && owned.containsAll(titleIds)) throw new IllegalArgumentException("이미 사용한 프로모션 코드입니다.");
+            if (promo.get("max_uses") instanceof Number limit) {
+                Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM promo_redemptions WHERE code = ?", Integer.class, key);
+                if (total != null && total >= limit.intValue()) throw new IllegalArgumentException("준비된 수량이 모두 소진된 프로모션 코드입니다.");
+            }
+            jdbc.update("INSERT INTO promo_redemptions (code, user_id, reward_cash, title_ids) VALUES (?, ?, ?, ?)",
+                    key, userId, reward, String.join(",", titleIds));
+            for (String titleId : titleIds) grantIf(userId, owned, titleId, true);
+            if (reward > 0) {
+                jdbc.update("UPDATE users SET cash = cash + ? WHERE id = ?", reward, userId);
+                Object admin = promo.get("created_by");
+                jdbc.update("INSERT INTO admin_cash_adjustments (request_key, admin_id, user_id, amount, reason) VALUES (?, ?, ?, ?, ?)",
+                        "promo:" + key + ":" + userId, admin == null ? 0L : ((Number) admin).longValue(), userId, reward, "프로모션 코드 " + key);
+            }
+            return reward;
+        });
+        TitleStatus status = check(userId);
+        return new PromoResult(status.titles(), status.newlyAwarded(), status.ownedCount(), status.totalCount(), cash);
+    }
+
+    /** Stored comma list → known title ids, in catalog order is not required. */
+    static List<String> splitTitles(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        return java.util.Arrays.stream(value.split(",")).map(String::trim).filter(BY_ID::containsKey).toList();
+    }
+
+    private static Boolean asBoolean(Object value) {
+        return value instanceof Boolean flag ? flag : value instanceof Number number ? number.intValue() != 0 : null;
     }
 
     private TitleStatus status(long userId, List<String> fresh) {
