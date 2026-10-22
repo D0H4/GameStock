@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
@@ -277,11 +277,14 @@ function combo(prints: TradePrint[]): { side: "buy" | "sell"; count: number } | 
   return { side: first.side, count };
 }
 
+type Arrival = { code: string; signature: string; fresh: Set<string>; rise: number };
+
 /**
- * 호가 사다리 왼쪽의 체결 레인. 새 체결은 판정선(현재가 줄)에 꽂히고
- * 앞선 체결은 위로 밀려 올라가며 옅어진다. 긴 노트는 큰 체결이다.
+ * 호가 사다리 왼쪽의 체결 레인. 새 체결은 판정선(현재가 줄) 아래에서 한 묶음으로 올라오고
+ * 앞선 체결은 같은 거리만큼 위로 밀려 올라가며 옅어진다. 긴 노트는 큰 체결이다.
  */
 function Highway({ quote }: { quote: Quote }) {
+  const arrival = useRef<Arrival | null>(null);
   const prints = quote.prints.slice(0, NOTE_LIMIT);
   const maxQty = Math.max(1, ...prints.map((print) => print.qty));
   let offset = 0;
@@ -306,18 +309,37 @@ function Highway({ quote }: { quote: Quote }) {
     seen.set(base, count + 1);
     keys[index] = `${base}#${count}`;
   }
+  /*
+   * 체결은 몇 초마다 여러 건이 한꺼번에 온다. 새로 온 노트 전체를 앞선 노트가 밀려나는
+   * 거리(rise)만큼 아래에서 같이 올려야 같은 줄 노트끼리 서로를 가로지르지 않는다.
+   * 체결 목록이 그대로인 다시 그리기에서는 앞서 정한 묶음을 유지해 진행 중인 움직임을 끊지 않는다.
+   */
+  const signature = keys.join(",");
+  const previous = arrival.current;
+  if (!previous || previous.code !== quote.code) {
+    arrival.current = { code: quote.code, signature, fresh: new Set(), rise: 0 };
+  } else if (previous.signature !== signature) {
+    const known = new Set(previous.signature.split(","));
+    const fresh = new Set(keys.filter((key) => !known.has(key)));
+    const firstKept = notes.find(({ index }) => !fresh.has(keys[index]));
+    arrival.current = { code: quote.code, signature, fresh, rise: firstKept ? firstKept.bottom : offset };
+  }
+  const { fresh, rise } = arrival.current!;
   return (
     <div className="nx-lanes" aria-label={`최근 체결 ${prints.length}건 중 매수 ${buys}건, 매도 ${prints.length - buys}건`} role="img">
       <span className="nx-lane-label is-buy" aria-hidden="true">매수</span>
       <span className="nx-lane-label is-sell" aria-hidden="true">매도</span>
-      {notes.map(({ print, index, height, bottom }) => (
-        <span
-          key={keys[index]}
-          className={`nx-note is-${print.side}${index === 0 ? " is-hit" : ""}`}
-          style={{ height, bottom, opacity: Math.max(0.25, 1 - index * 0.09) }}
-          aria-hidden="true"
-        />
-      ))}
+      {notes.map(({ print, index, height, bottom }) => {
+        const isFresh = fresh.has(keys[index]);
+        return (
+          <span
+            key={keys[index]}
+            className={`nx-note is-${print.side}${isFresh ? " is-new" : ""}${isFresh && index === 0 ? " is-hit" : ""}`}
+            style={{ height, bottom, opacity: Math.max(0.25, 1 - index * 0.09), "--rise": `${rise}px` } as CSSProperties}
+            aria-hidden="true"
+          />
+        );
+      })}
     </div>
   );
 }

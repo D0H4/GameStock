@@ -578,14 +578,22 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   position: absolute;
   width: calc(50% - 12px);
   border-radius: 3px;
-  transition: bottom 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease-out;
+  /* 위치와 높이를 같은 곡선으로 옮겨야 움직이는 동안에도 노트 사이 간격이 유지된다. */
+  transition:
+    bottom 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 260ms ease-out;
 }
 
 .nx-note.is-buy { left: 6px; background: var(--up); }
 .nx-note.is-sell { right: 6px; background: var(--down); }
 
-/* 새 체결: 위에서 떨어져 판정선에 꽂히고, 꽂힌 순간 한 번 번쩍인다. */
-.nx-note.is-hit { animation: nx-drop 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+/*
+ * 새 체결 묶음: 판정선 아래에서 함께 올라와 앞선 노트를 밀어 올리고,
+ * 맨 아래 노트가 자리를 잡으면 한 번 번쩍인다.
+ * 위에서 떨어뜨리면 밀려 올라가는 노트들을 가로질러 겹쳐 보인다.
+ */
+.nx-note.is-new { animation: nx-rise 260ms cubic-bezier(0.16, 1, 0.3, 1); }
 .nx-note.is-hit::after {
   content: "";
   position: absolute;
@@ -593,12 +601,13 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   border: 2px solid var(--brand);
   border-radius: 4px;
   opacity: 0;
-  animation: nx-hit 520ms ease-out 300ms;
+  animation: nx-hit 520ms ease-out 220ms;
 }
 
-@keyframes nx-drop {
-  from { transform: translateY(-170px); opacity: 0.4; }
-  to { transform: translateY(0); opacity: 1; }
+/* --rise는 새 묶음 전체의 높이. 앞선 노트가 밀려 올라가는 거리와 같다. */
+@keyframes nx-rise {
+  from { transform: translateY(var(--rise)); }
+  to { transform: translateY(0); }
 }
 
 @keyframes nx-hit {
@@ -607,7 +616,7 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nx-note, .nx-note.is-hit, .nx-note.is-hit::after { transition: none; animation: none; }
+  .nx-note, .nx-note.is-new, .nx-note.is-hit::after { transition: none; animation: none; }
 }
 
 .nx-book-row {
