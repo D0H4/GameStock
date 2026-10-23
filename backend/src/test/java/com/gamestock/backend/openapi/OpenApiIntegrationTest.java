@@ -98,6 +98,7 @@ class OpenApiIntegrationTest {
             jdbc.update("UPDATE market_book_revisions SET revision=revision+1");
             jdbc.update("INSERT INTO portfolios(user_id,stock_id,quantity,settled_quantity,average_price) SELECT ?,id,1000,1000,current_price FROM stocks WHERE stock_code='UMA'", seller);
         });
+        DerivativeTapeFixture.seed(jdbc,Instant.now());
         issued = transaction.execute(status -> keys.create(buyer, new CreateKey("integration", Permission.TRADE, 1)));
         principal = keys.authenticate("Bearer " + issued.token(), true);
     }

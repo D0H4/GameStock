@@ -241,10 +241,11 @@ public class MarketService {
         renameExistingStock("NEXA", "UMA", "네사: 크로니클", "우마무스메 프리티더비");
         renameExistingStock("STAR", "BA", "스타라이트 아레나", "블루 아카이브");
         renameExistingStock("MOMO", "GOV", "모모 팜", "승리의 여신: 니케");
-        removeExistingStock("VOID", "보이드 러너");
+        retireLegacyStock("VOID");
 
         StockCatalog.ensureListings(jdbc);
         AdminSchema.restoreStockMetadata(jdbc);
+        new DerivativeBaskets(jdbc).rebalance();
         MarketBookCache.seedRevisions(jdbc);
         botJournal=new BotLedgerJournal(jdbc,ledgerDetail);
         ensureTraderBots();
@@ -458,14 +459,31 @@ public class MarketService {
         jdbc.update("UPDATE stocks SET stock_code = ? WHERE stock_code = ?", newCode, oldCode);
     }
 
-    private void removeExistingStock(String code, String gameName) {
-        jdbc.update("DELETE FROM market_events WHERE stock_id IN (SELECT id FROM stocks WHERE stock_code = ?)", code);
-        // 체결 이력이 주문/종목을 외래 키로 참조하므로 주문보다 먼저 정리한다.
-        jdbc.update("DELETE FROM trades WHERE stock_id IN (SELECT id FROM stocks WHERE stock_code = ?)", code);
-        jdbc.update("DELETE FROM orders WHERE stock_id IN (SELECT id FROM stocks WHERE stock_code = ?)", code);
-        jdbc.update("DELETE FROM portfolios WHERE stock_id IN (SELECT id FROM stocks WHERE stock_code = ?)", code);
-        jdbc.update("DELETE FROM stocks WHERE stock_code = ?", code);
-        jdbc.update("DELETE FROM games WHERE name = ? AND NOT EXISTS (SELECT 1 FROM stocks WHERE game_id = games.id)", gameName);
+    private void retireLegacyStock(String code) {
+        startupTransaction().executeWithoutResult(status -> {
+            acquireMarketLock();
+            var baskets = new DerivativeBaskets(jdbc);
+            baskets.lock();
+            // Keep holdings, news and financial history, including all foreign-key targets.
+            // An explicit later admin decision must survive subsequent restarts.
+            jdbc.update("""
+                    INSERT IGNORE INTO admin_stock_state(stock_id,state,reason)
+                    SELECT id,'DELISTED','구형 종목 운영 종료' FROM stocks WHERE stock_code=?
+                    """, code);
+            var orders = jdbc.queryForList("""
+                    SELECT o.id,o.user_id,o.reserved_cash FROM orders o JOIN stocks s ON s.id=o.stock_id
+                    JOIN admin_stock_state a ON a.stock_id=s.id
+                    WHERE s.stock_code=? AND a.state<>'ACTIVE' AND o.status='OPEN'
+                    ORDER BY o.user_id,o.id FOR UPDATE
+                    """, code);
+            for (var order : orders) {
+                long refund = ((Number) order.get("reserved_cash")).longValue();
+                if (refund > 0) jdbc.update("UPDATE users SET cash=cash+? WHERE id=?", refund, order.get("user_id"));
+                jdbc.update("UPDATE orders SET status='CANCELLED',remaining_quantity=0,reserved_cash=0,reserved_quantity=0 WHERE id=?", order.get("id"));
+            }
+            // Cancellation/refunds, retirement and value-preserving reconstitution commit together.
+            baskets.rebalance();
+        });
     }
 
     private void removeDefaultEvents() {
@@ -888,6 +906,8 @@ public class MarketService {
                 settlement.grossAmount() + settlement.buyerFee(), settlement.buyerId());
         jdbc.update("UPDATE settlements SET status = 'CANCELLED', cancelled_at = CURRENT_TIMESTAMP WHERE id = ?",
                 settlement.id());
+        Timestamp executionAt=jdbc.queryForObject("SELECT created_at FROM trades WHERE id=?",Timestamp.class,settlement.tradeId());
+        new DerivativePriceOracle(jdbc).invalidate(settlement.stockId(),executionAt.toInstant());
         priceMetrics.invalidate(settlement.stockId());
         jdbc.update("DELETE FROM lp_cash_projection WHERE stock_id=?",settlement.stockId());
         rebuildHoldingFromLedger(settlement.stockId(), settlement.buyerId());

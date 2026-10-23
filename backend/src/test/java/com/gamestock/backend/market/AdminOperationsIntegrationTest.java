@@ -5,6 +5,8 @@ import com.gamestock.backend.auth.AuthService;
 import com.zaxxer.hikari.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -55,6 +57,7 @@ class AdminOperationsIntegrationTest {
             db.update("UPDATE stock_protection_state SET day_reference=10000,static_reference=10000,dynamic_reference=10000,last_trade_price=10000,vi_type=NULL WHERE stock_id=?",stock);
             db.update("INSERT INTO portfolios(user_id,stock_id,quantity,settled_quantity,average_price) VALUES(?,?,100,100,10000)",seller,stock);return null;
         });
+        DerivativeTapeFixture.seed(db,java.time.Instant.now());
     }
     @AfterAll void stop(){if(source!=null)source.close();if(root!=null&&schema!=null)root.execute("DROP DATABASE "+schema);}
     private long id(String name){return db.queryForObject("SELECT id FROM users WHERE username=?",Long.class,name);}
@@ -100,6 +103,125 @@ class AdminOperationsIntegrationTest {
         assertEquals(500000-asset+fees,loans.status(buyer).balance());
     }
 
+    @ParameterizedTest @ValueSource(strings={"ETF","FUTURE","OPTION"})
+    void collateralLiquidationPreservesUnneededDerivativeContracts(String kind) {
+        var manager=new DataSourceTransactionManager(source);
+        var derivatives=new DerivativeService(db,manager);
+        derivatives.setClock(java.time.Clock.fixed(java.time.Instant.now(),java.time.ZoneOffset.UTC));
+        db.update("UPDATE users SET cash=10000000 WHERE id=?",buyer);
+        double index=derivatives.snapshot().indexValue();
+        int quantity="ETF".equals(kind)?100:5;
+        var request=switch(kind) {
+            case "ETF" -> new DerivativeModels.OrderRequest(kind,"BUY",quantity,"ETFIDX",null,null,null,null);
+            case "FUTURE" -> new DerivativeModels.OrderRequest(kind,"LONG",quantity,"FUTIDX",5,null,null,null);
+            default -> new DerivativeModels.OrderRequest(kind,"CALL",quantity,null,null,"1H",index*0.98,null);
+        };
+        long position=transaction.execute(status->derivatives.open(buyer,request)).account().positions().get(0).id();
+        long asset=db.queryForObject("SELECT mark_value FROM derivative_positions WHERE id=?",Long.class,position);
+        db.update("UPDATE users SET cash=?,loan_balance=?,loan_interest_on=NULL WHERE id=?",asset*15/100,asset,buyer);
+        var loans=new LoanService(db,market,mock(OrderService.class),derivatives,mock(ApplicationEventPublisher.class),manager);
+        assertEquals(1.15,loans.status(buyer).collateralRatio(),0.0001);
+        loans.liquidate(buyer);
+        int remaining=db.queryForObject("SELECT quantity FROM derivative_positions WHERE id=?",Integer.class,position);
+        assertTrue(remaining>0 && remaining<quantity,"Only the contracts needed for repayment should be sold");
+        assertEquals("OPEN",db.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,position));
+        var after=loans.status(buyer);
+        assertTrue(after.balance()>0 && after.balance()<asset);
+        assertTrue(after.grossAsset()*10>=after.balance()*14,"Repayment must restore the 140% ratio including fees");
+        assertEquals(quantity-remaining,db.queryForObject("SELECT SUM(quantity) FROM derivative_trades WHERE position_id=? AND action='CLOSE'",Integer.class,position));
+        long cash=after.cash(),debt=after.balance();
+        loans.liquidate(buyer);
+        assertEquals(remaining,db.queryForObject("SELECT quantity FROM derivative_positions WHERE id=?",Integer.class,position));
+        assertEquals(cash,cash(buyer));assertEquals(debt,loans.status(buyer).balance());
+    }
+
+    @Test void repaymentWhileWaitingForTheDerivativeAccountLockPreventsForcedSale() throws Exception {
+        var manager=new DataSourceTransactionManager(source);
+        var normal=new DerivativeService(db,manager);
+        long position=tx(()->normal.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null)))
+                .account().positions().get(0).id();
+        long asset=db.queryForObject("SELECT mark_value FROM derivative_positions WHERE id=?",Long.class,position);
+        long initialCash=asset*15/100;
+        db.update("UPDATE users SET cash=?,loan_balance=?,loan_interest_on=NULL WHERE id=?",initialCash,asset,buyer);
+        CountDownLatch locking=new CountDownLatch(1);
+        JdbcTemplate waiting=new JdbcTemplate(source) {
+            @Override public <T>T queryForObject(String sql,Class<T> type,Object... args) {
+                if(sql.equals("SELECT id FROM users WHERE id = ? FOR UPDATE"))locking.countDown();
+                return super.queryForObject(sql,type,args);
+            }
+        };
+        var events=mock(ApplicationEventPublisher.class);
+        var loans=new LoanService(db,market,mock(OrderService.class),new DerivativeService(waiting,manager),events,manager);
+        ExecutorService worker=Executors.newSingleThreadExecutor();
+        try {
+            Future<?> pending=tx(()->{
+                db.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",Long.class,buyer);
+                Future<?> work=worker.submit(()->loans.liquidate(buyer));
+                try {assertTrue(locking.await(5,TimeUnit.SECONDS));}
+                catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}
+                assertFalse(work.isDone());
+                db.update("UPDATE users SET cash=cash+? WHERE id=?",asset,buyer);
+                loans.repay(buyer,asset);
+                return work;
+            });
+            pending.get(5,TimeUnit.SECONDS);
+            assertEquals(0,loans.status(buyer).balance());assertEquals(initialCash,cash(buyer));
+            assertEquals(100,db.queryForObject("SELECT quantity FROM derivative_positions WHERE id=?",Integer.class,position));
+            assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM derivative_trades WHERE position_id=? AND action='CLOSE'",Integer.class,position));
+            verifyNoInteractions(events);
+        } finally {worker.shutdownNow();assertTrue(worker.awaitTermination(5,TimeUnit.SECONDS));}
+    }
+
+    @Test void lowerExecutionProceedsContinueLiquidationUntilCashIsSufficientOrThePositionIsExhausted() {
+        transaction.executeWithoutResult(state->{
+            var manager=new DataSourceTransactionManager(source);
+            var derivatives=new DerivativeService(db,manager);
+            long position=derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null))
+                    .account().positions().get(0).id();
+            long asset=db.queryForObject("SELECT mark_value FROM derivative_positions WHERE id=?",Long.class,position);
+            long initialCash=asset*15/100;
+            db.update("UPDATE users SET cash=?,loan_balance=?,loan_interest_on=NULL WHERE id=?",initialCash,asset,buyer);
+            // Stored NAV is unchanged, but the conservative execution price is now 20% lower.
+            db.update("UPDATE stocks s JOIN derivative_reference_prices r ON r.stock_id=s.id SET s.current_price=FLOOR(r.price*0.8)");
+            var loans=new LoanService(db,market,mock(OrderService.class),derivatives,mock(ApplicationEventPublisher.class),manager);
+            loans.liquidate(buyer);
+            assertEquals(0,db.queryForObject("SELECT quantity FROM derivative_positions WHERE id=?",Integer.class,position));
+            assertEquals(0,cash(buyer));
+            long proceeds=db.queryForObject("SELECT SUM(cash_flow) FROM derivative_trades WHERE position_id=? AND action='CLOSE'",Long.class,position);
+            assertEquals(asset-initialCash-proceeds,loans.status(buyer).balance());
+            assertTrue(loans.status(buyer).balance()>0,"An insolvent account retains its unpaid debt");
+            state.setRollbackOnly();
+        });
+    }
+
+    @ParameterizedTest @ValueSource(strings={"paused","invalidated","missingExpiryFixing"})
+    void collateralSalesKeepTradingAndSettlementGuards(String reason) {
+        var manager=new DataSourceTransactionManager(source);
+        var derivatives=new DerivativeService(db,manager);
+        var now=java.time.Instant.now();
+        derivatives.setClock(java.time.Clock.fixed(now,java.time.ZoneOffset.UTC));
+        boolean option="missingExpiryFixing".equals(reason);
+        double index=derivatives.snapshot().indexValue();
+        var request=option
+                ? new DerivativeModels.OrderRequest("OPTION","CALL",5,null,null,"1H",index*0.98,null)
+                : new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null);
+        long position=tx(()->derivatives.open(buyer,request)).account().positions().get(0).id();
+        long asset=db.queryForObject("SELECT mark_value FROM derivative_positions WHERE id=?",Long.class,position);
+        long initialCash=asset*15/100;
+        db.update("UPDATE users SET cash=?,loan_balance=?,loan_interest_on=NULL WHERE id=?",initialCash,asset,buyer);
+        if("paused".equals(reason))db.update("UPDATE admin_runtime SET market_paused=TRUE WHERE id=1");
+        else if("invalidated".equals(reason))db.update("UPDATE derivative_reference_prices SET observed_at=NULL");
+        else derivatives.setClock(java.time.Clock.fixed(now.plusSeconds(3601),java.time.ZoneOffset.UTC));
+        var loans=new LoanService(db,market,mock(OrderService.class),derivatives,mock(ApplicationEventPublisher.class),manager);
+        loans.liquidate(buyer);
+        assertEquals(request.quantity(),db.queryForObject("SELECT quantity FROM derivative_positions WHERE id=?",Integer.class,position));
+        assertEquals("OPEN",db.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,position));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM derivative_trades WHERE position_id=? AND action<>'OPEN'",Integer.class,position));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM derivative_expiry_fixings",Integer.class));
+        // Repaying existing cash remains possible; rejected asset sales cannot invent proceeds.
+        assertEquals(0,cash(buyer));assertEquals(asset-initialCash,loans.status(buyer).balance());
+    }
+
     @Test void weeklyRankingUsesTheSameDerivativeValuationAsThePortfolio() {
         var derivatives=new DerivativeService(db,new DataSourceTransactionManager(source));
         transaction.executeWithoutResult(status->derivatives.open(buyer,new DerivativeModels.OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null)));
@@ -129,7 +251,7 @@ class AdminOperationsIntegrationTest {
         assertEquals(1_000_000,cash(buyer));
     }
 
-    @Test void newsProjectionIsIndependentOfBatchSplitsAndExpiresOldOrCorrectedArticles() {
+    @Test void newsProjectionIsIdempotentAndRetainsCorrectedEconomicValueAfterExpiry() {
         var oldClock=org.springframework.test.util.ReflectionTestUtils.getField(market,"clock");
         var now=java.time.Instant.parse("2030-01-01T10:00:00Z");
         org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(now,java.time.ZoneOffset.UTC));
@@ -150,7 +272,11 @@ class AdminOperationsIntegrationTest {
             assertTrue(db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr)<10000);
             db.update("UPDATE market_events SET published_at=? WHERE stock_id=? AND source='regression'",java.sql.Timestamp.from(now.minusSeconds(7*86400)),tr);
             org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
-            assertEquals(10000,db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr));
+            double retained=db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr);
+            assertTrue(retained<10000,"Permanent negative economic impact survives the news window");
+            db.update("DELETE FROM market_events WHERE stock_id=? AND source='regression'",tr);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
+            assertEquals(10000,db.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?",Double.class,tr),1e-7);
             status.setRollbackOnly();
         });}finally{org.springframework.test.util.ReflectionTestUtils.setField(market,"clock",oldClock);}
     }
@@ -264,7 +390,13 @@ class AdminOperationsIntegrationTest {
         tx(()->market.order(new OrderRequest("UMA","SELL",3,"LIMIT",10000L),seller));
         tx(()->market.order(new OrderRequest("UMA","BUY",3,"MARKET",null),buyer));
         long settlement=db.queryForObject("SELECT id FROM settlements",Long.class);assertEquals(969970,cash(buyer));assertEquals(1029970,cash(seller));pause();
+        var execution=db.queryForObject("SELECT created_at FROM trades",java.sql.Timestamp.class).toInstant();
+        var history=new DerivativeIndexHistory(db);
+        history.observe(1000,execution.minusSeconds(1));history.observe(1100,execution.plusSeconds(6));
         tx(()->{operations.reverse(admin,settlement,"오체결 정정");return null;});
+        assertNull(db.queryForObject("SELECT observed_at FROM derivative_reference_prices WHERE stock_id=?",java.sql.Timestamp.class,stock));
+        assertTrue(db.queryForObject("SELECT invalidated FROM derivative_index_observations WHERE observed_at=?",Boolean.class,java.sql.Timestamp.from(execution.plusSeconds(6))));
+        assertEquals(1000,history.fixing(execution.plusSeconds(7)));
         assertEquals(1000000,cash(buyer));assertEquals(1000000,cash(seller));
         assertEquals(100,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,seller,stock));
         assertEquals(0,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,buyer,stock));
@@ -307,8 +439,12 @@ class AdminOperationsIntegrationTest {
         for(String reserved:List.of("NEXA","STAR","MOMO","VOID"))assertThrows(IllegalArgumentException.class,()->tx(()->operations.createStock(admin,new StockCreate(reserved,"예약 종목","개발사","RPG",10000,"등록 검사"))));
         operations.dashboard();operations.user(buyer);operations.orders(null,null,null,0,50);operations.trades(null,null,0,50);operations.settlements(null,null,0,50);operations.suspicious(24,2);operations.legacyAudit(null,0,50);
         String code="T"+System.nanoTime()%100000000;
+        var priorBaskets=new DerivativeBaskets(db).load();
         var created=tx(()->operations.createStock(admin,new StockCreate(code,"새 게임","개발사","RPG",10000,"신규 종목")));
+        var createdBaskets=new DerivativeBaskets(db).load();
+        for(var entry:priorBaskets.baskets().entrySet())assertEquals(entry.getValue().price(),createdBaskets.basket(entry.getKey()).price(),1e-8);
         assertNotNull(created.get("id"));tx(()->operations.updateStock(admin,code,new StockChange("수정 게임","개발사","전략","정보 수정")));
+        for(var entry:priorBaskets.baskets().entrySet())assertEquals(entry.getValue().price(),new DerivativeBaskets(db).load().basket(entry.getKey()).price(),1e-8);
         assertEquals("OPEN",tx(()->market.order(new OrderRequest(code,"BUY",1,"LIMIT",9900L),buyer)).status());
         StockCatalog.ensureListings(db);AdminSchema.restoreStockMetadata(db);
         assertEquals("수정 게임",operations.stocks().stream().filter(x->code.equals(x.get("stock_code"))).findFirst().orElseThrow().get("name"));

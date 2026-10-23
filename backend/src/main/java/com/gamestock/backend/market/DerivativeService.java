@@ -23,6 +23,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 import static com.gamestock.backend.market.DerivativeModels.*;
 
@@ -40,15 +41,8 @@ public class DerivativeService {
     private static final int MAX_ORDER_QUANTITY = 100;
     private static final int MAX_OPEN_POSITIONS = 60;
     private static final int SERIES_LIMIT = 120;
-    private static final int SAMPLE_LIMIT = 900;
+    private static final long MAX_ACCOUNT_EXPOSURE = 10_000_000;
     private static final String FUTURE_CODE = "FUTIDX";
-
-    private record EtfDefinition(String code, String name, String theme, String description,
-                                 Set<String> genres, boolean indexWeighted) { }
-
-    private record StockRow(String code, String name, String genre, long price, long reference, long base) {
-        double changePercent() { return reference <= 0 ? 0 : (price - reference) * 100.0 / reference; }
-    }
 
     private record OpenRow(long id, long userId, String kind, String symbol, String name, String side,
                            int quantity, double entryPrice, long entryNotional, long margin, int leverage,
@@ -60,22 +54,7 @@ public class DerivativeService {
                                String optionType, double strike, Timestamp expiryAt, String status,
                                String openedAt, long realizedPnl, double markPrice, long markValue) { }
 
-    private static final List<EtfDefinition> ETFS = List.of(
-            new EtfDefinition("ETFIDX", "슈엔 게임주 지수 ETF", "지수",
-                    "상장된 모든 게임 종목을 시가총액 비중으로 담는 지수 추종 ETF입니다.",
-                    Set.of(), true),
-            new EtfDefinition("ETFRPG", "RPG 셀렉트 ETF", "RPG",
-                    "RPG·전략 RPG 장르를 같은 비중으로 담는 테마 ETF입니다.",
-                    Set.of("RPG", "전략 RPG"), false),
-            new EtfDefinition("ETFACT", "액션 셀렉트 ETF", "액션",
-                    "액션·오픈월드 장르를 같은 비중으로 담는 테마 ETF입니다.",
-                    Set.of("액션", "오픈월드"), false),
-            new EtfDefinition("ETFFPS", "FPS 셀렉트 ETF", "FPS",
-                    "FPS 장르의 슈팅 게임을 담는 테마 ETF입니다.",
-                    Set.of("FPS"), false),
-            new EtfDefinition("ETFALT", "얼터너티브 셀렉트 ETF", "얼터너티브",
-                    "육성·레이싱·생존 장르를 같은 비중으로 담는 테마 ETF입니다.",
-                    Set.of("육성", "레이싱", "생존"), false));
+    private static final List<DerivativeBaskets.Definition> ETFS = DerivativeBaskets.DEFINITIONS;
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
@@ -83,12 +62,15 @@ public class DerivativeService {
     private final DerivativeIndexHistory indexHistory;
     private Instant nextHistoryRetention=Instant.EPOCH;
     void setClock(Clock clock) { this.clock = clock; }
-    private final Deque<double[]> samples = new ArrayDeque<>();
+    private final DerivativePriceOracle oracle;
+    private final DerivativeBaskets baskets;
     private final Map<String, Deque<Double>> series = new ConcurrentHashMap<>();
 
     public DerivativeService(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
         this.indexHistory = new DerivativeIndexHistory(jdbc);
+        this.oracle = new DerivativePriceOracle(jdbc);
+        this.baskets = new DerivativeBaskets(jdbc);
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -99,6 +81,7 @@ public class DerivativeService {
 
     /** 스키마 마이그레이션에서도 호출한다. 여러 번 실행해도 안전하다. */
     static void ensureTables(JdbcTemplate jdbc) {
+        AdminSchema.ensureRuntime(jdbc);
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS derivative_positions (
                   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -118,6 +101,7 @@ public class DerivativeService {
                   status VARCHAR(12) NOT NULL DEFAULT 'OPEN',
                   mark_price DOUBLE NOT NULL DEFAULT 0,
                   mark_value BIGINT NOT NULL DEFAULT 0,
+                  mark_version BIGINT NOT NULL DEFAULT 0,
                   realized_pnl BIGINT NOT NULL DEFAULT 0,
                   opened_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
                   closed_at TIMESTAMP(3) NULL,
@@ -127,6 +111,8 @@ public class DerivativeService {
                   CONSTRAINT fk_derivative_user FOREIGN KEY (user_id) REFERENCES users(id)
                 )
                 """);
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='derivative_positions' AND column_name='mark_version'", Integer.class) == 0)
+            jdbc.execute("ALTER TABLE derivative_positions ADD COLUMN mark_version BIGINT NOT NULL DEFAULT 0");
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS derivative_trades (
                   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -154,20 +140,23 @@ public class DerivativeService {
         String versionDefault=jdbc.queryForObject("SELECT column_default FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='derivative_trades' AND column_name='cash_flow_version'",String.class);
         if(!"2".equals(versionDefault))jdbc.execute("ALTER TABLE derivative_trades ALTER COLUMN cash_flow_version SET DEFAULT 2");
         DerivativeIndexHistory.ensureTables(jdbc);
+        DerivativePriceOracle.ensureTables(jdbc);
+        DerivativeBaskets.ensureTables(jdbc);
         // Freeze legacy references during the locked migration, before startup rolls the day.
         new DerivativeIndexHistory(jdbc).initializeBases();
+        new DerivativePriceOracle(jdbc).initialize();
+        new DerivativeBaskets(jdbc).rebalance();
     }
 
     // ------------------------------------------------------------ 공개 시세
 
     public DerivativeSnapshot snapshot() {
         Instant now = clock.instant();
-        List<StockRow> stocks = loadStocks();
-        double index = weightedIndex(stocks);
-        double previous = dailyIndex(stocks);
-        sample(index, now);
+        DerivativeBaskets.Values prices = loadPrices();
+        double index = prices.index();
+        double previous = prices.basket("ETFIDX").previous();
         List<EtfQuote> etfs = new ArrayList<>(ETFS.size());
-        for (EtfDefinition definition : ETFS) etfs.add(etfQuote(definition, stocks, index));
+        for (DerivativeBaskets.Definition definition : ETFS) etfs.add(etfQuote(definition, prices, index));
         FutureQuote future = new FutureQuote(FUTURE_CODE, "게임주 지수 선물", index, previous,
                 percent(index, previous), DerivativePricing.CONTRACT_MULTIPLIER, DerivativePricing.LEVERAGES,
                 DerivativePricing.MAINTENANCE_RATE, series("FUTIDX", index));
@@ -196,76 +185,48 @@ public class DerivativeService {
                 contracts, now.toString());
     }
 
-    private EtfQuote etfQuote(EtfDefinition definition, List<StockRow> stocks, double index) {
-        List<StockRow> members = stocks.stream()
-                .filter(stock -> definition.genres().isEmpty() || definition.genres().contains(stock.genre()))
-                .toList();
-        double totalWeight = members.stream().mapToDouble(stock -> marketCap(stock.code())).sum();
-        List<Constituent> constituents = new ArrayList<>(members.size());
-        double nav;
-        if (members.isEmpty()) {
-            nav = 1000;
-        } else if (definition.indexWeighted()) {
-            double weighted = members.stream()
-                    .mapToDouble(stock -> marketCap(stock.code()) * stock.price() / Math.max(1, stock.base()))
-                    .sum();
-            nav = 1000 * weighted / Math.max(1, totalWeight);
-        } else {
-            nav = 1000 * members.stream()
-                    .mapToDouble(stock -> (double) stock.price() / Math.max(1, stock.base()))
-                    .average().orElse(1);
-        }
-        for (StockRow stock : members) {
-            double weight = definition.indexWeighted()
-                    ? marketCap(stock.code()) / Math.max(1, totalWeight)
-                    : 1.0 / members.size();
-            constituents.add(new Constituent(stock.code(), stock.name(), weight, stock.changePercent()));
-        }
-        constituents.sort(Comparator.comparingDouble(Constituent::weight).reversed());
-        double previous = members.isEmpty() ? 1000 : 1000 * members.stream()
-                .mapToDouble(stock -> (definition.indexWeighted() ? marketCap(stock.code()) / Math.max(1, totalWeight) : 1.0 / members.size())
-                        * stock.reference() / Math.max(1, stock.base())).sum();
+    private EtfQuote etfQuote(DerivativeBaskets.Definition definition, DerivativeBaskets.Values prices, double index) {
+        var basket = prices.basket(definition.code());
+        List<Constituent> constituents = basket.members().stream()
+                .map(stock -> new Constituent(stock.code(), stock.name(), stock.weight(), stock.changePercent()))
+                .sorted(Comparator.comparingDouble(Constituent::weight).reversed()).toList();
+        double nav = basket.price(), previous = basket.previous();
         return new EtfQuote(definition.code(), definition.name(), definition.theme(), definition.description(),
                 nav, previous, percent(nav, previous), constituents, series("ETF:" + definition.code(), nav));
     }
 
-    private List<StockRow> loadStocks() {
-        List<StockRow> rows = jdbc.query("""
-                SELECT s.stock_code, g.name, g.genre, s.current_price,
-                       COALESCE(p.day_reference, s.current_price) AS reference, COALESCE(b.reference_price,0) AS base
-                FROM stocks s
-                JOIN games g ON g.id = s.game_id
-                LEFT JOIN stock_protection_state p ON p.stock_id = s.id
-                LEFT JOIN derivative_index_bases b ON b.stock_id = s.id
-                ORDER BY s.id
-                """, (rs, row) -> new StockRow(rs.getString("stock_code"), rs.getString("name"),
-                rs.getString("genre"), rs.getLong("current_price"), rs.getLong("reference"), rs.getLong("base")));
-        if (rows.stream().anyMatch(row -> row.base() <= 0)) {
-            indexHistory.initializeBases();
-            return loadStocks();
+    private DerivativeBaskets.Values loadPrices() { return baskets.load(); }
+
+    private boolean fresh(DerivativeBaskets.Values prices, String symbol, Instant now) {
+        return prices.basket(symbol).fresh(now);
+    }
+
+    private void requireFresh(DerivativeBaskets.Values prices, String symbol) {
+        if (!fresh(prices, symbol, clock.instant()))
+            throw new IllegalArgumentException("기준가격을 확인 중입니다. 충분한 체결이 쌓인 뒤 다시 거래해 주세요.");
+    }
+
+    private static String basketCode(String kind, String symbol) {
+        return "ETF".equals(kind) ? etfDefinition(symbol).code() : "ETFIDX";
+    }
+
+    private void checkExposure(long user, long additional, DerivativeBaskets.Values prices) {
+        double index = prices.index();
+        Map<String, Double> navs = etfNavs(prices, index);
+        double existing = 0;
+        for (PositionRow row : positionRows(user)) {
+            // Adding risk requires a current valuation of the holdings as well as the new product.
+            // Closing positions does not use this check, so stale unrelated assets cannot trap exits.
+            requireFresh(prices, basketCode(row.kind(), row.symbol()));
+            existing += switch (row.kind()) {
+                case "ETF" -> Math.max(row.entryNotional(), row.quantity() * navs.get(row.symbol()));
+                case "FUTURE" -> Math.max(row.entryNotional(), row.quantity() * index * DerivativePricing.CONTRACT_MULTIPLIER);
+                case "OPTION" -> row.quantity() * Math.max(row.strike(), index) * DerivativePricing.CONTRACT_MULTIPLIER;
+                default -> row.entryNotional();
+            };
         }
-        return rows;
-    }
-
-    private static double weightedIndex(List<StockRow> stocks) {
-        double weighted = 0;
-        double weight = 0;
-        for (StockRow stock : stocks) {
-            double cap = marketCap(stock.code());
-            weighted += cap * stock.price() * 1000.0 / Math.max(1, stock.base());
-            weight += cap;
-        }
-        return weight == 0 ? 1000 : weighted / weight;
-    }
-
-    private static double dailyIndex(List<StockRow> stocks) {
-        double weight = stocks.stream().mapToDouble(stock -> marketCap(stock.code())).sum();
-        return weight == 0 ? 1000 : stocks.stream().mapToDouble(stock -> marketCap(stock.code())
-                * stock.reference() * 1000.0 / Math.max(1, stock.base())).sum() / weight;
-    }
-
-    private static double marketCap(String code) {
-        return StockMarketProfile.of(code).marketCap();
+        if (existing + additional > MAX_ACCOUNT_EXPOSURE)
+            throw new IllegalArgumentException("계좌의 파생상품 총 명목금액 한도는 " + won(MAX_ACCOUNT_EXPOSURE) + "입니다.");
     }
 
     private static double percent(double current, double reference) {
@@ -279,9 +240,9 @@ public class DerivativeService {
         long cash = jdbc.queryForObject("SELECT cash FROM users WHERE id = ?", Long.class, userId);
         List<PositionRow> rows = positionRows(userId);
         Instant now = clock.instant();
-        List<StockRow> stocks = loadStocks();
-        double index = weightedIndex(stocks);
-        Map<String, Double> navs = etfNavs(stocks, index);
+        DerivativeBaskets.Values prices = loadPrices();
+        double index = prices.index();
+        Map<String, Double> navs = etfNavs(prices, index);
         double volatility = currentVolatility();
         List<Position> positions = new ArrayList<>(rows.size());
         long positionValue = 0;
@@ -339,14 +300,17 @@ public class DerivativeService {
                 boolean call = "CALL".equals(row.optionType());
                 Instant expiry = row.expiryAt() == null ? now : row.expiryAt().toInstant();
                 boolean expired = !expiry.isAfter(now);
-                mark = expired
-                        ? DerivativePricing.intrinsic(indexHistory.fixing(expiry), row.strike(), call)
-                        : DerivativePricing.optionPrice(index, row.strike(),
-                        DerivativePricing.yearsLeft(expiry, now), volatility, call);
-                // 만기 결제에는 최소 프리미엄을 적용하지 않는다. OTM은 0원이다.
-                value = (expired
-                        ? Math.round(mark * DerivativePricing.CONTRACT_MULTIPLIER)
-                        : DerivativePricing.premiumWon(mark)) * row.quantity();
+                if (expired) {
+                    var fixing = row.expiryAt() == null ? java.util.OptionalDouble.empty() : indexHistory.existingFixing(expiry);
+                    // A pending expiry retains its last stored valuation. Account reads cannot
+                    // invent a fixing or roll back an otherwise valid trade in another product.
+                    mark = fixing.isPresent() ? DerivativePricing.intrinsic(fixing.getAsDouble(), row.strike(), call) : row.markPrice();
+                    value = fixing.isPresent() ? Math.round(mark * DerivativePricing.CONTRACT_MULTIPLIER) * row.quantity() : row.markValue();
+                } else {
+                    mark = DerivativePricing.optionPrice(index, row.strike(),
+                            DerivativePricing.yearsLeft(expiry, now), volatility, call);
+                    value = DerivativePricing.premiumWon(mark) * row.quantity();
+                }
             }
             default -> {
                 mark = row.entryPrice();
@@ -362,29 +326,9 @@ public class DerivativeService {
                 value, unrealized, unrealizedPercent, row.status(), row.openedAt());
     }
 
-    private Map<String, Double> etfNavs(List<StockRow> stocks, double index) {
+    private Map<String, Double> etfNavs(DerivativeBaskets.Values prices, double index) {
         Map<String, Double> result = new LinkedHashMap<>();
-        for (EtfDefinition definition : ETFS) {
-            List<StockRow> members = stocks.stream()
-                    .filter(stock -> definition.genres().isEmpty() || definition.genres().contains(stock.genre()))
-                    .toList();
-            if (members.isEmpty()) {
-                result.put(definition.code(), 1000.0);
-            } else if (definition.indexWeighted()) {
-                double weighted = 0;
-                double weight = 0;
-                for (StockRow stock : members) {
-                    double cap = marketCap(stock.code());
-                    weighted += cap * stock.price() / Math.max(1, stock.base());
-                    weight += cap;
-                }
-                result.put(definition.code(), 1000 * weighted / Math.max(1, weight));
-            } else {
-                result.put(definition.code(), 1000 * members.stream()
-                        .mapToDouble(stock -> (double) stock.price() / Math.max(1, stock.base()))
-                        .average().orElse(1));
-            }
-        }
+        for (DerivativeBaskets.Definition definition : ETFS) result.put(definition.code(), prices.basket(definition.code()).price());
         return result;
     }
 
@@ -398,39 +342,48 @@ public class DerivativeService {
             throw new IllegalArgumentException("수량은 1~" + MAX_ORDER_QUANTITY + " 사이로 입력해 주세요.");
         String kind = normalized(request.kind(), "상품 종류");
         String side = normalized(request.side(), "방향");
+        requireTradingEnabled();
         lockUser(userId);
         int openCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM derivative_positions WHERE user_id = ? AND status = 'OPEN'", Integer.class, userId);
         if (openCount >= MAX_OPEN_POSITIONS && !("ETF".equals(kind) && "SELL".equals(side)))
             throw new IllegalArgumentException("동시에 보유할 수 있는 파생 포지션은 " + MAX_OPEN_POSITIONS + "개까지입니다.");
 
-        List<StockRow> stocks = loadStocks();
-        double index = weightedIndex(stocks);
+        DerivativeBaskets.Values prices = loadPrices();
+        requireFresh(prices, basketCode(kind, request.symbol()));
+        // Exposure always uses the higher current valuation, regardless of the new order's side.
+        DerivativeBaskets.Values exposurePrices = prices.execution(true);
+        boolean higher = "BUY".equals(side) || "LONG".equals(side) || "CALL".equals(side);
+        prices = prices.execution(higher);
+        double index = prices.index();
         Instant now = clock.instant();
         if ("ETF".equals(kind)) {
             if (!"BUY".equals(side) && !"SELL".equals(side))
                 throw new IllegalArgumentException("ETF 방향은 BUY 또는 SELL입니다.");
-            if ("SELL".equals(side)) return closeEtfBySymbol(userId, request.symbol(), quantity, stocks, index);
-            return openEtf(userId, request.symbol(), quantity, stocks, index);
+            if ("SELL".equals(side)) return closeEtfBySymbol(userId, request.symbol(), quantity, prices, index);
+            return openEtf(userId, request.symbol(), quantity, prices, index, exposurePrices);
         }
-        if ("FUTURE".equals(kind)) return openFuture(userId, side, quantity, request.leverage(), index);
-        if ("OPTION".equals(kind)) return openOption(userId, request, quantity, index, now);
+        if ("FUTURE".equals(kind)) return openFuture(userId, side, quantity, request.leverage(), index, exposurePrices);
+        if ("OPTION".equals(kind)) return openOption(userId, request, quantity, index, now, exposurePrices);
         throw new IllegalArgumentException("상품 종류는 ETF, FUTURE, OPTION 중 하나입니다.");
     }
 
-    private OrderResult openEtf(long userId, String symbol, int quantity, List<StockRow> stocks, double index) {
-        EtfDefinition definition = etfDefinition(symbol);
-        double nav = etfNavs(stocks, index).getOrDefault(definition.code(), 1000.0);
+    private OrderResult openEtf(long userId, String symbol, int quantity, DerivativeBaskets.Values prices, double index,
+                               DerivativeBaskets.Values exposurePrices) {
+        DerivativeBaskets.Definition definition = etfDefinition(symbol);
+        double nav = etfNavs(prices, index).getOrDefault(definition.code(), 1000.0);
         long amount = Math.round(nav * quantity);
         long fee = DerivativePricing.fee(amount, DerivativePricing.ETF_FEE_RATE);
+        checkExposure(userId, amount, exposurePrices);
         debit(userId, amount, fee, "ETF 매수 금액");
         long id = insertPosition(userId, "ETF", definition.code(), definition.name(), "LONG", quantity,
-                nav, amount, 0, 1, null, 0, null, amount);
+                nav, amount, 0, 1, null, 0, null, amount, prices.version());
         recordTrade(userId, id, "OPEN", "ETF", definition.code(), "LONG", quantity, nav, -(amount + fee), fee);
         return new OrderResult(definition.name() + " " + quantity + "좌 매수 · " + won(amount + fee), account(userId));
     }
 
-    private OrderResult openFuture(long userId, String side, int quantity, Integer requestedLeverage, double index) {
+    private OrderResult openFuture(long userId, String side, int quantity, Integer requestedLeverage, double index,
+                                  DerivativeBaskets.Values exposurePrices) {
         if (!"LONG".equals(side) && !"SHORT".equals(side))
             throw new IllegalArgumentException("선물 방향은 LONG 또는 SHORT입니다.");
         int leverage = requestedLeverage == null ? 5 : requestedLeverage;
@@ -439,15 +392,17 @@ public class DerivativeService {
         long notional = DerivativePricing.contractNotional(index, quantity);
         long margin = (long) Math.ceil(notional / (double) leverage);
         long fee = DerivativePricing.fee(notional, DerivativePricing.FUTURE_FEE_RATE);
+        checkExposure(userId, DerivativePricing.contractNotional(exposurePrices.index(), quantity), exposurePrices);
         debit(userId, margin, fee, "선물 증거금");
         long id = insertPosition(userId, "FUTURE", FUTURE_CODE, "게임주 지수 선물 " + leverage + "x",
-                side, quantity, index, notional, margin, leverage, null, 0, null, margin);
+                side, quantity, index, notional, margin, leverage, null, 0, null, margin, exposurePrices.version());
         recordTrade(userId, id, "OPEN", "FUTURE", FUTURE_CODE, side, quantity, index, -(margin + fee), fee);
         return new OrderResult("지수 선물 " + ("LONG".equals(side) ? "매수" : "매도") + " " + quantity
                 + "계약 · 증거금 " + won(margin), account(userId));
     }
 
-    private OrderResult openOption(long userId, OrderRequest request, int quantity, double index, Instant now) {
+    private OrderResult openOption(long userId, OrderRequest request, int quantity, double index, Instant now,
+                                  DerivativeBaskets.Values exposurePrices) {
         String cycleId = normalized(request.cycleId(), "만기 회차");
         if (!DerivativePricing.cycleIds().contains(cycleId))
             throw new IllegalArgumentException("지원하지 않는 옵션 만기 회차입니다.");
@@ -461,18 +416,18 @@ public class DerivativeService {
         Instant expiry = DerivativePricing.expiryFor(cycleId, now);
         if (request.expiryEpoch() != null && request.expiryEpoch() != expiry.getEpochSecond())
             throw new IllegalArgumentException("만기가 지난 옵션입니다. 새 회차를 선택해 주세요.");
-        indexHistory.observe(index, now);
         double points = DerivativePricing.optionPrice(index, strike,
                 DerivativePricing.yearsLeft(expiry, now), currentVolatility(), "CALL".equals(type));
         long perContract = DerivativePricing.premiumWon(points);
         long premium = perContract * quantity;
         long fee = DerivativePricing.fee(premium, DerivativePricing.OPTION_FEE_RATE);
+        checkExposure(userId, DerivativePricing.contractNotional(Math.max(exposurePrices.index(), strike), quantity), exposurePrices);
         debit(userId, premium, fee, "옵션 프리미엄");
         String name = DerivativePricing.cycleLabel(cycleId) + " " + ("CALL".equals(type) ? "콜" : "풋")
                 + " " + String.format(Locale.KOREA, "%,.0f", strike);
         String symbol = cycleId + "-" + ("CALL".equals(type) ? "C" : "P") + (long) strike;
         long id = insertPosition(userId, "OPTION", symbol, name, type, quantity, points, premium,
-                0, 1, type, strike, Timestamp.from(expiry), premium);
+                0, 1, type, strike, Timestamp.from(expiry), premium, exposurePrices.version());
         recordTrade(userId, id, "OPEN", "OPTION", symbol, type, quantity, points, -(premium + fee), fee);
         return new OrderResult(name + " " + quantity + "계약 매수 · 프리미엄 " + won(premium), account(userId));
     }
@@ -481,6 +436,7 @@ public class DerivativeService {
     public OrderResult close(long userId, long positionId, int quantity) {
         if (quantity < 1 || quantity > MAX_ORDER_QUANTITY)
             throw new IllegalArgumentException("수량은 1~" + MAX_ORDER_QUANTITY + " 사이로 입력해 주세요.");
+        requireTradingEnabled();
         lockUser(userId);
         PositionRow row = lockPosition(userId, positionId);
         if (row == null) throw new IllegalArgumentException("청산할 포지션을 찾을 수 없습니다.");
@@ -494,9 +450,35 @@ public class DerivativeService {
         return closeInternal(row, quantity, "CLOSE");
     }
 
+    /**
+     * A collateral sale rechecks its cash shortfall only after obtaining the account and position locks.
+     * The loan service supplies the fee/slippage buffer and may accrue interest under the same lock.
+     * Returns true only when a successful partial close leaves contracts for another attempt.
+     */
+    @Transactional
+    public boolean closeForCollateral(long userId, long positionId, LongSupplier bufferedCashNeeded) {
+        requireTradingEnabled();
+        lockUser(userId);
+        PositionRow row = lockPosition(userId, positionId);
+        if (row == null || !"OPEN".equals(row.status()) || row.quantity() <= 0) return false;
+        long needed = bufferedCashNeeded.getAsLong();
+        if (needed <= 0) return false;
+        if ("OPTION".equals(row.kind()) && row.expiryAt() != null && !row.expiryAt().toInstant().isAfter(clock.instant())) {
+            expireOption(positionId);
+            return false;
+        }
+        // Marks estimate the size; closeInternal still uses the current protected execution price.
+        // If proceeds fall short, the caller can retry the remaining contracts with their new mark.
+        int quantity = Math.min(row.quantity(), MAX_ORDER_QUANTITY);
+        if (row.markValue() > 0)
+            quantity = (int) Math.min(quantity, Math.max(1, Math.ceil(needed * (double) row.quantity() / row.markValue())));
+        closeInternal(row, quantity, "CLOSE");
+        return quantity < row.quantity();
+    }
+
     private OrderResult closeEtfBySymbol(long userId, String symbol, int quantity,
-                                         List<StockRow> stocks, double index) {
-        EtfDefinition definition = etfDefinition(symbol);
+                                         DerivativeBaskets.Values prices, double index) {
+        DerivativeBaskets.Definition definition = etfDefinition(symbol);
         List<PositionRow> rows = jdbc.query("""
                 SELECT id, user_id, kind, symbol, name, side, quantity, entry_price, entry_notional, margin,
                        leverage, option_type, strike, expiry_at, status, opened_at, realized_pnl, mark_price, mark_value
@@ -526,9 +508,11 @@ public class DerivativeService {
 
     private OrderResult closeInternal(PositionRow row, int quantity, String action) {
         Instant now = clock.instant();
-        List<StockRow> stocks = loadStocks();
-        double index = weightedIndex(stocks);
-        Map<String, Double> navs = etfNavs(stocks, index);
+        DerivativeBaskets.Values prices = loadPrices();
+        requireFresh(prices, basketCode(row.kind(), row.symbol()));
+        prices = prices.execution("SHORT".equals(row.side()) || "PUT".equals(row.optionType()));
+        double index = prices.index();
+        Map<String, Double> navs = etfNavs(prices, index);
         long positionPortion = portion(row.entryNotional(), quantity, row.quantity());
         long marginPortion = portion(row.margin(), quantity, row.quantity());
         double price;
@@ -601,9 +585,9 @@ public class DerivativeService {
             jdbc.update("""
                     UPDATE derivative_positions
                     SET quantity = ?, entry_notional = entry_notional - ?, margin = margin - ?,
-                        mark_price = ?, mark_value = ?, realized_pnl = realized_pnl + ?
+                        mark_price = ?, mark_value = ?, mark_version = GREATEST(mark_version, ?), realized_pnl = realized_pnl + ?
                     WHERE id = ?
-                    """, remaining, positionPortion, marginPortion, price, remainingValue, realized, row.id());
+                    """, remaining, positionPortion, marginPortion, price, remainingValue, prices.version(), realized, row.id());
         }
         recordTrade(row.userId(), row.id(), action, row.kind(), row.symbol(), row.side(), quantity,
                 price, cashFlow, fee);
@@ -632,15 +616,24 @@ public class DerivativeService {
 
     private void refreshInternal() {
         Instant now = clock.instant();
-        List<StockRow> stocks = loadStocks();
-        double index = weightedIndex(stocks);
-        sample(index, now);
+        DerivativeBaskets.Values prices = transactions.execute(status -> {
+            baskets.lock();
+            indexHistory.initializeBases();
+            oracle.refresh(now);
+            baskets.rebalance();
+            baskets.advanceValuationVersion();
+            // Current reads keep a rejected oracle CAS from promoting its old MVCC snapshot
+            // into a fresh index sample or position mark. Reference locks last through commit.
+            DerivativeBaskets.Values observed = baskets.loadCurrent();
+            if (fresh(observed, "ETFIDX", now)) indexHistory.observe(observed.index(), now);
+            return observed;
+        });
+        double index = prices.index();
         series("FUTIDX", index);
-        Map<String, Double> navs = etfNavs(stocks, index);
-        for (EtfDefinition definition : ETFS) series("ETF:" + definition.code(),
+        Map<String, Double> navs = etfNavs(prices, index);
+        for (DerivativeBaskets.Definition definition : ETFS) series("ETF:" + definition.code(),
                 navs.getOrDefault(definition.code(), 1000.0));
         double volatility = currentVolatility();
-        indexHistory.observe(index, now);
         Long highWater = jdbc.queryForObject("SELECT COALESCE(MAX(id),0) FROM derivative_positions", Long.class);
         long cursor = 0;
         while (cursor < highWater) {
@@ -657,6 +650,11 @@ public class DerivativeService {
             if (rows.isEmpty()) break;
             cursor = rows.get(rows.size()-1).id();
             for (OpenRow row : rows) {
+                if ("OPTION".equals(row.kind()) && row.expiryAt() != null && !row.expiryAt().toInstant().isAfter(now)) {
+                    settleInTransaction(() -> expireOption(row.id()));
+                    continue;
+                }
+                if (!fresh(prices, basketCode(row.kind(), row.symbol()), clock.instant())) continue;
                 long value;
                 double mark;
                 switch (row.kind()) {
@@ -670,7 +668,7 @@ public class DerivativeService {
                                 * DerivativePricing.CONTRACT_MULTIPLIER * row.quantity()
                                 * ("SHORT".equals(row.side()) ? -1 : 1));
                         if (value <= row.margin() * DerivativePricing.MAINTENANCE_RATE) {
-                            settleInTransaction(() -> liquidate(row.id()));
+                            settleInTransaction(() -> liquidate(row.userId(), row.id()));
                             continue;
                         }
                     }
@@ -689,11 +687,12 @@ public class DerivativeService {
                         continue;
                     }
                 }
-                // 부분 청산과 겹치면 이전 수량 기준 평가액을 덮어쓰지 않는다.
+                // A delayed instance must not overwrite a newer mark, a position opened
+                // after its price snapshot, or a partial close using that same snapshot.
                 jdbc.update("""
-                        UPDATE derivative_positions SET mark_price = ?, mark_value = ?
-                        WHERE id = ? AND status = 'OPEN' AND quantity = ?
-                        """, mark, value, row.id(), row.quantity());
+                        UPDATE derivative_positions SET mark_price = ?, mark_value = ?, mark_version = ?
+                        WHERE id = ? AND status = 'OPEN' AND quantity = ? AND mark_version < ?
+                        """, mark, value, prices.version(), row.id(), row.quantity(), prices.version());
             }
         }
     }
@@ -728,13 +727,16 @@ public class DerivativeService {
                 points, proceeds, 0);
     }
 
-    private void liquidate(long positionId) {
-        OpenRow candidate = findOpenPosition(positionId);
-        if (candidate == null || !"FUTURE".equals(candidate.kind())) return;
-        lockUser(candidate.userId());
+    private void liquidate(long userId, long positionId) {
+        // The scheduler already knows the owner. Do not start an MVCC snapshot by
+        // looking it up before waiting for the account lock. In this short transaction,
+        // loadPrices() must be the first consistent read, after both locking reads.
+        lockUser(userId);
         OpenRow row = lockOpenPosition(positionId);
-        if (row == null || !"FUTURE".equals(row.kind())) return;
-        double index = weightedIndex(loadStocks());
+        if (row == null || row.userId() != userId || !"FUTURE".equals(row.kind())) return;
+        DerivativeBaskets.Values prices = loadPrices();
+        requireFresh(prices, "ETFIDX");
+        double index = prices.index();
         long pnl = Math.round((index - row.entryPrice()) * DerivativePricing.CONTRACT_MULTIPLIER
                 * row.quantity() * ("SHORT".equals(row.side()) ? -1 : 1));
         long equity = row.margin() + pnl;
@@ -750,6 +752,14 @@ public class DerivativeService {
     }
 
     // ------------------------------------------------------------ 저장 도우미
+
+    private void requireTradingEnabled() {
+        // Current shared read held until commit: an admin pause waits for admitted trades,
+        // while concurrent orders remain independent. Acquire before any user/position lock.
+        if (Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT market_paused FROM admin_runtime WHERE id=1 FOR SHARE", Boolean.class)))
+            throw new IllegalArgumentException("운영 점검 중에는 파생상품 주문과 청산이 중단됩니다.");
+    }
 
     private void lockUser(long userId) {
         jdbc.queryForObject("SELECT id FROM users WHERE id = ? FOR UPDATE", Long.class, userId);
@@ -810,14 +820,14 @@ public class DerivativeService {
     private long insertPosition(long userId, String kind, String symbol, String name, String side,
                                 int quantity, double entryPrice, long entryNotional, long margin,
                                 int leverage, String optionType, double strike, Timestamp expiryAt,
-                                long markValue) {
+                                long markValue, long markVersion) {
         jdbc.update("""
                 INSERT INTO derivative_positions
                   (user_id, kind, symbol, name, side, quantity, entry_price, entry_notional, margin, leverage,
-                   option_type, strike, expiry_at, status, mark_price, mark_value)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
+                   option_type, strike, expiry_at, status, mark_price, mark_value, mark_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)
                 """, userId, kind, symbol, name, side, quantity, entryPrice, entryNotional, margin, leverage,
-                optionType, strike, expiryAt, entryPrice, markValue);
+                optionType, strike, expiryAt, entryPrice, markValue, markVersion);
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
@@ -836,7 +846,7 @@ public class DerivativeService {
         return Math.round(total * (double) quantity / originalQuantity);
     }
 
-    private static EtfDefinition etfDefinition(String symbol) {
+    private static DerivativeBaskets.Definition etfDefinition(String symbol) {
         String code = symbol == null ? "" : symbol.trim().toUpperCase(Locale.ROOT);
         return ETFS.stream().filter(item -> item.code().equals(code)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("상장되지 않은 ETF입니다."));
@@ -849,21 +859,8 @@ public class DerivativeService {
 
     // ------------------------------------------------------------ 변동성·시계열
 
-    private void sample(double index, Instant now) {
-        synchronized (samples) {
-            double[] last = samples.peekLast();
-            if (last != null && now.getEpochSecond() - (long) last[0] < 1) return;
-            samples.addLast(new double[]{now.getEpochSecond(), index});
-            while (samples.size() > SAMPLE_LIMIT) samples.removeFirst();
-        }
-    }
-
     private double currentVolatility() {
-        List<double[]> copy;
-        synchronized (samples) {
-            copy = new ArrayList<>(samples);
-        }
-        return DerivativePricing.realizedVolatility(copy);
+        return indexHistory.volatility(clock.instant());
     }
 
     private List<Double> series(String key, double value) {

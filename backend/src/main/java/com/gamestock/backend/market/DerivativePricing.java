@@ -138,7 +138,7 @@ final class DerivativePricing {
      * 게임 지수는 실제 지수보다 크게 움직이므로 상·하한을 둔다.
      */
     static double realizedVolatility(List<double[]> samples) {
-        if (samples.size() < 5) return DEFAULT_VOLATILITY;
+        if (samples.size() < 2) return DEFAULT_VOLATILITY;
         double sum = 0;
         int count = 0;
         for (int i = 1; i < samples.size(); i += 1) {
@@ -148,7 +148,7 @@ final class DerivativePricing {
             sum += Math.log(current / previous);
             count += 1;
         }
-        if (count < 4) return DEFAULT_VOLATILITY;
+        if (count < 1) return DEFAULT_VOLATILITY;
         double mean = sum / count;
         double variance = 0;
         double seconds = 0;
@@ -163,6 +163,8 @@ final class DerivativePricing {
         variance = Math.sqrt(variance / Math.max(1, count - 1));
         double interval = Math.max(0.5, seconds / Math.max(1, count));
         double volatility = variance * Math.sqrt(YEAR_SECONDS / interval);
-        return Math.max(MIN_VOLATILITY, Math.min(MAX_VOLATILITY, volatility));
+        double observed = Math.max(MIN_VOLATILITY, Math.min(MAX_VOLATILITY, volatility));
+        double confidence = Math.min(1, count / 30.0);
+        return Math.sqrt((1 - confidence) * DEFAULT_VOLATILITY * DEFAULT_VOLATILITY + confidence * observed * observed);
     }
 }
