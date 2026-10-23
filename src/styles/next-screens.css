@@ -28,29 +28,27 @@
 .nx-news-layout {
   display: grid;
   grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
-  gap: 1px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: var(--nx-line);
+  gap: var(--nx-gap);
 }
-.nx-news-layout > .nx-panel { border-radius: 0; }
-.nx-news-list { max-height: calc(100vh - 240px); padding: 6px; overflow-y: auto; }
+.nx-news-layout > .nx-panel { border-radius: var(--nx-radius); }
+html[data-nx][data-nx-theme="light"] .nx-news-layout > .nx-panel { box-shadow: inset 0 0 0 1px var(--nx-line); }
+.nx-news-list { max-height: calc(100vh - 240px); padding: 12px; overflow-y: auto; }
 .nx-news-list ol { margin: 0; padding: 0; list-style: none; }
 
 .nx-news-row {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 12px;
-  padding: 12px 10px;
-  border-radius: 8px;
+  gap: 14px;
+  padding: 18px 14px;
+  border-radius: var(--nx-radius);
   color: var(--ink);
   text-decoration: none;
 }
 .nx-news-row:hover { background: var(--nx-tint); }
-.nx-news-row.is-active { background: var(--nx-tint); box-shadow: inset 0 0 0 1px var(--brand); }
+.nx-news-row.is-active { background: var(--nx-tint); }
 .nx-news-row .game-icon { width: 28px; height: 28px; border-radius: 6px; }
-.nx-news-row-body { display: grid; gap: 4px; min-width: 0; }
+.nx-news-row-body { display: grid; gap: 8px; min-width: 0; }
 .nx-news-row-title { display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .nx-news-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--ink-muted); font-size: 12px; }
 .nx-news-row-effect { min-width: 60px; padding-top: 2px; font-size: 13px; text-align: right; }
@@ -62,41 +60,42 @@
 .nx-news-hint { display: grid; place-items: center; padding: 48px; color: var(--ink-muted); font-size: 14px; text-align: center; }
 .nx-news-hint p { max-width: 36ch; line-height: 1.7; }
 
-.nx-news-article { max-height: calc(100vh - 240px); padding: 22px 28px; overflow-y: auto; }
+.nx-news-article { max-height: calc(100vh - 240px); padding: 32px 40px; overflow-y: auto; }
 .nx-article-head { display: flex; align-items: center; gap: 10px; }
 .nx-article-game { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; text-decoration: none; }
 .nx-article-game:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nx-article-game .game-icon { width: 28px; height: 28px; border-radius: 6px; }
-/* 출처 표시: 게임사 공지는 브랜드 색 테두리, 언론 기사는 무채색. 목록과 본문이 같은 표시를 쓴다. */
+/* 출처 표시: 게임사 공지는 브랜드 색 글자, 언론 기사는 무채색. 테두리는 둘 다 무채색. 목록과 본문이 같은 표시를 쓴다. */
 .nx-news-kind { flex: none; padding: 1px 7px; border: 1px solid var(--nx-line); border-radius: 4px; color: var(--ink-muted); font-size: 11px; line-height: 18px; white-space: nowrap; }
-.nx-news-kind.is-official { border-color: var(--brand); color: var(--brand-deep); }
+.nx-news-kind.is-official { color: var(--brand-deep); }
 .nx-article-head .nx-icon-link { margin-left: auto; }
-.nx-article-title { margin: 16px 0 6px; font-size: 22px; font-weight: 500; line-height: 1.4; letter-spacing: -0.02em; outline: 0; }
+.nx-article-title { margin: 24px 0 10px; font-size: 22px; font-weight: 500; line-height: 1.4; letter-spacing: -0.02em; outline: 0; }
 .nx-article-time { margin: 0; color: var(--ink-muted); font-size: 12px; }
 
-.nx-article-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 20px 0 8px; overflow: hidden; border-radius: 8px; background: var(--nx-line); }
-.nx-article-stats div { display: grid; gap: 4px; padding: 14px 16px; background: var(--nx-raised); }
+.nx-article-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 28px 0 16px; }
+.nx-article-stats div { display: grid; gap: 6px; padding: 18px 20px; border-radius: var(--nx-radius); background: var(--nx-raised); }
+html[data-nx][data-nx-theme="light"] .nx-article-stats div { background: var(--nx-tint); }
 .nx-article-stats dt { color: var(--ink-muted); font-size: 12px; }
 .nx-article-stats dd { margin: 0; font-size: 22px; font-weight: 700; }
 
 .nx-article-chart { flex: none; min-height: 0; margin: 4px 0 8px; }
 html[data-nx] .nx-article-chart .stock-series-chart .chart-plot { height: 220px; }
 
-.nx-article-body p { margin: 0 0 12px; font-size: 15px; line-height: 1.75; }
+.nx-article-body p { max-width: 68ch; margin: 0 0 16px; font-size: 15px; line-height: 1.8; }
 .nx-article-empty { color: var(--ink-muted); }
 .nx-article-origin { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-deep); font-size: 13px; }
 .nx-article-origin svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
-.nx-article-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--nx-line); }
+.nx-article-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--nx-line); }
 .nx-star-on { fill: var(--amber); stroke: var(--amber); }
 
 /* ───────── 랭킹 ───────── */
 
-.nx-ranking-panel { padding: 0 20px 16px; }
-.nx-ranking-tabs { margin: 0 -20px 8px; padding: 0 10px; border-bottom: 1px solid var(--nx-line); }
+.nx-ranking-panel { padding: 0 var(--nx-pad) 24px; }
+.nx-ranking-tabs { margin: 0 calc(-1 * var(--nx-pad)) 16px; padding: 0 14px; border-bottom: 1px solid var(--nx-line); }
 .nx-rank-scroll { overflow-x: auto; }
 .nx-rank-table tbody th,
-.nx-rank-table tbody td { height: 60px; font-size: 14px; }
-.nx-rank-table tr.is-top > * { height: 72px; }
+.nx-rank-table tbody td { height: 72px; font-size: 14px; }
+.nx-rank-table tr.is-top > * { height: 84px; }
 .nx-rank-table tr.is-top .nx-player-name { font-size: 16px; }
 .nx-rank-table .nx-rank-cell { width: 64px; text-align: center; }
 .nx-rank-table thead th:nth-child(2),
@@ -133,10 +132,10 @@ html[data-nx] .nx-article-chart .stock-series-chart .chart-plot { height: 220px;
 html[data-nx-theme="light"] .has-title-ink[style*="--title-ink"] { color: color-mix(in srgb, var(--title-ink) 85%, #1b1726); }
 .nx-player-name { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
 .nx-player-me { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--brand); color: var(--brand-ink); font-size: 11px; vertical-align: 1px; }
-.nx-rank-gap td { height: 16px; }
+.nx-rank-gap td { height: 24px; }
 .nx-rank-gap span { display: block; border-top: 1px dashed var(--nx-line); }
-.nx-week-figures { padding: 12px 0 16px; border-bottom: 1px solid var(--nx-line); }
-.nx-rank-note { margin: 12px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.6; }
+.nx-week-figures { padding: 20px 0 24px; border-bottom: 1px solid var(--nx-line); }
+.nx-rank-note { margin: 20px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.6; }
 .nx-rank-loading { padding: 16px 0; }
 
 /* ───────── 계좌 공통 ───────── */
@@ -150,10 +149,10 @@ html[data-nx-theme="light"] .has-title-ink[style*="--title-ink"] { color: color-
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px 32px;
-  padding: 8px 0 4px;
+  gap: 20px 48px;
+  padding: 16px 0 12px;
 }
-.nx-account-pnl { margin: 10px 0 0; font-size: 16px; font-weight: 600; }
+.nx-account-pnl { margin: 14px 0 0; font-size: 16px; font-weight: 600; }
 .nx-account-pnl.is-up { color: var(--up-deep); }
 .nx-account-pnl.is-down { color: var(--down-deep); }
 .nx-account-pnl .nx-muted { margin-left: 6px; font-family: var(--font-ui); font-weight: 500; }
@@ -173,7 +172,7 @@ html[data-nx-theme="light"] .nx-alloc .is-1 { background: #453f56; }
 html[data-nx-theme="light"] .nx-alloc .is-2 { background: #6f6986; }
 html[data-nx-theme="light"] .nx-alloc .is-3 { background: #a29db0; }
 html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
-.nx-alloc-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--ink-muted); font-size: 12px; }
+.nx-alloc-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 16px; color: var(--ink-muted); font-size: 12px; }
 .nx-alloc-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 3px; }
 
 .nx-mypage-board { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
@@ -182,15 +181,16 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 .nx-mypage-fills { grid-column: 2; grid-row: 1 / 3; }
 .nx-mypage-watch { grid-column: 1 / -1; }
 
-.nx-watch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1px; margin: 0; padding: 0; overflow: hidden; border-radius: 8px; background: var(--nx-line); list-style: none; }
-.nx-watch-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px; padding: 10px 12px; background: var(--nx-panel); font-size: 14px; }
+.nx-watch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.nx-watch-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 14px; padding: 16px 18px; border-radius: var(--nx-radius); background: var(--nx-raised); font-size: 14px; }
+html[data-nx][data-nx-theme="light"] .nx-watch-list li { background: var(--nx-tint); }
 .nx-watch-list a { color: var(--ink); text-decoration: none; }
 .nx-watch-list .is-up { color: var(--up-deep); }
 .nx-watch-list .is-down { color: var(--down-deep); }
 
 /* ───────── 대출 ───────── */
 
-.nx-loan-gauge { display: grid; gap: 16px; }
+.nx-loan-gauge { display: grid; gap: 24px; }
 .nx-gauge-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--ink-muted); font-size: 13px; }
 .nx-gauge-head small { margin-left: 6px; color: var(--ink-muted); font-size: 12px; }
 .nx-gauge-head strong { color: var(--ink); font-size: 26px; font-weight: 700; }
@@ -206,7 +206,7 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 .nx-gauge-scale span { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
 .nx-gauge-scale span:first-child { transform: none; }
 .nx-gauge-scale span:last-child { transform: translateX(-100%); }
-.nx-loan-rules { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 1.6; }
+.nx-loan-rules { display: grid; gap: 8px; margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 1.6; }
 .nx-loan-forms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 /* ───────── 충전(미션) ───────── */
@@ -215,14 +215,14 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 .nx-mission-steps li { width: 56px; height: 10px; border-radius: 3px; background: var(--nx-raised); }
 .nx-mission-steps li.is-done { background: var(--brand); }
 
-.nx-mission-list { padding: 4px 20px; }
+.nx-mission-list { padding: 8px var(--nx-pad); }
 .nx-mission-list ol { margin: 0; padding: 0; list-style: none; }
-.nx-mission-list li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--nx-line); }
+.nx-mission-list li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 20px; padding: 24px 0; border-bottom: 1px solid var(--nx-line); }
 .nx-mission-list li:last-child { border-bottom: 0; }
 .nx-mission-index { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--nx-line); border-radius: 50%; color: var(--ink-muted); font-size: 14px; }
 .nx-mission-index svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.nx-mission-list li.is-done .nx-mission-index { border-color: var(--brand); background: var(--brand); color: var(--brand-ink); }
-.nx-mission-copy h2 { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
+.nx-mission-list li.is-done .nx-mission-index { border-color: transparent; background: var(--brand); color: var(--brand-ink); }
+.nx-mission-copy h2 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
 .nx-mission-copy p { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 1.55; }
 .nx-mission-list li.is-done .nx-mission-copy h2 { color: var(--ink-muted); }
 .nx-mission-reward { color: var(--ink); font-size: 15px; font-weight: 600; }
@@ -233,22 +233,22 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 
 .nx-titles-total { color: var(--ink-muted); font-size: 22px; font-weight: 500; }
 .nx-titles-hero .nx-meter { width: min(320px, 70vw); margin-top: 14px; }
-.nx-nameplate { display: grid; gap: 2px; min-width: 240px; padding: 16px 20px; border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-panel); }
+.nx-nameplate { display: grid; gap: 4px; min-width: 240px; padding: 20px 24px; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); background: var(--nx-panel); }
 .nx-nameplate-label { margin-bottom: 6px; color: var(--ink-muted); font-size: 11px; }
 .nx-nameplate-title { color: var(--ink-muted); font-size: 13px; }
 .nx-nameplate-name { font-size: 18px; }
 
-.nx-titles-board { padding: 0 20px 16px; }
-.nx-titles-board > .nx-tabs { margin: 0 -20px 16px; padding: 0 10px; border-bottom: 1px solid var(--nx-line); }
-.nx-title-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.nx-titles-board { padding: 0 var(--nx-pad) 24px; }
+.nx-titles-board > .nx-tabs { margin: 0 calc(-1 * var(--nx-pad)) 24px; padding: 0 14px; border-bottom: 1px solid var(--nx-line); }
+.nx-title-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
 .nx-title {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   height: 100%;
-  padding: 14px 16px;
+  padding: 20px 22px;
   border: 1px solid var(--nx-line);
-  border-radius: 8px;
+  border-radius: var(--nx-radius);
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -256,7 +256,7 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 }
 button.nx-title { cursor: pointer; }
 button.nx-title:hover:not(:disabled) { background: var(--nx-tint); }
-.nx-title.is-equipped { border-color: var(--brand); background: var(--brand-wash); }
+.nx-title.is-equipped { border-color: var(--ink); background: var(--nx-tint); }
 /* 미획득 칭호는 이름과 자물쇠를 옅게 눌러 획득한 칭호와 한눈에 갈린다. 조건 글은 읽어야 하니 그대로 둔다. */
 .nx-title.is-locked { color: var(--nx-locked-ink); }
 .nx-title-name { font-size: 16px; }
@@ -266,28 +266,28 @@ button.nx-title:hover:not(:disabled) { background: var(--nx-tint); }
 .nx-title-state { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); font-size: 12px; }
 .nx-title.is-equipped .nx-title-state { color: var(--ink); }
 .nx-title-state svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.nx-titles-foot { margin: 16px 0 0; font-size: 12px; }
+.nx-titles-foot { margin: 24px 0 0; font-size: 12px; }
 
 /* ───────── 설정 ───────── */
 
-.nx-settings-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: start; gap: 16px; }
-.nx-settings-main { display: grid; gap: 16px; }
-.nx-profile-card { position: sticky; top: 72px; display: grid; justify-items: center; gap: 4px; padding: 28px 20px; text-align: center; }
+.nx-settings-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); align-items: start; gap: var(--nx-gap); }
+.nx-settings-main { display: grid; gap: var(--nx-gap); }
+.nx-profile-card { position: sticky; top: 80px; display: grid; justify-items: center; gap: 6px; padding: 36px 24px; text-align: center; }
 .nx-profile-card img { width: 96px; height: 96px; margin-bottom: 10px; border: 1px solid var(--nx-line); border-radius: 50%; background: var(--nx-raised); object-fit: cover; }
 .nx-profile-name { margin: 0; font-size: 18px; }
 .nx-profile-card .nx-muted { margin: 0; overflow-wrap: anywhere; }
 
-.nx-avatar-picker { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.nx-avatar-picker { display: grid; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .nx-avatar-current { display: flex; align-items: center; gap: 8px; margin: 0; }
 .nx-avatar-current img { width: 28px; height: 28px; border-radius: 50%; }
-.nx-avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
-.nx-avatar-option { display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border: 1px solid var(--nx-line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.nx-avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; }
+.nx-avatar-option { display: grid; justify-items: center; gap: 8px; padding: 14px 8px; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
 .nx-avatar-option:hover { background: var(--nx-tint); }
-.nx-avatar-option.is-active { border-color: var(--brand); background: var(--brand-wash); }
+.nx-avatar-option.is-active { border-color: var(--ink); background: var(--nx-tint); }
 .nx-avatar-option img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
 .nx-avatar-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.nx-danger-zone { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid color-mix(in oklab, var(--up) 30%, transparent); }
-.nx-danger-title { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
+.nx-danger-zone { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.nx-danger-title { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
 .nx-danger-zone p { margin: 0; }
 
 /* ───────── 로그인 ───────── */
@@ -311,7 +311,7 @@ html[data-nx] .login-button { min-height: 48px; border: 1px solid var(--nx-line)
 html[data-nx] .login-button:hover { border-color: var(--ink-faint); background: var(--nx-tint); }
 html[data-nx] .login-button.is-primary { border-color: var(--ink); background: var(--ink); color: var(--nx-stage); }
 html[data-nx] .login-field input { border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-raised); color: var(--ink); }
-html[data-nx] .login-field input:focus { border-color: var(--brand); outline: 0; }
+html[data-nx] .login-field input:focus { border-color: var(--ink-muted); outline: 0; }
 html[data-nx] .login-close { border-radius: 8px; color: var(--ink-muted); }
 html[data-nx] .login-message.is-error { color: var(--up-deep); }
 
@@ -338,8 +338,8 @@ html[data-nx] .login-message.is-error { color: var(--up-deep); }
 .nx-admin .member-order-time { white-space: nowrap; }
 
 /* 관리 구획은 기존 부품을 그대로 쓰므로 공통 면만 맞춘다. */
-html[data-nx] .nx-admin .panel { padding: 18px 20px; border: 0; border-radius: 8px; background: var(--nx-panel); box-shadow: none; }
-html[data-nx] .nx-admin .panel-head { margin-bottom: 12px; border: 0; }
+html[data-nx] .nx-admin .panel { padding: 24px var(--nx-pad); border: 0; border-radius: var(--nx-radius); background: var(--nx-panel); box-shadow: none; }
+html[data-nx] .nx-admin .panel-head { margin-bottom: 20px; border: 0; }
 html[data-nx] .nx-admin .panel-title { color: var(--ink-muted); font-size: 13px; font-weight: 500; }
 html[data-nx] .nx-admin .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 html[data-nx] .nx-admin .table thead th { border-bottom: 1px solid var(--nx-line); background: transparent; color: var(--ink-muted); font-size: 12px; font-weight: 500; }
@@ -347,10 +347,10 @@ html[data-nx] .nx-admin .table tbody th,
 html[data-nx] .nx-admin .table tbody td { border-bottom: 1px solid var(--nx-line); border-radius: 0; }
 html[data-nx] .nx-admin .table tbody tr:hover,
 html[data-nx] .nx-admin .table tbody tr.is-selected { background: var(--nx-tint); }
-html[data-nx] .nx-admin .account-button { min-height: 36px; padding: 0 14px; border: 1px solid var(--nx-line); border-radius: 8px; background: transparent; color: var(--ink); font-weight: 500; }
+html[data-nx] .nx-admin .account-button { min-height: 40px; padding: 0 16px; border: 1px solid var(--nx-line); border-radius: 8px; background: transparent; color: var(--ink); font-weight: 500; }
 html[data-nx] .nx-admin .account-button:hover:not(:disabled) { background: var(--nx-tint); filter: none; }
 html[data-nx] .nx-admin .account-button.is-primary { border-color: var(--ink); background: var(--ink); color: var(--nx-stage); }
-html[data-nx] .nx-admin .account-button.is-danger { border-color: color-mix(in oklab, var(--up) 45%, transparent); color: var(--up-deep); }
+html[data-nx] .nx-admin .account-button.is-danger { color: var(--up-deep); }
 html[data-nx] .nx-admin .account-form input,
 html[data-nx] .nx-admin .account-form select,
 html[data-nx] .nx-admin textarea { border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-raised); color: var(--ink); }
@@ -386,7 +386,7 @@ html[data-nx] .nx-admin .empty { color: var(--ink-muted); }
   cursor: pointer;
 }
 .promo-title-option:hover { background: var(--nx-tint); }
-.promo-title-option.is-picked { border-color: var(--brand); background: var(--brand-wash); }
+.promo-title-option.is-picked { border-color: var(--ink); background: var(--nx-tint); }
 .promo-title-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; background: none; accent-color: var(--brand); }
 
@@ -412,7 +412,7 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
   .nx-news-hint { display: none; }
   .nx-news-list,
   .nx-news-article { max-height: none; }
-  .nx-news-article { padding: 18px 16px; }
+  .nx-news-article { padding: 24px var(--nx-pad); }
   .nx-mypage-board,
   .nx-loan-forms { grid-template-columns: minmax(0, 1fr); }
   .nx-mypage-holdings,
@@ -428,7 +428,7 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
 
 @media (max-width: 520px) {
   .nx-article-stats { grid-template-columns: minmax(0, 1fr); }
-  .nx-mission-list { padding: 4px 14px; }
+  .nx-mission-list { padding: 4px var(--nx-pad); }
   .nx-mission-list li { grid-template-columns: 32px minmax(0, 1fr); }
   .nx-mission-reward,
   .nx-mission-list li > :last-child { grid-column: 2; justify-self: start; }
@@ -442,8 +442,8 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
   align-items: end;
-  gap: 24px 40px;
-  padding: 24px;
+  gap: 32px 56px;
+  padding: 36px 40px;
   border: 1px solid var(--nx-line);
   border-radius: var(--nx-radius);
 }
@@ -482,9 +482,8 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
 }
 .nx-att-col.is-passed .nx-att-note { border-color: transparent; background: var(--nx-guide); }
 .nx-att-col.is-hit .nx-att-note {
-  border-color: var(--brand);
+  border-color: transparent;
   background: var(--brand);
-  box-shadow: 0 0 0 4px var(--brand-wash);
   animation: nx-att-drop 520ms cubic-bezier(0.3, 1.4, 0.5, 1) 120ms both;
 }
 .nx-att-judge {
@@ -511,7 +510,7 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
 }
 
 /* 달력 */
-.nx-att-month { display: grid; gap: 16px; padding: 20px 24px; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); }
+.nx-att-month { display: grid; gap: 24px; padding: 32px 36px; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); }
 .nx-att-month-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .nx-att-month-title { min-width: 104px; margin: 0; font-size: 18px; font-weight: 700; text-align: center; }
 .nx-att-month-count { margin: 0 0 0 auto; color: var(--ink-muted); font-size: 13px; }
@@ -542,20 +541,20 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
 .nx-att-cal td.is-joined::before { right: -3px; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .nx-att-cal td.is-joined + td.is-on::before { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .nx-att-cal td.is-joined + td.is-on::before { left: 0; }
-.nx-att-cal td.is-today::before { box-shadow: inset 0 0 0 1.5px var(--brand); }
+.nx-att-cal td.is-today::before { box-shadow: inset 0 0 0 1.5px var(--ink-muted); }
 .nx-att-date,
 .nx-att-cell-reward { position: relative; display: block; }
 .nx-att-date { color: var(--ink-muted); font-size: 13px; }
 .nx-att-cal td.is-on .nx-att-date { color: var(--ink); font-weight: 600; }
 .nx-att-cell-reward { margin-top: 6px; color: var(--brand-deep); font-size: 12px; font-weight: 600; }
-.nx-att-totals { padding-top: 16px; border-top: 1px solid var(--nx-line); }
+.nx-att-totals { padding-top: 24px; border-top: 1px solid var(--nx-line); }
 
 @media (max-width: 760px) {
-  .nx-att-hero { grid-template-columns: minmax(0, 1fr); padding: 20px 16px; }
+  .nx-att-hero { grid-template-columns: minmax(0, 1fr); padding: 24px 20px; }
   .nx-att-combo { font-size: 56px; }
   .nx-att-lane { --line: 112px; --step: 22px; }
   .nx-att-reward { font-size: 12px; }
-  .nx-att-month { padding: 16px 12px; }
+  .nx-att-month { padding: 20px 16px; }
   .nx-att-month-count { flex-basis: 100%; margin-left: 0; }
   .nx-att-cal td { height: 48px; padding: 4px; }
   .nx-att-cell-reward { font-size: 10px; }

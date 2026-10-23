@@ -334,7 +334,6 @@ export function NxApiDocsPage() {
   return (
     <div className="nx-screen nx-docs">
       <header className="nx-docs-hero">
-        <p className="nx-docs-kicker">OPENAPI · V1</p>
         <h1 className="nx-page-title">게임주 OpenAPI</h1>
         <p className="nx-docs-hero-copy">
           외부 프로그램에서 슈엔증권의 모의 주식·ETF·선물·옵션 시세를 읽고, 같은 계좌로 주문할 수 있는 REST API입니다.

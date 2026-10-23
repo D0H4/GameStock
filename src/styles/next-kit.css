@@ -1,6 +1,7 @@
 /*
  * 판정선 체계의 공통 부품. 새 화면(?ui=next)의 모든 화면이 이 부품만으로 짜인다.
- * 규칙은 DESIGN.md: 색 면은 매수·매도만, 핑크는 현재 위치·포커스, 노랑은 거래 보호.
+ * 규칙은 DESIGN.md: 색 면은 매수·매도만, 핑크는 키보드 포커스, 노랑은 거래 보호.
+ * 선택·입력 중 상태는 무채색(--ink) 테두리와 밑줄로만 보인다.
  */
 
 /* ───────── 버튼 ───────── */
@@ -9,11 +10,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 0 16px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
   border: 1px solid var(--nx-line);
-  border-radius: 8px;
+  border-radius: var(--nx-radius);
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -31,8 +32,8 @@
 .nx-btn.is-primary:disabled { border-color: var(--nx-line); background: var(--nx-raised); color: var(--ink-faint); }
 .nx-btn.is-buy { border-color: var(--up-fill); background: var(--up-fill); color: #fff; }
 .nx-btn.is-sell { border-color: var(--down-fill); background: var(--down-fill); color: #fff; }
-.nx-btn.is-danger { border-color: color-mix(in oklab, var(--up) 45%, transparent); color: var(--up-deep); }
-.nx-btn.is-small { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.nx-btn.is-danger { color: var(--up-deep); }
+.nx-btn.is-small { min-height: 36px; padding: 0 14px; font-size: 13px; }
 .nx-btn.is-wide { width: 100%; }
 .nx-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -71,13 +72,13 @@
 .nx-seg button.is-active { background: var(--nx-panel); color: var(--ink); }
 .nx-seg button:disabled { color: var(--ink-faint); cursor: not-allowed; }
 
-.nx-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.nx-tabs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
 .nx-tabs button,
 .nx-tabs a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 44px;
+  min-height: 48px;
   padding: 0 14px;
   border: 0;
   background: transparent;
@@ -91,7 +92,7 @@
 }
 .nx-tabs button:hover,
 .nx-tabs a:hover { color: var(--ink); }
-.nx-tabs .is-active { color: var(--ink); box-shadow: inset 0 -2px var(--brand); }
+.nx-tabs .is-active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
 .nx-tab-count { padding: 0 6px; border-radius: 4px; background: var(--nx-raised); color: var(--ink); font-size: 11px; line-height: 18px; }
 
 .nx-check { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--ink-muted); font-size: 13px; cursor: pointer; }
@@ -100,7 +101,7 @@
 /* ───────── 입력 ───────── */
 
 /* 열을 minmax(0, 1fr)로 두어 숫자 입력칸의 기본 폭이 패널 밖으로 밀어내지 않게 한다. */
-.nx-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
+.nx-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
 .nx-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nx-field-head label,
 .nx-field > label { color: var(--ink-muted); font-size: 13px; }
@@ -112,17 +113,17 @@
 .nx-select {
   width: 100%;
   min-width: 0;
-  height: 44px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 0 14px;
   border: 1px solid var(--nx-line);
-  border-radius: 8px;
+  border-radius: var(--nx-radius);
   background: var(--nx-raised);
   color: var(--ink);
   font: inherit;
   font-size: 15px;
 }
 .nx-input:focus,
-.nx-select:focus { border-color: var(--brand); outline: 0; }
+.nx-select:focus { border-color: var(--ink-muted); outline: 0; }
 /* 드롭다운은 바깥 초점 링만 남기고, 그 안쪽 테두리는 평소 색으로 둬서 두 겹으로 보이지 않게 한다. */
 html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
 .nx-input::placeholder { color: var(--ink-faint); }
@@ -137,7 +138,7 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
   border-radius: 8px;
   background: var(--nx-raised);
 }
-.nx-stepper:focus-within { border-color: var(--brand); }
+.nx-stepper:focus-within { border-color: var(--ink-muted); }
 .nx-stepper.is-disabled { opacity: 0.6; }
 .nx-stepper input {
   flex: 1;
@@ -181,8 +182,8 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
   position: sticky;
   top: 0;
   z-index: 1;
-  height: 36px;
-  padding: 0 12px;
+  height: 44px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--nx-line);
   background: var(--nx-panel);
   color: var(--ink-muted);
@@ -194,7 +195,7 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
 .nx-grid-table thead th:first-child,
 .nx-grid-table tbody th { text-align: left; }
 .nx-grid-table tbody th,
-.nx-grid-table tbody td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: right; white-space: nowrap; }
+.nx-grid-table tbody td { height: 56px; padding: 0 16px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: right; white-space: nowrap; }
 .nx-grid-table tbody tr:last-child > * { border-bottom: 0; }
 .nx-grid-table tbody tr:hover > * { background: var(--nx-tint); }
 .nx-grid-table a { color: var(--ink); text-decoration: none; }
@@ -209,12 +210,12 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
 
 /* ───────── 화면 머리·요약 숫자 ───────── */
 
-.nx-screen { display: flex; flex-direction: column; gap: 16px; }
-.nx-screen-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
-.nx-screen-sub { margin: 6px 0 0; max-width: 68ch; color: var(--ink-muted); font-size: 14px; line-height: 1.6; }
+.nx-screen { display: flex; flex-direction: column; gap: 32px; }
+.nx-screen-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
+.nx-screen-sub { margin: 10px 0 0; max-width: 68ch; color: var(--ink-muted); font-size: 14px; line-height: 1.6; }
 
-.nx-figures { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0; }
-.nx-figures div { display: grid; gap: 4px; }
+.nx-figures { display: flex; flex-wrap: wrap; gap: 20px 48px; margin: 0; }
+.nx-figures div { display: grid; gap: 6px; }
 .nx-figures dt { color: var(--ink-muted); font-size: 12px; }
 .nx-figures dd { margin: 0; font-size: 18px; font-weight: 600; }
 .nx-figures .is-up { color: var(--up-deep); }
@@ -222,10 +223,12 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
 
 .nx-big { display: block; font-size: 48px; font-weight: 700; line-height: 1; letter-spacing: -0.035em; }
 
-.nx-board { display: grid; gap: 1px; overflow: hidden; border-radius: 8px; background: var(--nx-line); }
-.nx-board > .nx-panel { border-radius: 0; }
+/* 상자끼리 괘선으로 붙이지 않고 띄워 놓는다. */
+.nx-board { display: grid; gap: var(--nx-gap); }
+.nx-board > .nx-panel { border-radius: var(--nx-radius); }
+html[data-nx][data-nx-theme="light"] .nx-board > .nx-panel { box-shadow: inset 0 0 0 1px var(--nx-line); }
 
-.nx-note { margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--nx-raised); color: var(--ink-muted); font-size: 13px; line-height: 1.6; }
+.nx-note { margin: 0; padding: 16px 20px; border-radius: var(--nx-radius); background: var(--nx-raised); color: var(--ink-muted); font-size: 13px; line-height: 1.6; }
 .nx-note.is-guard { background: var(--amber-wash); color: var(--amber-deep); }
 .nx-note.is-error { background: var(--up-wash); color: var(--up-deep); }
 .nx-msg { min-height: 18px; margin: 0; color: var(--ink-muted); font-size: 13px; }

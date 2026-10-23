@@ -28,7 +28,7 @@
     font-size: var(--step-1); color: var(--ink-muted); text-decoration: none; white-space: nowrap;
   }
   .admin-nav-link:hover { color: var(--ink); }
-  .admin-nav-link.is-active { color: var(--brand-wine); font-weight: 700; box-shadow: inset 0 -3px 0 var(--brand); }
+  .admin-nav-link.is-active { color: var(--ink); font-weight: 700; box-shadow: inset 0 -2px 0 var(--ink); }
 
   .admin-cash { white-space: nowrap; }
 
@@ -103,11 +103,11 @@
   .notice-list { margin-inline: calc(var(--space-2) * -1); border-top: 1px solid var(--rule); }
   .notice-list-item {
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3);
-    width: 100%; min-height: 44px; padding: var(--space-2); border: 0; border-bottom: 1px solid var(--rule);
+    width: 100%; min-height: 52px; padding: var(--space-3) var(--space-2); border: 0; border-bottom: 1px solid var(--rule);
     background: none; font: inherit; font-size: var(--step-0); color: var(--ink); text-align: left; cursor: pointer;
   }
   .notice-list-item:hover { background: var(--sunken); }
-  .notice-list-item.is-selected { background: var(--brand-wash); box-shadow: inset 3px 0 0 var(--brand); }
+  .notice-list-item.is-selected { background: var(--nx-tint, var(--sunken)); }
   .notice-list-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .notice-list-time { font-size: var(--step--1); color: var(--ink-muted); }
   .notice-state { min-width: 4em; font-size: var(--step--1); color: var(--ink-muted); }

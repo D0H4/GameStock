@@ -7,21 +7,21 @@
 
 .nx-content.nx-page {
   box-sizing: border-box;
-  max-width: 1320px;
+  max-width: 1240px;
   min-height: calc(100vh - 56px);
   margin: 0 auto;
-  padding: 24px;
+  padding: 48px 32px 72px;
 }
 
-.nx-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; }
+.nx-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-bottom: 32px; }
 .nx-page-title { margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; }
 
 .nx-more { color: var(--ink-muted); font-size: 13px; text-decoration: none; }
 .nx-more:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 .nx-chip {
-  min-height: 36px;
-  padding: 0 14px;
+  min-height: 40px;
+  padding: 0 16px;
   border: 1px solid var(--nx-line);
   border-radius: var(--nx-radius);
   background: transparent;
@@ -32,23 +32,23 @@
 }
 
 .nx-chip:hover { color: var(--ink); }
-.nx-chip.is-active { border-color: var(--brand); background: var(--brand-wash); color: var(--ink); }
-.nx-filters { display: flex; gap: 6px; }
+.nx-chip.is-active { border-color: var(--ink); background: var(--nx-tint); color: var(--ink); }
+.nx-filters { display: flex; gap: 8px; }
 
 .nx-search {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: min(320px, 100%);
-  height: 40px;
+  height: 44px;
   margin-left: auto;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid var(--nx-line);
   border-radius: var(--nx-radius);
   background: var(--nx-panel);
 }
 
-.nx-search:focus-within { border-color: var(--brand); }
+.nx-search:focus-within { border-color: var(--ink-muted); }
 .nx-search svg { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--ink-muted); stroke-width: 1.8; stroke-linecap: round; }
 .nx-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; }
 .nx-search input::placeholder { color: var(--ink-muted); }
@@ -65,21 +65,22 @@ html[data-nx] .nx-search input:focus-visible { outline: none; }
 
 /* ───────── 홈 ───────── */
 
-.nx-home { display: flex; flex-direction: column; gap: 14px; }
+.nx-home { display: flex; flex-direction: column; gap: 32px; }
 
-/* 상자마다 제 테두리를 두르고 사이를 띄운다. */
-.nx-home > .nx-panel { border: 1px solid var(--nx-line); border-radius: var(--nx-radius); }
+/* 상자는 테두리 없이 면 색으로만 무대와 구분하고, 사이를 넓게 띄운다. 라이트는 면이 같은 흰색이라 괘선을 남긴다. */
+.nx-home > .nx-panel { border: 0; border-radius: var(--nx-radius); }
+html[data-nx][data-nx-theme="light"] .nx-home > .nx-panel { border: 1px solid var(--nx-line); }
 
 /* 게임주 지수: 큰 숫자는 머리에, 주인공은 그 아래 하루치 선 그래프. */
-.nx-home-index { padding: 18px 20px 14px; }
-.nx-index-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 32px; margin-bottom: 18px; }
+.nx-home-index { padding: 28px var(--nx-pad) 22px; }
+.nx-index-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 40px; margin-bottom: 28px; }
 .nx-index-head .nx-panel-title { margin-bottom: 8px; }
 .nx-index-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; }
 .nx-hero-value { font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
 .nx-hero-change { font-size: 18px; font-weight: 600; }
 
-.nx-index-range { display: flex; gap: 28px; margin: 0; }
-.nx-index-range div { display: grid; gap: 2px; }
+.nx-index-range { display: flex; gap: 40px; margin: 0; }
+.nx-index-range div { display: grid; gap: 4px; }
 .nx-index-range dt { color: var(--ink-muted); font-size: 12px; }
 .nx-index-range dd { margin: 0; font-size: 15px; font-weight: 600; }
 
@@ -121,13 +122,13 @@ html[data-nx] .nx-home .nx-num.is-down,
 html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 
 /* 종목 순위: 많이 움직인 종목, 시가총액, 급등, 급락을 탭 하나로. */
-.nx-home-board { padding-top: 6px; }
-.nx-board-tabs { margin: 0 -6px 8px; border-bottom: 1px solid var(--nx-line); }
-.nx-board-empty { margin: 0; padding: 28px 0; color: var(--ink-muted); font-size: 13px; text-align: center; }
+.nx-home-board { padding-top: 12px; }
+.nx-board-tabs { margin: 0 -6px 16px; border-bottom: 1px solid var(--nx-line); }
+.nx-board-empty { margin: 0; padding: 40px 0; color: var(--ink-muted); font-size: 13px; text-align: center; }
 
 /* 넓은 화면에서는 열 개를 다섯 줄씩 두 단으로. 순서는 위에서 아래, 왼쪽 단 다음 오른쪽 단. */
-.nx-board-list { display: grid; grid-auto-flow: column; grid-template-rows: repeat(5, auto); grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; margin: 0; padding: 0; list-style: none; }
-.nx-board-list li { padding: 8px 0; border-top: 1px solid var(--nx-line); }
+.nx-board-list { display: grid; grid-auto-flow: column; grid-template-rows: repeat(5, auto); grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 64px; margin: 0; padding: 0; list-style: none; }
+.nx-board-list li { padding: 14px 0; border-top: 1px solid var(--nx-line); }
 .nx-board-list li:nth-child(5n + 1) { border-top: 0; }
 
 .nx-board-row {
@@ -153,7 +154,7 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  margin: 2px 0 0 68px;
+  margin: 6px 0 0 68px;
   color: var(--ink-muted);
   font-size: 13px;
   text-decoration: none;
@@ -169,7 +170,7 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 
 /* 칸 면적은 시가총액, 색 농도는 등락 크기. 칸 자리는 HeatmapBoard.tsx의 트리맵이 px로 정한다.
    증시 맵처럼 칸 사이에 1px 이음새만 두고, 둥근 모서리는 지도 바깥 테두리에만 준다. */
-.nx-heatmap-panel { padding: 0; overflow: hidden; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); }
+.nx-heatmap-panel { padding: 0; overflow: hidden; border-radius: var(--nx-radius); }
 .nx-heat-frame { position: relative; overflow: hidden; }
 .nx-heat-status { display: grid; place-items: center; height: 100%; margin: 0; color: var(--ink-muted); font-size: 13px; }
 /* 오른쪽·아래 끝 칸의 이음새 1px이 바깥으로 밀려 나가 잘리도록 지도를 1px 크게 잡는다. */
@@ -210,7 +211,6 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
 .nx-heat-tile.is-down.is-l2 { background: #25478c; }
 .nx-heat-tile.is-down.is-l3 { background: #265ab3; }
 .nx-heat-tile.is-down.is-l4 { background: #2970d9; }
-.nx-heat-tile.is-guard { box-shadow: inset 0 0 0 2px var(--amber); }
 .nx-heat-name { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .nx-heat-rate { font-size: 22px; font-weight: 700; white-space: nowrap; }
 .nx-heat-price { font-size: 13px; }
@@ -227,8 +227,8 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
 
 .nx-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .nx-table thead th {
-  height: 40px;
-  padding: 0 14px;
+  height: 48px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--nx-line);
   background: var(--nx-panel);
   color: var(--ink-muted);
@@ -240,7 +240,7 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
 .nx-table th.is-num,
 .nx-table td.is-num { text-align: right; }
 .nx-table tbody th,
-.nx-table td { height: 60px; padding: 0 14px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: left; white-space: nowrap; }
+.nx-table td { height: 72px; padding: 0 18px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: left; white-space: nowrap; }
 .nx-table tbody tr:last-child > * { border-bottom: 0; }
 .nx-table tbody tr:hover > * { background: var(--nx-tint); }
 
@@ -276,7 +276,12 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
 .nx-rate-chart { display: none; }
 
 @media (max-width: 1080px) {
-  .nx-content.nx-page { padding: 16px 12px; }
+  .nx-content.nx-page { padding: 28px 16px 48px; }
+  .nx-page-head { margin-bottom: 24px; }
+  .nx-home { gap: 20px; }
+  .nx-table thead th,
+  .nx-table tbody th,
+  .nx-table td { padding: 0 12px; }
   .nx-index-range { gap: 20px; }
   .nx-board-list { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: minmax(0, 1fr); }
   .nx-board-list li:nth-child(5n + 1) { border-top: 1px solid var(--nx-line); }

@@ -86,7 +86,7 @@ function Heatmap() {
           const small = box.w < 120 || box.h < 84;
           return (
             <li key={code} style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
-              <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}${quote.restriction ? " is-guard" : ""}${small ? " is-small" : ""}`}>
+              <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}${small ? " is-small" : ""}`}>
                 <span className="nx-heat-name">{listing.name}</span>
                 <span className="nx-heat-rate nx-num">{rate(ratio)}</span>
                 <span className="nx-heat-price nx-num">{won(quote.price)}</span>

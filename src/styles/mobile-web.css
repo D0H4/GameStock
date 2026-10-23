@@ -29,7 +29,7 @@ html[data-app-shell="web"] body {
     padding-bottom: var(--nx-tabbar);
   }
 
-  /* ───────── 상단 바: 로고 · 밝기 · 지수 · 계정 (문서 순서 그대로) ───────── */
+  /* ───────── 상단 바: 로고 · 지수 · 밝기 · 계정 (문서 순서 그대로) ───────── */
 
   html[data-app-shell="web"][data-nx] .nx-top {
     gap: 0;
@@ -111,7 +111,7 @@ html[data-app-shell="web"] body {
     font-weight: 600;
   }
 
-  /* 판정선: 지금 화면 탭의 위 가장자리에 걸친 핑크 막대. */
+  /* 지금 화면 탭의 위 가장자리에 걸친 막대. 상단 메뉴의 밑줄과 같은 잉크색. */
   html[data-app-shell="web"][data-nx] .nx-tabbar-link.is-active::before {
     position: absolute;
     top: -1px;
@@ -119,7 +119,7 @@ html[data-app-shell="web"] body {
     right: 28%;
     height: 3px;
     border-radius: 0 0 3px 3px;
-    background: var(--brand);
+    background: var(--ink);
     content: "";
   }
 
@@ -151,7 +151,7 @@ html[data-app-shell="web"] body {
 
   html[data-app-shell="web"][data-nx] .nx-hero-value { font-size: 38px; }
 
-  html[data-app-shell="web"][data-nx] .nx-home > .nx-panel { padding: 14px 14px; }
+  html[data-app-shell="web"][data-nx] .nx-home > .nx-panel { padding: 20px 16px; }
 
   /* ───────── 시장: 엄지로 누르는 칩·정렬·관심 버튼은 44px ───────── */
 
@@ -182,8 +182,8 @@ html[data-app-shell="web"] body {
 
   /* ───────── 랭킹: 투자자 칸이 남는 폭을 모두 쓴다 ───────── */
 
-  html[data-app-shell="web"][data-nx] .nx-ranking-panel { padding: 0 12px 14px; }
-  html[data-app-shell="web"][data-nx] .nx-ranking-tabs { margin: 0 -12px 8px; }
+  html[data-app-shell="web"][data-nx] .nx-ranking-panel { padding: 0 16px 20px; }
+  html[data-app-shell="web"][data-nx] .nx-ranking-tabs { margin: 0 -16px 12px; }
   html[data-app-shell="web"][data-nx] .nx-rank-table .nx-rank-cell { width: 40px; padding: 0 4px; }
   html[data-app-shell="web"][data-nx] .nx-rank-table td.nx-player-cell { width: 100%; max-width: 0; padding: 0 6px; }
   html[data-app-shell="web"][data-nx] .nx-rank-table tbody td:not(.nx-player-cell) { padding: 0 6px; }

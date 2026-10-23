@@ -11,16 +11,8 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 14px;
   padding: 8px 0 4px;
-}
-
-.nx-docs-kicker {
-  margin: 0;
-  color: var(--ink-muted);
-  font-family: var(--nx-num);
-  font-size: 11px;
-  letter-spacing: 0.14em;
 }
 
 .nx-docs-hero h1 { font-size: 34px; }
@@ -40,7 +32,7 @@
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
   align-items: start;
-  gap: 40px;
+  gap: 64px;
   max-width: 1100px;
 }
 
@@ -54,10 +46,10 @@
 }
 
 .nx-docs-toc-title { margin: 0 0 8px; color: var(--ink-muted); font-size: 11px; }
-.nx-docs-toc ol { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.nx-docs-toc ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .nx-docs-toc a {
   display: block;
-  padding: 5px 0;
+  padding: 8px 0;
   color: var(--ink-muted);
   font-size: 13px;
   text-decoration: none;
@@ -76,7 +68,7 @@
 .nx-docs-code-body { min-width: 0; }
 
 .nx-docs-section {
-  padding: 28px 0;
+  padding: 48px 0;
   border-top: 1px solid var(--nx-line);
   scroll-margin-top: 76px;
 }
@@ -85,7 +77,7 @@
 .nx-docs-section-title { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
 .nx-docs-lede {
   max-width: 68ch;
-  margin: 8px 0 18px;
+  margin: 12px 0 28px;
   color: var(--ink-muted);
   font-size: 14px;
   line-height: 1.7;
@@ -95,7 +87,7 @@
 
 /* ───────── 단계 ───────── */
 
-.nx-docs-steps { display: grid; gap: 22px; margin: 0; padding: 0; list-style: none; counter-reset: docs-step; }
+.nx-docs-steps { display: grid; gap: 32px; margin: 0; padding: 0; list-style: none; counter-reset: docs-step; }
 .nx-docs-steps > li { position: relative; padding-left: 40px; counter-increment: docs-step; }
 .nx-docs-steps > li::before {
   content: counter(docs-step);
@@ -221,13 +213,13 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin: 14px 0 16px;
+  margin: 20px 0 24px;
   overflow: hidden;
   border: 1px solid var(--nx-line);
-  border-radius: 8px;
+  border-radius: var(--nx-radius);
   background: var(--nx-line);
 }
-.nx-docs-facts > div { display: grid; justify-items: start; gap: 3px; padding: 12px 14px; background: var(--nx-panel); }
+.nx-docs-facts > div { display: grid; justify-items: start; gap: 6px; padding: 18px 20px; background: var(--nx-panel); }
 .nx-docs-facts span { color: var(--ink-muted); font-size: 11px; }
 .nx-docs-facts strong,
 .nx-docs-facts code,
@@ -236,10 +228,10 @@
 .nx-docs-facts .nx-docs-copy { margin-top: 4px; }
 
 .nx-docs-callout {
-  margin: 16px 0;
-  padding: 14px 16px;
+  margin: 24px 0;
+  padding: 20px 24px;
   border: 1px solid var(--nx-line);
-  border-radius: 8px;
+  border-radius: var(--nx-radius);
   background: var(--nx-raised);
   color: var(--ink-muted);
   font-size: 13px;
@@ -250,27 +242,27 @@
 .nx-docs-callout p:last-child { margin-bottom: 0; }
 .nx-docs-callout ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; }
 .nx-docs-callout .nx-docs-code { margin-top: 10px; }
-.nx-docs-callout.is-guard { border-color: color-mix(in oklab, var(--amber) 45%, var(--nx-line)); background: var(--amber-wash); }
+.nx-docs-callout.is-guard { border-color: transparent; background: var(--amber-wash); }
 .nx-docs-callout.is-guard > strong { color: var(--amber-deep); }
 .nx-docs-callout.is-guard p { color: var(--amber-deep); }
 
 .nx-docs-note-inline { margin: 10px 0 0; color: var(--ink-muted); font-size: 12.5px; line-height: 1.65; }
 .nx-docs-note-inline strong { color: var(--ink); font-weight: 500; }
 
-.nx-docs-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.nx-docs-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .nx-docs-two-col .nx-docs-code { margin: 0; }
 
-.nx-docs-examples { display: grid; gap: 10px; margin: 14px 0; }
+.nx-docs-examples { display: grid; gap: 16px; margin: 20px 0; }
 .nx-docs-examples .nx-docs-code { margin: 0; }
 
-.nx-docs-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.nx-docs-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .nx-docs-tool {
   display: grid;
   align-content: start;
-  gap: 6px;
-  padding: 14px;
+  gap: 8px;
+  padding: 20px;
   border: 1px solid var(--nx-line);
-  border-radius: 8px;
+  border-radius: var(--nx-radius);
   background: var(--nx-panel);
 }
 .nx-docs-tool h3 { margin: 0; color: var(--ink-muted); font-size: 11px; }
