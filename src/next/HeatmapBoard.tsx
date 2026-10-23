@@ -10,6 +10,8 @@ type Box = { x: number; y: number; w: number; h: number };
 
 /** 시가총액 비중이 이보다 작아도 이 만큼의 면적은 준다. 그보다 작으면 등락률 글자가 칸 밖으로 넘친다. */
 const MIN_SHARE = 0.025;
+/** 지도가 좁으면 비율만으로는 칸이 너무 작아진다. 어느 칸이든 이 크기의 정사각형만큼 면적은 갖게 한다. */
+const MIN_TILE = 92;
 
 /** 가로세로 비가 가장 나쁜 칸. 줄에 칸을 더할지 정하는 기준이다. */
 function worst(row: number[], side: number): number {
@@ -67,7 +69,8 @@ function Heatmap() {
     .filter((item) => item.quote && item.listing)
     .sort((a, b) => (b.quote.marketCap ?? 0) - (a.quote.marketCap ?? 0));
   const total = items.reduce((sum, item) => sum + (item.quote.marketCap ?? 0), 0) || 1;
-  const weights = items.map((item) => Math.max(MIN_SHARE, (item.quote.marketCap ?? 0) / total));
+  const minShare = width > 0 ? Math.max(MIN_SHARE, (MIN_TILE * MIN_TILE) / (width * height)) : MIN_SHARE;
+  const weights = items.map((item) => Math.max(minShare, (item.quote.marketCap ?? 0) / total));
   const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
   const boxes = width > 0 ? squarify(weights.map((weight) => (weight / weightSum) * width * height), { x: 0, y: 0, w: width, h: height }) : [];
 
@@ -83,10 +86,10 @@ function Heatmap() {
           const size = Math.abs(percent);
           const level = size === 0 ? 0 : size < 1 ? 1 : size < 3 ? 2 : size < 5 ? 3 : 4;
           const tone = percent > 0 ? "up" : percent < 0 ? "down" : "flat";
-          const small = box.w < 120 || box.h < 84;
           return (
             <li key={code} style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
-              <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}${small ? " is-small" : ""}`}>
+              <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}`}
+                aria-label={`${listing.name} ${rate(ratio)} ${won(quote.price)}${quote.restriction ? ` ${quote.restriction.kind === "CIRCUIT_BREAKER" ? "서킷브레이커" : "VI"}` : ""}`}>
                 <span className="nx-heat-name">{listing.name}</span>
                 <span className="nx-heat-rate nx-num">{rate(ratio)}</span>
                 <span className="nx-heat-price nx-num">{won(quote.price)}</span>
