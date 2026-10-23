@@ -4,17 +4,13 @@ import java.util.*;
 import static com.gamestock.backend.market.PriceLimitPolicy.*;
 
 /**
- * The value traders and the LP quote around. A fixed anchor (yesterday's close, or a news
- * fundamental clipped to the band) left large caps in a box and parked small caps just under
- * the band, so the consensus instead diffuses like a price: a random walk scaled to each
- * listing's size, drifting with the market regime and pulled over tens of minutes, never
- * instantly, toward the news target. It starts at that target and stays inside the bot band.
+ * Persistent stochastic market sentiment, with exact elapsed-time mean reversion toward durable
+ * economic value. Strategies choose their own mix of value, sentiment and executed-price signals.
+ * Daily bands constrain executable observations but never redefine economic value.
  */
 final class MarketConsensusValue {
     private static final double DAY_MS=86_400_000.0;
-    private static final long MAX_STEP_MS=60_000;
-    /** Share of the bot band the news pull aims for; the walk itself may still reach the edge. */
-    private static final double TARGET_BAND_SHARE=.8,EDGE_BAND_SHARE=.97,SMALL_CAP_DAILY_SHARE=.5,SMALL_CAP_FULL_GAP=.10;
+    private static final double EDGE_BAND_SHARE=.97;
     record Checkpoint(double value,long at,long randomState) { }
     private static final class State {
         double value; long at, randomState;
@@ -55,35 +51,26 @@ final class MarketConsensusValue {
     /** Minutes for the consensus to close half the gap to a changed news target. */
     static double pullHalfLifeMinutes(String code) {return StockMarketProfile.isLargeCap(code)?60:30;}
 
-    /**
-     * Large caps re-rate on news around the day reference. A small cap digests its news
-     * fundamental over several sessions: a gap of up to ten points is priced today, beyond that
-     * only half of the rest, and never more than half the band. Aiming for the whole gap parked
-     * every hot small cap just under the band.
-     */
+    /** Economic value is independent of the calendar's execution limits, for every listing. */
     static double target(BatchOrderBook.Stock symbol,double fundamental,double news) {
-        double reference=Math.max(1,symbol.reference),limit=BOT_DAILY_LIMIT_RATE;
-        if(StockMarketProfile.isLargeCap(symbol.code))
-            return MarketEnvironment.clamp(reference*(1+MarketEnvironment.clamp(news,-.15,.15)),
-                    reference*(1-limit*TARGET_BAND_SHARE),reference*(1+limit*TARGET_BAND_SHARE));
-        double gap=Math.log(Math.max(1,fundamental)/reference),size=Math.abs(gap);
-        double today=Math.signum(gap)*(Math.min(size,SMALL_CAP_FULL_GAP)+.5*Math.max(0,size-SMALL_CAP_FULL_GAP));
-        return reference*Math.exp(MarketEnvironment.clamp(today,Math.log(1-limit*SMALL_CAP_DAILY_SHARE),Math.log(1+limit*SMALL_CAP_DAILY_SHARE)));
+        if(!Double.isFinite(fundamental)||fundamental<=0)throw new IllegalArgumentException("Invalid fundamental");
+        return Math.max(100,fundamental);
     }
 
     double observe(BatchOrderBook.Stock symbol,double fundamental,double news,MarketEnvironment environment,long now) {
         double target=target(symbol,fundamental,news);
-        // New listings start at target; existing listings resume their durable checkpoint.
-        State state=states.computeIfAbsent(symbol.id,id->new State(target,now,seed^id));
+        // News changes willingness to trade gradually, including when a listing is first observed.
+        State state=states.computeIfAbsent(symbol.id,id->new State(Math.max(100,symbol.last),now,seed^id));
         double reference=Math.max(1,symbol.reference),limit=BOT_DAILY_LIMIT_RATE;
-        double dt=Math.max(0,Math.min(MAX_STEP_MS,now-state.at));state.at=now;
+        double dt=Math.max(0,(double)now-state.at);state.at=Math.max(now,state.at);
         if(dt>0) {
-            double pull=1-Math.exp(-dt*Math.log(2)/(pullHalfLifeMinutes(symbol.code)*60_000.0));
-            double sigma=dailyVolatility(symbol.code)*Math.sqrt(dt/DAY_MS);
-            // Drift scales with time, not with its square root: a full-strength regime moves the
-            // consensus two daily deviations per day, however finely the batches slice that day.
+            double decay=Math.log(2)/(pullHalfLifeMinutes(symbol.code)*60_000.0);
+            double pull=-Math.expm1(-dt*decay);
+            // Exact OU transition: account for all elapsed time without looping through missed
+            // batches, inventing fills, or making variance depend on scheduler cadence.
+            double sigma=dailyVolatility(symbol.code)*Math.sqrt(-Math.expm1(-2*decay*dt)/(2*decay*DAY_MS));
             double drift=environment==null?0:MarketEnvironment.clamp(environment.directionBias(),-1,1)
-                    *dailyVolatility(symbol.code)*2*dt/DAY_MS;
+                    *dailyVolatility(symbol.code)*2*pull/(decay*DAY_MS);
             double logValue=Math.log(state.value)+Math.log(target/state.value)*pull+drift+sigma*state.gaussian();
             state.value=MarketEnvironment.clamp(Math.exp(logValue),reference*(1-limit*EDGE_BAND_SHARE),reference*(1+limit*EDGE_BAND_SHARE));
         }

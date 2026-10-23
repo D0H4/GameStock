@@ -357,6 +357,18 @@ class MarketSimulationIntegrationTest {
         assertEquals(11990,jdbc.queryForObject("SELECT current_price FROM stocks WHERE id=?",Long.class,stock));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM trades",Integer.class));
     }
+    @Test @Order(1) void maintenanceNeverRedistributesTraderCashWithoutAnExecution() {
+        var ids=jdbc.queryForList("SELECT id FROM users WHERE password_hash='TRADER' ORDER BY id LIMIT 2",Long.class);
+        jdbc.update("UPDATE users SET cash=2000000 WHERE id=?",ids.get(0));
+        jdbc.update("UPDATE users SET cash=0 WHERE id=?",ids.get(1));
+        Object original=ReflectionTestUtils.getField(market,"clock");
+        try {
+            ReflectionTestUtils.setField(market,"clock",java.time.Clock.fixed(java.time.Instant.now().plusSeconds(60),java.time.ZoneOffset.UTC));
+            market.maintainMarket();
+            assertEquals(2000000,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,ids.get(0)));
+            assertEquals(0,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,ids.get(1)));
+        } finally {ReflectionTestUtils.setField(market,"clock",original);}
+    }
     @Test @Order(1) void patternsAndNewsNeverWriteTheLastPriceWithoutTrades() {
         var before=market.stocks();
         jdbc.update("INSERT INTO market_events(stock_id,event_type,title,description,impact,source) VALUES (?,'NEWS','우마무스메 대규모 업데이트','우마무스메 신규 업데이트',8,'test')",stock);

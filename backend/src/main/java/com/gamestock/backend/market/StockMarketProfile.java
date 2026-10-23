@@ -68,9 +68,9 @@ public final class StockMarketProfile {
         return base;
     }
 
-    /** Large-cap value estimates use today's reference plus actual news, not an old startup anchor. */
+    /** Execution bands may roll daily; economic value does not. */
     public static double valuationAnchor(String code, long dayReference, double fundamental, double news) {
-        return isLargeCap(code) ? dayReference * (1 + MarketEnvironment.clamp(news, -.15, .15)) : fundamental;
+        return fundamental;
     }
 
     /** Apply market-size elasticity to directional and volatility signals. */

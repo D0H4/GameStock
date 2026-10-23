@@ -51,11 +51,6 @@ public class MarketService {
     /** GameStock charges a small, transparent 0.10% commission per side. */
     private static final double TRADING_FEE_RATE = 0.001;
     /** Per-headline news influence limits used to update fair value only. */
-    private static final double NEWS_SINGLE_BASE_RATE = 0.02;
-    private static final double NEWS_SINGLE_SPECIAL_RATE = 0.05;
-    private static final double NEWS_MAJOR_INCIDENT_RATE = 0.10;
-    private static final double NEWS_AGGREGATE_BASE_RATE = 0.05;
-    private static final double NEWS_AGGREGATE_SPECIAL_RATE = 0.10;
     private static final String LP_USERNAME = "liquidity_provider";
     private static final long LP_STARTING_CASH = 50_000_000L;
     private static final long LP_ONE_TIME_RESERVE = 50_000_000L;
@@ -64,8 +59,6 @@ public class MarketService {
     private static final String TRADER_BOT_PASSWORD = "TRADER";
     private static final long TRADER_BOT_STARTING_CASH = 1_000_000L;
     private static final String SCHEMA_MIGRATION_LOCK = "gamestock:schema-migration";
-    private static final double NEWS_SPECIAL_IMPACT_THRESHOLD = 6.0;
-    private static final double NEWS_MAJOR_INCIDENT_IMPACT_THRESHOLD = -8.0;
     private List<BotProfile> traderProfiles = List.of();
     private MarketRegimeEngine regimes;
     private PatternEngine patterns;
@@ -149,28 +142,27 @@ public class MarketService {
     public void recordRemoteActivity(){activityPolicy.touch(clock.millis());prepareVisitor();}
     public void marketViewerConnected(String id){
         activityPolicy.connected(id,clock.millis());
-        // A reconnect is also the first reliable wake-up after an idle period.
-        // Run the protection/auction expiry pass before the initial snapshot so
-        // an already-finished 2-minute VI cannot be shown as active forever.
-        if(simulationInitialized){activityPolicy.requestMaintenance();maintainScheduledMarket();}
+        // Presence never adds simulation steps. Only an overdue scheduler needs recovery.
+        prepareVisitor();
         events.publishEvent(new MarketPresenceEvent());
     }
     public void marketViewerDisconnected(String id){activityPolicy.disconnected(id,clock.millis());}
-    boolean activeSimulation(){return !adaptiveActivity||activityPolicy.active(clock.millis(),idleAfterMillis);}
+    // Market time is wall time, independent of connected viewers.
+    boolean activeSimulation(){return true;}
     public long participantCadenceMillis(){
         if(adminRuntime!=null){Integer configured=adminRuntime.settings().cadenceMs();if(configured!=null)return configured;}
-        return activeSimulation()?Math.max(50,Math.min(250,activeCadenceMillis)):activityPolicy.pulseOpen(clock.millis())?200:500;
+        return Math.max(50,Math.min(250,activeCadenceMillis));
     }
     int currentTargetPerSymbol(){
         if(adminRuntime!=null){Integer configured=adminRuntime.settings().targetPerSymbol();if(configured!=null)return configured;}
-        return activeSimulation()?targetPerSymbol:Math.min(targetPerSymbol,Math.max(30,idleTargetPerSymbol));
+        return targetPerSymbol;
     }
     boolean botWorkDue(String worker){return !adaptiveActivity||activityPolicy.workDue(worker,clock.millis(),activeSimulation());}
     boolean claimLegacyBotWork(String worker){return !adaptiveActivity||activityPolicy.claim(worker,clock.millis(),activeSimulation())>=0;}
     private void prepareVisitor() {
         if(simulationInitialized&&adaptiveActivity&&activityPolicy.visitorMustWait(clock.millis(),true))maintainScheduledMarket();
     }
-    /** Idle heartbeats do not acquire a JDBC connection. Only due work opens a transaction. */
+    /** Maintenance and participants share the same wall clock with or without viewers. */
     public void maintainScheduledMarket() {
         if(!simulationInitialized||!matchingEnabled()||!ownerAvailable())return;
         activityPolicy.maintain(clock.millis(),activeSimulation(),idleRefreshMillis,idleRefreshBatches,()->{
@@ -183,14 +175,11 @@ public class MarketService {
     Map<String,Long> bookCacheStats(){return Map.of("hits",botLanes.stream().mapToLong(l->l.cache.hits()).sum(),"misses",botLanes.stream().mapToLong(l->l.cache.misses()).sum());}
     private final List<BotLane> botLanes=new ArrayList<>();
     private long activityLpId;
-    private static final long TRADER_CAPITAL_INTERVAL_MS=30_000;
     // Bot indicators look 5 s to 5 min back; refreshing them every 2 s keeps that resolution at a quarter of the queries.
     private static final long OBSERVATION_INTERVAL_MS=2_000;
     private static final long NEWS_BIAS_TTL_MS=30_000;
     private final Map<String,double[]> observedNewsBias=new java.util.concurrent.ConcurrentHashMap<>();
-    /** Trader id to the one symbol it trades; the capital pool prices each trader's lots by it. */
-    private final Map<Long,Long> traderStocks=new HashMap<>();
-    private long nextTraderCapitalRebalance;
+    private final NewsValuation newsValuation;
     private static final class BotLane {
         final Set<Long> stocks,users;
         final BotActivityEngine engine;
@@ -210,6 +199,7 @@ public class MarketService {
                          TradingProtectionService protection) {
         this.events = events;
         this.jdbc = jdbc;
+        this.newsValuation = new NewsValuation(jdbc);
         this.userFeatures = userFeatures;
         this.protection = protection;
     }
@@ -265,7 +255,10 @@ public class MarketService {
         normalizeOpenOrderPrices();
         initializeSimulationBooks();
         priceMetrics.seedCursors();
-        refreshEnvironments();
+        startupTransaction().executeWithoutResult(status -> {
+            acquireMarketLock();
+            refreshEnvironments();
+        });
 
         removeDefaultEvents();
         initializeNewsPriceState();
@@ -330,7 +323,6 @@ public class MarketService {
             BotProfile profile=traderProfiles.get(i);
             participants.add(new BotActivityEngine.Participant(ids.get(profile.username()),profile,stocks.get(i%stocks.size())));
         }
-        traderStocks.clear();participants.forEach(p->traderStocks.put(p.id(),p.stock()));
         activityLpId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,LP_USERNAME);
         botLanes.clear();
         int count=Math.min(4,stocks.size());
@@ -1363,62 +1355,9 @@ public class MarketService {
         expireOrders();
         advanceTradingProtections();
         if (protection.marketStatus().open()) refreshEnvironments();
-        if (protection.marketStatus().open()) rebalanceTraderCapital();
         for (String code : botStockCodes()) refreshMarkPrice(code);
         if(botJournal!=null)botJournal.retain(clock.millis(),Math.max(15,detailRetentionMinutes));
         events.publishEvent(new MarketChangedEvent());
-    }
-
-    /**
-     * Runs under the exclusive market lock after expired orders are refunded. That lock also
-     * invalidates every lane's cached book, so the next batch plans against the moved cash.
-     */
-    private void rebalanceTraderCapital() {
-        long now=clock.millis();
-        if(traderStocks.isEmpty()||now<nextTraderCapitalRebalance)return;
-        nextTraderCapitalRebalance=now+TRADER_CAPITAL_INTERVAL_MS;
-        if(adminRuntime!=null&&adminRuntime.settings().tradersStopped())return;
-        Map<Long,Long> prices=new HashMap<>();
-        jdbc.query("SELECT id,current_price FROM stocks",rs->{prices.put(rs.getLong(1),rs.getLong(2));});
-        List<TraderCapitalPool.Trader> traders=new ArrayList<>();
-        long[] lpCash={0};
-        // One ordered lock pass over the LP and every trader, the same order batch persistence uses.
-        jdbc.query("SELECT id,cash FROM users WHERE password_hash='TRADER' OR id=? ORDER BY id FOR UPDATE",rs->{
-            if(rs.getLong(1)==activityLpId){lpCash[0]=rs.getLong(2);return;}
-            Long stock=traderStocks.get(rs.getLong(1));
-            if(stock!=null)traders.add(new TraderCapitalPool.Trader(rs.getLong(1),rs.getLong(2),prices.getOrDefault(stock,0L)));
-        },activityLpId);
-        // The LP sells newly issued refill shares for trader cash. Its net gain over the opening
-        // budgets goes back to the pool, taken from the symbols that earned it.
-        Map<Long,Long> surplus=new java.util.LinkedHashMap<>();long net=0;
-        if(activityLpId>0) {
-            for(long stock:prices.keySet())refreshLiquidityProjection(stock,activityLpId);
-            for(var row:jdbc.queryForList("""
-                    SELECT r.stock_id,c.cash+COALESCE(b.lp_cash_delta,0)-r.opening_cash AS gain FROM lp_risk_books r
-                    JOIN lp_cash_projection c ON c.stock_id=r.stock_id LEFT JOIN bot_ledger_totals b ON b.stock_id=r.stock_id
-                    """)) {
-                long gain=((Number)row.get("gain")).longValue();net+=gain;
-                if(gain>0)surplus.put(((Number)row.get("stock_id")).longValue(),gain);
-            }
-        }
-        long external=traders.isEmpty()?0:Math.max(0,Math.min(net,lpCash[0]/2));
-        var deltas=TraderCapitalPool.plan(traders,external);
-        if(deltas.isEmpty())return;
-        long returned=deltas.values().stream().mapToLong(Long::longValue).sum();
-        jdbc.batchUpdate("UPDATE users SET cash=cash+? WHERE id=?",
-                deltas.entrySet().stream().map(e->new Object[]{e.getValue(),e.getKey()}).toList());
-        if(returned>0) {
-            jdbc.update("UPDATE users SET cash=cash-? WHERE id=?",returned,activityLpId);
-            long gains=surplus.values().stream().mapToLong(Long::longValue).sum(),charged=0;
-            Long largest=surplus.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElseThrow();
-            for(var e:surplus.entrySet()) {
-                long share=(long)Math.floor(returned*(e.getValue()/(double)gains));
-                if(share>0)jdbc.update("UPDATE lp_cash_projection SET cash=cash-? WHERE stock_id=?",share,e.getKey());
-                charged+=share;
-            }
-            if(returned>charged)jdbc.update("UPDATE lp_cash_projection SET cash=cash-? WHERE stock_id=?",returned-charged,largest);
-        }
-        log.debug("Rebalanced trader capital across {} accounts, {} returned from the LP",deltas.size(),returned);
     }
 
     public synchronized List<String> botStockCodes() {
@@ -1809,11 +1748,7 @@ public class MarketService {
     }
 
     private void updateFundamentalFromNews(String code) {
-        // A projection of the same published-time window, never a multiplier on the last batch.
-        // Re-reading also handles corrections to an existing article without inventing a new ID.
-        double bias = recentNewsBias(code).rate() * StockMarketProfile.of(code).movementWeight();
-        double multiplier = 1 + MarketEnvironment.clamp(bias, -.5, StockMarketProfile.isSpeculative(code) ? 3 : 1);
-        jdbc.update("UPDATE market_price_metrics SET hidden_fundamental=anchor_price*? WHERE stock_id=?", multiplier, stockId(code));
+        newsValuation.project(stockId(code), code, clock.instant());
     }
 
     private void refreshMarkPrice(String code) {
@@ -2463,8 +2398,6 @@ public class MarketService {
                                long buyerFee, long sellerFee, String settlementStatus) { }
     private record ExecutionSummary(long fee, String status, String settlementAt) { }
     private record VolumeBreakdown(long userBuy, long userSell, long botBuy, long botSell) { }
-    private record RecentNews(String title, String description, double impact, double recency) { }
-    private record NewsInfluence(double rate, boolean special) { }
     private record NewsBias(double rate, boolean special) { }
     private Stock findStock(String code) {
         List<Stock> rows = jdbc.query("""
@@ -2571,46 +2504,9 @@ public class MarketService {
     public void newsChanged(NewsChangedEvent event) { observedNewsBias.clear(); }
 
     private NewsBias recentNewsBias(String code, long latency) {
-        List<RecentNews> recentNews = jdbc.query("""
-                SELECT e.title, e.description, e.impact,
-                       GREATEST(0, LEAST(1, 1 - TIMESTAMPDIFF(SECOND,
-                           COALESCE(e.published_at, e.created_at), ?) / 86400.0)) AS recency
-                FROM market_events e JOIN stocks s ON s.id = e.stock_id
-                WHERE e.event_type = 'NEWS' AND s.stock_code = ?
-                  AND COALESCE(e.published_at, e.created_at) >= ?
-                  AND COALESCE(e.published_at, e.created_at) <= ?
-                ORDER BY COALESCE(e.published_at, e.created_at) DESC, e.id DESC
-                LIMIT 100
-                """, (rs, row) -> new RecentNews(
-                rs.getString("title"), rs.getString("description"), rs.getDouble("impact"),
-                Math.max(0.0, Math.min(1.0, rs.getDouble("recency")))), Timestamp.from(clock.instant().minusMillis(latency)), code,
-                Timestamp.from(clock.instant().minusMillis(latency).minusSeconds(86400)), Timestamp.from(clock.instant().minusMillis(latency))).stream()
-                // Price formation uses the ten newest relevant headlines for
-                // this stock, independently of the ten-item global feed.
-                .filter(news -> NewsRelevance.isRelevant(code, news.title(), news.description()))
-                .limit(10)
-                .toList();
-        double total = 0.0;
-        boolean special = false;
-        for (RecentNews news : recentNews) {
-            NewsInfluence influence = newsInfluence(news);
-            total += influence.rate();
-            special |= influence.special();
-        }
-        double aggregateLimit = special ? NEWS_AGGREGATE_SPECIAL_RATE : NEWS_AGGREGATE_BASE_RATE;
-        return new NewsBias(Math.max(-aggregateLimit, Math.min(aggregateLimit, total)), special);
-    }
-
-    private NewsInfluence newsInfluence(RecentNews news) {
-        double absoluteImpact = Math.min(10.0, Math.abs(news.impact()));
-        if (absoluteImpact == 0.0) return new NewsInfluence(0.0, false);
-        boolean majorIncident = news.impact() <= NEWS_MAJOR_INCIDENT_IMPACT_THRESHOLD
-                && NewsRelevance.hasIncidentContext(news.title(), news.description());
-        boolean special = majorIncident || absoluteImpact >= NEWS_SPECIAL_IMPACT_THRESHOLD;
-        double singleLimit = majorIncident ? NEWS_MAJOR_INCIDENT_RATE
-                : special ? NEWS_SINGLE_SPECIAL_RATE : NEWS_SINGLE_BASE_RATE;
-        double rate = singleLimit * (absoluteImpact / 10.0) * news.recency();
-        return new NewsInfluence(Math.copySign(rate, news.impact()), special);
+        Instant observed = clock.instant().minusMillis(latency);
+        var news = newsValuation.articles(code, observed, 3 * 86400);
+        return new NewsBias(newsValuation.observedBias(code, news, observed), false);
     }
 
     private Portfolio portfolioUnsafe(long userId) {

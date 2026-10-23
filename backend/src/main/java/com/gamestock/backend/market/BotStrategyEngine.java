@@ -63,6 +63,18 @@ public final class BotStrategyEngine {
     public double threshold(BotProfile p,PriceMetricService.Metrics m) {
         return p.confidenceThreshold()*(1+Math.max(0,m.volatility()*100-p.volatilityTolerance()));
     }
+    /** Each family researches a different horizon; a common stochastic value is only one input. */
+    static double valuationObservation(BotProfile p,PriceMetricService.Metrics m,double fundamental,double consensus) {
+        return switch(p.strategy().family()) {
+            case VALUE -> .85*fundamental+.15*consensus;
+            case NEWS -> .6*fundamental+.4*consensus;
+            case MOMENTUM -> .7*fundamental+.2*m.lastPrice()+.1*consensus;
+            case CONTRARIAN -> .35*m.referenceVwap()+.65*fundamental;
+            case INTRADAY -> .75*fundamental+.2*m.microPrice()+.05*m.vwap();
+            case SWING -> .5*fundamental+.5*m.referenceVwap();
+            case NOISE, AGGRESSIVE_LIQUIDITY_TAKER -> .8*m.vwap()+.2*fundamental;
+        };
+    }
     public double estimate(BotProfile p,String symbol,double noisyObservation) {
         String key=p.username()+":"+symbol;
         // A bot's general optimism and its company-specific research error are distinct.

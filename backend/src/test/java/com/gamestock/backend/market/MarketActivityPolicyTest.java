@@ -21,18 +21,18 @@ class MarketActivityPolicyTest {
         policy.disconnected("b",600000);assertTrue(policy.active(719999,120000));assertFalse(policy.active(720000,120000));
         policy.disconnected("b",800000);assertFalse(policy.active(800000,120000));
     }
-    @Test void serviceSwitchesRateAndCadenceTogetherOnArrivalDepartureAndNewRequest() {
+    @Test void viewerPresenceNeverChangesMarketRateOrCadence() {
         var market=new MarketService(e->{},mock(org.springframework.jdbc.core.JdbcTemplate.class),mock(UserFeatureService.class),mock(TradingProtectionService.class));
         ReflectionTestUtils.setField(market,"adaptiveActivity",true);
         ReflectionTestUtils.setField(market,"idleAfterMillis",1000L);
         at(market,1000);
-        assertEquals(30,market.currentTargetPerSymbol());assertEquals(500,market.participantCadenceMillis());
+        assertEquals(300,market.currentTargetPerSymbol());assertEquals(100,market.participantCadenceMillis());
         market.marketViewerConnected("viewer");
         assertEquals(300,market.currentTargetPerSymbol());assertEquals(100,market.participantCadenceMillis());
         at(market,100000);assertTrue(market.activeSimulation());
         market.marketViewerDisconnected("viewer");
         at(market,100999);assertEquals(300,market.currentTargetPerSymbol());
-        at(market,101000);assertEquals(30,market.currentTargetPerSymbol());assertEquals(500,market.participantCadenceMillis());
+        at(market,101000);assertEquals(300,market.currentTargetPerSymbol());assertEquals(100,market.participantCadenceMillis());
         market.recordHumanActivity();
         assertEquals(300,market.currentTargetPerSymbol());assertEquals(100,market.participantCadenceMillis());
         ReflectionTestUtils.setField(market,"adaptiveActivity",false);

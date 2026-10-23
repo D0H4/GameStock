@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** A synchronized Java/SQL clock exercises a full half-hour without sleeping or using production data. */
+/** A synchronized Java/SQL clock verifies viewer-independent trading and recovery after suspension. */
 @EnabledIfSystemProperty(named="market.test.jdbc",matches="jdbc:mysql://127\\.0\\.0\\.1:13367/.*")
 class MarketIdleSimulationTest {
     private static final class TestClock extends Clock {
@@ -33,7 +33,7 @@ class MarketIdleSimulationTest {
     private static void sqlClock(JdbcTemplate db,TestClock clock) {
         db.execute("SET timestamp="+String.format(Locale.ROOT,"%.3f",clock.now/1000.0));
     }
-    @Test void halfHourlyPulseHasNoIdleDatabaseWorkAndWakeRefundsBeforeNormalTrading() throws Exception {
+    @Test void marketTradesWithoutViewersAndSuspensionRefundsBeforeResuming() throws Exception {
         String schema="idle_test_"+UUID.randomUUID().toString().replace("-","");
         String url=System.getProperty("market.test.jdbc")+"&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true";
         try(var source=new CountedSource(url)) {
@@ -54,32 +54,23 @@ class MarketIdleSimulationTest {
                 var tx=new TransactionTemplate(new DataSourceTransactionManager(source));tx.setIsolationLevel(2);
                 long human=db.queryForObject("SELECT id FROM users WHERE username='demo'",Long.class);
                 long cash=totalCash(db),shares=db.queryForObject("SELECT SUM(quantity) FROM portfolios",Long.class);
+                long initialIssuance=db.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM market_inventory_issuance",Long.class);
                 tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",2,"LIMIT",7000L),human));
                 long expired=db.queryForObject("SELECT MAX(id) FROM orders WHERE user_id=?",Long.class,human);
                 db.update("UPDATE orders SET expires_at=? WHERE id=?",new Timestamp(start+30000),expired);
-                var prices=db.queryForList("SELECT current_price FROM stocks ORDER BY id",Long.class);
-                int idleBefore=source.acquisitions;
-                for(long elapsed=500;elapsed<1800000;elapsed+=500) {
-                    clock.now=start+elapsed;market.maintainScheduledMarket();
-                    for(int i=0;i<4;i++)assertFalse(market.botWorkDue("batch:"+i));
-                }
-                assertEquals(idleBefore,source.acquisitions,"no JDBC connections/queries during quiet idle heartbeats");
-                assertEquals(prices,db.queryForList("SELECT current_price FROM stocks ORDER BY id",Long.class));
-                assertEquals(0,totalFills(db));
-
-                clock.now=start+1800000;sqlClock(db,clock);market.maintainScheduledMarket();
-                assertEquals(prices,db.queryForList("SELECT current_price FROM stocks ORDER BY id",Long.class),"environment refresh cannot move prices");
-                assertEquals("CANCELLED",db.queryForObject("SELECT status FROM orders WHERE id=?",String.class,expired));
-                assertEquals(cash,totalCash(db),"expiry refunds preserve cash");
-                int attempts=0;
-                for(int step=0;step<10;step++) {
-                    clock.now=start+1800000+step*200;sqlClock(db,clock);
-                    for(int i=0;i<4;i++)if(market.botWorkDue("batch:"+i)) {
-                        int shard=i;tx.execute(s->market.participantBatch(shard));attempts++;
+                int acquisitionsBefore=source.acquisitions,attempts=0;
+                for(long elapsed=250;elapsed<=60000;elapsed+=250) {
+                    clock.now=start+elapsed;sqlClock(db,clock);market.maintainScheduledMarket();
+                    for(int i=0;i<4;i++) {
+                        assertTrue(market.botWorkDue("batch:"+i),"No viewer is needed to advance the market");
+                        int shard=i;tx.execute(s1->market.participantBatch(shard));attempts++;
                     }
                 }
-                assertEquals(20,attempts,"five bounded attempts for each of four groups");
-                long pulseFills=totalFills(db);assertTrue(pulseFills>0&&pulseFills<10000,"real matching, not millions of replayed fills");
+                assertTrue(source.acquisitions>acquisitionsBefore);
+                assertEquals("CANCELLED",db.queryForObject("SELECT status FROM orders WHERE id=?",String.class,expired));
+                long unattendedFills=totalFills(db);assertTrue(unattendedFills>0);
+                assertEquals(960,attempts);
+                assertEquals(100,market.participantCadenceMillis());assertEquals(300,market.currentTargetPerSymbol());
 
                 // Simulate persisted orders left behind by a visitor: one expires, one remains GTC.
                 tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",2,"LIMIT",7000L),human));
@@ -90,9 +81,7 @@ class MarketIdleSimulationTest {
                 long gtc=db.queryForObject("SELECT MAX(id) FROM orders WHERE user_id=?",Long.class,human);
                 long beforeWakeCash=db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,human);
                 clock.now=start+2400000;sqlClock(db,clock);
-                idleBefore=source.acquisitions;market.maintainScheduledMarket();
-                for(int i=0;i<4;i++)assertFalse(market.botWorkDue("batch:"+i));
-                assertEquals(idleBefore,source.acquisitions);
+                assertFalse(market.botWorkDue("batch:0"),"Overdue cleanup blocks participant admission after suspension");
 
                 fail.set(true);assertThrows(IllegalStateException.class,market::recordHumanActivity);
                 assertEquals(beforeWakeCash,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,human));
@@ -101,7 +90,7 @@ class MarketIdleSimulationTest {
                 assertEquals(beforeWakeCash+refund,db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,human));
                 assertEquals("CANCELLED",db.queryForObject("SELECT status FROM orders WHERE id=?",String.class,wakeExpired));
                 assertEquals("OPEN",db.queryForObject("SELECT status FROM orders WHERE id=?",String.class,gtc));
-                assertEquals(pulseFills,totalFills(db),"wake does maintenance, not historical matching");
+                assertEquals(unattendedFills,totalFills(db),"recovery does maintenance, not historical matching");
                 int readyBefore=source.acquisitions;
                 for(int i=0;i<20;i++)market.recordHumanActivity();
                 assertEquals(readyBefore,source.acquisitions,"subsequent visitors do not repeat wake maintenance");
@@ -114,13 +103,15 @@ class MarketIdleSimulationTest {
                 assertTrue(firstFills<1000,"wake must not spend idle time as accumulated activity credits");
                 long fees=db.queryForObject("SELECT COALESCE(SUM(fees),0) FROM bot_ledger_totals",Long.class)
                         +db.queryForObject("SELECT COALESCE(SUM(buyer_fee+seller_fee),0) FROM trades",Long.class);
-                assertEquals(cash,totalCash(db)+fees);assertEquals(shares,db.queryForObject("SELECT SUM(quantity) FROM portfolios",Long.class));
+                assertEquals(cash,totalCash(db)+fees);
+                long issuance=db.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM market_inventory_issuance",Long.class)-initialIssuance;
+                assertEquals(shares+issuance,db.queryForObject("SELECT SUM(quantity) FROM portfolios",Long.class));
                 assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM users WHERE cash<0",Integer.class));
-                var report=Map.of("simulatedIdleMinutes",40,"idleDatabaseAcquisitions",0,"pulseBatchAttempts",attempts,
-                        "pulseFills",pulseFills,"successfulWakeMaintenanceMs",wakeMs,"firstActiveBatchFills",firstFills,"cashError",0,"shareError",0);
-                Path out=Path.of("target/market-activity/idle-half-hour.json");Files.createDirectories(out.getParent());
+                var report=Map.of("unattendedSeconds",60,"unattendedBatchAttempts",attempts,
+                        "unattendedFills",unattendedFills,"successfulWakeMaintenanceMs",wakeMs,"firstActiveBatchFills",firstFills,"cashError",0,"shareError",0);
+                Path out=Path.of("target/market-activity/unattended-market.json");Files.createDirectories(out.getParent());
                 new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(out.toFile(),report);
-                System.out.println("IDLE_PULSE "+report);
+                System.out.println("UNATTENDED_MARKET "+report);
             } finally {db.execute("DROP DATABASE "+schema);}
         }
     }
