@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "../../components/Link";
 import { requireSignIn, useAuthUser } from "../../lib/auth";
+import { useProfile } from "../../lib/profile";
 import { won } from "../../market/format";
 import { useMarket, useMarketApi } from "../../market/MarketProvider";
 import { affordableQuantity } from "../../market/orderSizing";
@@ -36,6 +37,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   const snapshot = useMarket();
   const api = useMarketApi();
   const { user } = useAuthUser();
+  const profile = useProfile();
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"MARKET" | "LIMIT">("LIMIT");
   const [limitPrice, setLimitPrice] = useState(() => String(roundToTick(snapshot.quotes[code]?.asks[0]?.price ?? snapshot.quotes[code]?.price ?? 1)));
@@ -127,7 +129,9 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   if (!quote) return null;
 
   const restriction = quote.restriction;
-  const blocked = Boolean(restriction && (orderType === "MARKET" ? !restriction.marketOrdersAllowed : !restriction.limitOrdersAllowed));
+  const profileLoading = Boolean(user && !profile);
+  const adminTradingBlocked = Boolean(profile?.admin);
+  const blocked = profileLoading || adminTradingBlocked || Boolean(restriction && (orderType === "MARKET" ? !restriction.marketOrdersAllowed : !restriction.limitOrdersAllowed));
   const parsed = Number(qty);
   const valid = Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 1 && parsed <= 1000;
   const suggestedLimit = side === "buy" ? quote.asks[0]?.price ?? quote.price : quote.bids[0]?.price ?? quote.price;
@@ -152,7 +156,9 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
   const submit = async (orderSide: "buy" | "sell" = side) => {
     if (submissionPendingRef.current) return;
     setNotice("");
-    const error = snapshot.portfolioError ?? (blocked ? "현재 해당 주문 유형의 거래가 제한되어 있습니다."
+    const error = snapshot.portfolioError ?? (profileLoading ? "계정 권한을 확인하는 중입니다. 잠시 후 다시 시도해 주세요."
+      : adminTradingBlocked ? "관리자 계정은 모의 주문을 사용할 수 없어요. 일반 계정으로 로그인해 주세요."
+      : blocked ? "현재 해당 주문 유형의 거래가 제한되어 있습니다."
       : !valid ? "주문할 수량을 1~1,000주 사이의 정수로 입력해 주세요."
       : orderType === "LIMIT" && !validLimitPrice ? "올바른 호가 단가를 입력해 주세요."
       : orderSide === "buy" && parsed > affordableQuantity(snapshot.portfolio.cash, executionPrice) ? "수수료를 포함한 매수 주문 가능 금액이 부족합니다."
@@ -179,7 +185,10 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
     }
   };
 
-  const statusMessage = result?.message || notice || (!user ? "로그인 후 주문할 수 있습니다." : readyMessage ?? "");
+  const statusMessage = result?.message || notice || (!user ? "로그인 후 주문할 수 있습니다."
+    : profileLoading ? "계정 권한을 확인하고 있어요."
+    : adminTradingBlocked ? "관리자 계정은 모의 주문을 사용할 수 없어요. 일반 계정으로 로그인해 주세요."
+    : readyMessage ?? "");
 
   return (
     <form tabIndex={-1} className={`nx-ticket is-${side}`} aria-label="주문 입력" aria-busy={submitting}
@@ -277,7 +286,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
       </dl>
 
       <button type="submit" className={`nx-ticket-submit is-${side}`} disabled={submitting || blocked || !valid || !affordable || (orderType === "LIMIT" && !validLimitPrice)}>
-        {submitting ? "주문 접수 중…" : blocked ? "거래 제한 중" : valid ? `${parsed.toLocaleString()}주 ${sideLabel}` : sideLabel}
+        {submitting ? "주문 접수 중…" : profileLoading ? "권한 확인 중…" : adminTradingBlocked ? "관리자 계정 주문 불가" : blocked ? "거래 제한 중" : valid ? `${parsed.toLocaleString()}주 ${sideLabel}` : sideLabel}
       </button>
 
       <p className={`nx-ticket-status${result ? (result.ok ? " is-success" : " is-error") : ""}`} role="status" aria-live="polite">{statusMessage}</p>

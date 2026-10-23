@@ -3,6 +3,7 @@
 set -euo pipefail
 [[ $EUID == 0 && $# == 1 && -f $1 ]] || { echo 'Run as root with a deployment public key file' >&2; exit 64; }
 directory=$(cd -- "$(dirname -- "$0")" && pwd)
+install -o root -g root -m 0644 "$directory/gamestock.service" /etc/systemd/system/gamestock.service
 if ! id gamestock-deploy >/dev/null 2>&1; then
     useradd --system --no-create-home --home-dir /var/lib/gamestock-deploy --shell /bin/bash gamestock-deploy
 fi

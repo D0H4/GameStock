@@ -1,0 +1,31 @@
+[Unit]
+Description=GameStock OCI production backend
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/gamestock/production.env
+
+[Service]
+Type=simple
+User=gamestock
+Group=gamestock
+WorkingDirectory=/opt/gamestock
+EnvironmentFile=/etc/gamestock/production.env
+Environment=SERVER_ADDRESS=127.0.0.1
+Environment=PORT=8081
+Environment=FIREBASE_SERVICE_ACCOUNT_PATH=/etc/gamestock/firebase-admin.json
+ExecStart=/usr/bin/java -Xms256m -Xmx2048m -jar /opt/gamestock/releases/gamestock-backend-production.jar
+Restart=always
+RestartSec=10
+TimeoutStopSec=45
+SuccessExitStatus=143
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gamestock /var/log/gamestock
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
