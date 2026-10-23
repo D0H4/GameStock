@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { apiBaseUrl } from "../../lib/api";
+import { apiBaseUrl, apiFetch } from "../../lib/api";
+import { openLoginPrompt, useAuthUser } from "../../lib/auth";
+import { firebaseAuth } from "../../lib/firebase";
 
 const BASE = apiBaseUrl;
 const SPEC_URL = `${BASE}/api/openapi/openapi.json`;
@@ -200,12 +202,110 @@ function OrderExamples() {
   );
 }
 
-export function NxApiDocsPage() {
-  const keyCurl = `curl --fail-with-body "${BASE}/api/openapi/keys" \\
-  -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"my-bot","permission":"TRADE","expiresInDays":30}'`;
+type KeyInfo = {
+  id: string; name: string; prefix: string; permission: "READ" | "TRADE";
+  createdAt: string; expiresAt: string; revokedAt: string | null;
+};
+type IssuedKey = { key: KeyInfo; token: string };
 
+function ApiKeyManager() {
+  const { user, ready } = useAuthUser();
+  if (!ready) return <p role="status">로그인 확인 중…</p>;
+  if (!user) return <button className="nx-btn is-primary" type="button" onClick={() => openLoginPrompt("/api-docs")}>로그인하고 API 키 발급</button>;
+  return <AccountKeys key={user.uid} uid={user.uid} />;
+}
+
+function AccountKeys({ uid }: { uid: string }) {
+  const [keys, setKeys] = useState<KeyInfo[]>([]);
+  const [issued, setIssued] = useState<IssuedKey | null>(null);
+  const [name, setName] = useState("my-bot");
+  const [permission, setPermission] = useState<"READ" | "TRADE">("READ");
+  const [days, setDays] = useState("90");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const locked = useRef(false);
+  const mounted = useRef(false);
+  const current = () => mounted.current && firebaseAuth.currentUser?.uid === uid;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    apiFetch<KeyInfo[]>("/api/openapi/keys", { signal: controller.signal })
+      .then((items) => { if (!controller.signal.aborted && current()) setKeys(items); })
+      .catch((cause: unknown) => { if (!controller.signal.aborted && current()) setError(cause instanceof Error ? cause.message : "키 목록을 불러오지 못했습니다."); })
+      .finally(() => { if (!controller.signal.aborted && current()) setLoading(false); });
+    return () => controller.abort();
+  }, [uid, reload]);
+
+  const mutate = async (keyId?: string) => {
+    if (locked.current || !current()) return;
+    if (!keyId && (!name.trim() || !Number.isInteger(Number(days)) || Number(days) < 1 || Number(days) > 365)) {
+      setError("키 이름과 만기(1~365일)를 확인해 주세요.");
+      return;
+    }
+    locked.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      if (keyId) {
+        await apiFetch<void>(`/api/openapi/keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
+        if (!current()) return;
+        setKeys((items) => items.map((item) => item.id === keyId ? { ...item, revokedAt: new Date().toISOString() } : item));
+        setIssued((value) => value?.key.id === keyId ? null : value);
+        setConfirmId(null);
+      } else {
+        const result = await apiFetch<IssuedKey>("/api/openapi/keys", {
+          method: "POST", body: JSON.stringify({ name: name.trim(), permission, expiresInDays: Number(days) }),
+        });
+        if (!current()) return;
+        setIssued(result);
+        setKeys((items) => [result.key, ...items]);
+      }
+    } catch (cause) {
+      if (current()) setError(cause instanceof Error ? `${cause.message} 목록을 새로고침해 처리 결과를 확인해 주세요.` : "요청을 완료하지 못했습니다. 목록을 새로고침해 확인해 주세요.");
+    } finally {
+      locked.current = false;
+      if (current()) setBusy(false);
+    }
+  };
+
+  return <div>
+    <form onSubmit={(event) => { event.preventDefault(); void mutate(); }}>
+      <fieldset disabled={busy || loading || issued !== null}>
+        <legend>새 API 키</legend>
+        <div className="nx-field"><label htmlFor="api-key-name">키 이름</label><input className="nx-input" id="api-key-name" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} /></div>
+        <div className="nx-field"><label htmlFor="api-key-permission">권한</label><select className="nx-input" id="api-key-permission" value={permission} onChange={(event) => setPermission(event.target.value as "READ" | "TRADE")}><option value="READ">조회 전용</option><option value="TRADE">조회 + 주문</option></select></div>
+        <div className="nx-field"><label htmlFor="api-key-days">만기 (일)</label><input className="nx-input" id="api-key-days" type="number" required min={1} max={365} step={1} value={days} onChange={(event) => setDays(event.target.value)} /></div>
+        <button className="nx-btn is-primary" type="submit">{busy ? "처리 중…" : "API 키 발급"}</button>
+      </fieldset>
+    </form>
+    {error && <p role="alert" className="nx-field-hint is-error">{error}</p>}
+    {issued && <div role="status">
+      <p>키가 발급되었습니다. 원문은 다시 조회할 수 없으니 지금 복사해 보관하세요.</p>
+      <CodeBlock title={`${issued.key.name} API 키`} code={issued.token} />
+      <button className="nx-btn" type="button" onClick={() => setIssued(null)}>보관 완료 · 키 숨기기</button>
+    </div>}
+    <h3>내 API 키</h3>
+    <button className="nx-btn" type="button" disabled={loading || busy} onClick={() => setReload((value) => value + 1)}>목록 새로고침</button>
+    {loading ? <p role="status">키 목록을 불러오는 중…</p> : keys.length === 0 ? <p>발급된 키가 없습니다.</p> : <div className="nx-docs-table-wrap"><table className="nx-docs-table" aria-label="내 API 키"><thead><tr><th scope="col">이름 / 접두사</th><th scope="col">권한</th><th scope="col">만기</th><th scope="col">상태 / 관리</th></tr></thead><tbody>
+      {keys.map((key) => <tr key={key.id}>
+        <td>{key.name}<br /><code>{key.prefix}…</code></td><td>{key.permission === "READ" ? "조회" : "조회 + 주문"}</td><td>{new Date(key.expiresAt).toLocaleString("ko-KR")}</td>
+        <td>{key.revokedAt ? "폐기됨" : Date.parse(key.expiresAt) <= Date.now() ? "만료됨" : confirmId === key.id ? <><p>폐기하면 이 키로 API를 호출할 수 없습니다.</p><button className="nx-btn" type="button" disabled={busy || loading} onClick={() => void mutate(key.id)}>폐기 확인</button><button className="nx-btn" type="button" disabled={busy} onClick={() => setConfirmId(null)}>취소</button></> : <button className="nx-btn" type="button" disabled={busy || loading} aria-label={`${key.name} 키 폐기`} onClick={() => setConfirmId(key.id)}>폐기</button>}</td>
+      </tr>)}
+    </tbody></table></div>}
+  </div>;
+}
+
+export function NxApiDocsPage() {
   const quoteCurl = `curl --fail-with-body "${BASE}/api/openapi/v1/quotes"`;
   const candleCurl = `curl --fail-with-body "${BASE}/api/openapi/v1/stocks/GI/candles?range=1d"`;
 
@@ -258,28 +358,12 @@ export function NxApiDocsPage() {
         </nav>
 
         <div className="nx-docs-body">
-          <Section id="quick-start" title="빠른 시작" lede="키를 발급하고 첫 요청을 보내는 데 필요한 것은 세 단계뿐입니다.">
-            <ol className="nx-docs-steps">
-              <li>
-                <h3>로그인한 계정의 Firebase ID 토큰을 준비합니다.</h3>
-                <p>키 발급과 폐기는 API 키가 아니라 <strong>Firebase ID 토큰</strong>으로 인증합니다. 웹 앱에 로그인한 세션에서 <code>getIdToken()</code>으로 받은 값을 사용합니다.</p>
-                <CodeBlock title="웹 앱" code={`import { getAuth } from "firebase/auth";
-
-const idToken = await getAuth().currentUser.getIdToken();`} />
-              </li>
-              <li>
-                <h3>API 키를 발급합니다.</h3>
-                <p>응답의 <code>token</code>은 이때 한 번만 보입니다. 서버에는 SHA-256 해시만 저장되므로 반드시 안전한 곳에 보관하세요.</p>
-                <CodeBlock title="키 발급" code={keyCurl} />
-                <p className="nx-docs-note-inline"><code>permission</code>은 <code>READ</code>(조회) 또는 <code>TRADE</code>(조회+주문)입니다. 만기는 1~365일, 기본 90일이며 계정당 활성 키는 최대 10개입니다.</p>
-              </li>
-              <li>
-                <h3>받은 키로 요청합니다.</h3>
-                <p>모든 개인 요청의 <code>Authorization</code> 헤더에 <code>Bearer &lt;token&gt;</code>을 넣습니다. 시세는 인증 없이 조회할 수 있습니다.</p>
-                <CodeBlock title="전체 시세 조회" code={quoteCurl} />
-                <p className="nx-docs-note-inline">예제의 <code>$FIREBASE_ID_TOKEN</code>과 <code>$GAMESTOCK_API_KEY</code>는 셸 환경 변수입니다.</p>
-              </li>
-            </ol>
+          <Section id="quick-start" title="API 키 발급" lede="로그인한 계정으로 키를 발급하고 관리합니다. 이름·권한·만기를 선택하세요.">
+            <ApiKeyManager />
+            <p className="nx-docs-note-inline">기본 만기는 90일이며 계정당 활성 키는 최대 10개입니다. 관리자 계정은 조회 전용 키만 발급할 수 있습니다.</p>
+            <h3>발급받은 키로 요청하기</h3>
+            <p>개인 요청의 <code>Authorization</code> 헤더에 <code>Bearer &lt;발급받은 키&gt;</code>를 넣습니다. 시세는 인증 없이 조회할 수 있습니다.</p>
+            <CodeBlock title="전체 시세 조회" code={quoteCurl} />
           </Section>
 
           <Section id="auth" title="인증과 키" lede="키는 계정 단위로 관리합니다. 요청의 소유자는 항상 키에서 결정되며, 다른 사용자의 계좌를 지정할 수 없습니다.">
