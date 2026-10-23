@@ -52,7 +52,7 @@ final class MarketActivityPolicy {
     synchronized void requestMaintenance() {nextMaintenance=Long.MIN_VALUE;}
     synchronized boolean pulseOpen(long now) {return Boolean.FALSE.equals(preparedActive)&&now<pulseUntil;}
     synchronized boolean workDue(String worker,long now,boolean active) {
-        return !needsPreparation(active) && (active || pulseOpen(now)&&attempts.getOrDefault(worker,0)<pulseBatches);
+        return !needsPreparation(active) && now < nextMaintenance+VISITOR_OVERDUE_MILLIS && (active || pulseOpen(now)&&attempts.getOrDefault(worker,0)<pulseBatches);
     }
     /** Quota counts attempts, including failed transactions, so a broken idle pulse cannot retry forever. */
     synchronized long claim(String worker,long now,boolean active) {

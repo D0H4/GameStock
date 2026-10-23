@@ -3,6 +3,7 @@
 외부 프로그램에서 GameStock의 모의 주식·ETF·선물·옵션 가격을 조회하고 기존 계좌로 거래하는 REST API입니다. 서버 주소 아래 `/api/openapi/v1`을 사용합니다.
 
 - 명세: `GET /api/openapi/openapi.json` — OpenAPI 3.0.3, Postman 등에서 가져올 수 있습니다.
+- 웹 문서: `/api-docs` — 상단 메뉴의 **API**에서 같은 내용을 복사 버튼과 함께 볼 수 있습니다.
 - 명세 원본: [gamestock-v1.json](../backend/src/main/resources/openapi/gamestock-v1.json)
 - Python 3.10+ 예제: [gamestock_openapi.py](../examples/gamestock_openapi.py), 추가 패키지 없음
 - 이 기능은 백엔드 배포 후 제공됩니다. 새 테이블은 기존 시작 시 마이그레이션으로 생성됩니다.

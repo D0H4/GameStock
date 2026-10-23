@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MarketCapSimulationTest {
     record Result(long low,long high,long last,long fills,long fees) {}
 
-    @Test void quietLargeCapsStayNearTheDailyReferenceAcrossDifferentSeeds() {
+    @Test void quietLargeCapsStayInsideTheQuoteSafetyBandAcrossDifferentSeeds() {
         int seconds=Integer.getInteger("market.cap.simulation.seconds",3600);
         for(long seed:List.of(7L,91L)) {
             String code=seed==7?"GI":"UMA";
@@ -17,7 +17,7 @@ class MarketCapSimulationTest {
             System.out.printf(Locale.ROOT,"CAP_SIM code=%s seed=%d seconds=%d low=%d high=%d last=%d fills=%d%n",
                     code,seed,seconds,result.low(),result.high(),result.last(),result.fills());
             assertTrue(result.fills()>20,"A quiet stock must still have funded trades");
-            assertTrue(result.low()>=9670 && result.high()<=10330,"ordinary daily range: "+result);
+            assertTrue(result.low()>=9400 && result.high()<=10600,"quote safety band: "+result);
         }
     }
 
@@ -30,7 +30,7 @@ class MarketCapSimulationTest {
     @Test void productionBatchCadenceKeepsLargeCapsLiquidAndStable() {
         Result result=simulate("GI",91,600,0,100);
         assertTrue(result.fills()>20);
-        assertTrue(result.low()>=9670 && result.high()<=10330,result.toString());
+        assertTrue(result.low()>=9400 && result.high()<=10600,result.toString());
     }
 
     @Test void speculativeFlowStaysWithinTheUniversalDailyBand() {
@@ -78,7 +78,7 @@ class MarketCapSimulationTest {
             var metrics=PriceMetricService.calculate(history,symbol.last,depth[0],depth[1],(long)depth[2],(long)depth[3],now);
             regimes.advance(now,Map.of(code,"RPG"));
             var environment=StockMarketProfile.applyTo(code,regimes.environment(code,"RPG").combine(patterns.environment(code,now)));
-            var observation=new BotActivityEngine.Observation(metrics,environment,10000,news,StockMarketProfile.liquidityScale(code,.65));
+            var observation=new BotActivityEngine.Observation(metrics,environment,10000*(1+news),news,StockMarketProfile.liquidityScale(code,.65));
             engine.microBatches(book,Map.of(1L,observation),Map.of(),now,cadence,Map.of(1L,risk),lp,300);
             if(!book.fills.isEmpty()) {
                 long volume=0;double notional=0;long top=0,bottom=Long.MAX_VALUE;

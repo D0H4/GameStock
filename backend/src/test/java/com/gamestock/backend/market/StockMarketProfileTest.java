@@ -40,8 +40,8 @@ class StockMarketProfileTest {
         assertTrue(large.meanReversionStrength() > small.meanReversionStrength());
         assertEquals(.03, StockMarketProfile.normalDailyMove("GI"));
         assertEquals(StockMarketProfile.activityTarget("GI",300),StockMarketProfile.activityTarget("TR",300));
-        assertEquals(10000, StockMarketProfile.valuationAnchor("GI",10000,16000,0));
-        assertEquals(11000, StockMarketProfile.valuationAnchor("GI",10000,16000,.1),1e-9);
+        assertEquals(16000, StockMarketProfile.valuationAnchor("GI",10000,16000,0));
+        assertEquals(16000, StockMarketProfile.valuationAnchor("GI",10000,16000,.1),1e-9);
     }
 
     @Test void allSymbolsUseTheFullDecisionCadenceAndActivityTarget() {

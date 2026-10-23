@@ -206,8 +206,12 @@ public class LoanService {
     }
 
     void liquidate(long userId) {
+        // The scheduler's candidate list can be stale after a deposit, repayment or price recovery.
+        // Recheck before touching orders, and again between asynchronous cancellations.
+        if (!requiresLiquidation(account(userId, false))) return;
         List<Long> open = jdbc.queryForList("SELECT id FROM orders WHERE user_id = ? AND status = 'OPEN'", Long.class, userId);
         for (long orderId : open) {
+            if (!requiresLiquidation(account(userId, false))) return;
             try {
                 orders.cancel(userId, orderId).join();
             } catch (RuntimeException ignored) {
@@ -215,9 +219,8 @@ public class LoanService {
             }
         }
         Account account = account(userId, false);
-        if (account.balance() == 0 || account.grossAsset() >= account.balance() * LIQUIDATION_RATIO) return;
-        long target = repayTarget(account.grossAsset(), account.balance());
-        long need = target - account.cash();
+        if (!requiresLiquidation(account)) return;
+        long need = cashNeeded(account);
         if (need > 0) {
             List<Holding> holdings = jdbc.query("""
                     SELECT s.stock_code,
@@ -231,14 +234,14 @@ public class LoanService {
                     .stream().filter(h -> h.available() > 0 && h.price() > 0)
                     .sorted(Comparator.comparingLong((Holding h) -> h.available() * h.price()).reversed()).toList();
             for (Holding holding : holdings) {
+                need = cashNeeded(account(userId, false));
                 if (need <= 0) break;
                 int quantity = (int) Math.min(Math.min(holding.available(), 1000),
                         (long) Math.ceil(need * LIQUIDATION_BUFFER / holding.price()));
                 try {
                     orders.submit(userId, new OrderRequest(holding.code(), "SELL", quantity, "MARKET", null)).join();
                     // A submitted/cancelled order is not cash. Re-read settled cash and current collateral.
-                    Account after = account(userId, false);
-                    need = repayTarget(after.grossAsset(), after.balance()) - after.cash();
+                    need = cashNeeded(account(userId, false));
                 } catch (RuntimeException error) {
                     log.info("사용자 {} 반대매매 매도({})가 접수되지 않았습니다: {}", userId, holding.code(), error.getMessage());
                 }
@@ -247,28 +250,46 @@ public class LoanService {
         if (need > 0) {
             // Derivatives count as collateral, so accounts holding only derivatives must also
             // be able to repay. Use the same fees, immutable expiry fixing and user/position locks.
-            List<long[]> positions = jdbc.query("""
-                    SELECT id,quantity FROM derivative_positions
+            List<Long> positions = jdbc.queryForList("""
+                    SELECT id FROM derivative_positions
                     WHERE user_id=? AND status='OPEN' AND quantity>0 ORDER BY mark_value DESC,id
-                    """, (rs, row) -> new long[]{rs.getLong(1), rs.getLong(2)}, userId);
-            for (long[] position : positions) {
+                    """, Long.class, userId);
+            for (long position : positions) {
+                need = cashNeeded(account(userId, false));
                 if (need <= 0) break;
-                try {
-                    transaction.executeWithoutResult(state -> derivatives.close(userId, position[0], (int) position[1]));
-                    Account after = account(userId, false);
-                    need = repayTarget(after.grossAsset(), after.balance()) - after.cash();
-                } catch (RuntimeException error) {
-                    log.info("사용자 {} 반대매매 파생 청산({})이 보류됐습니다: {}", userId, position[0], error.getMessage());
+                // Every successful iteration reduces this position's quantity. Recompute the
+                // shortfall under the account lock, including a repayment made while waiting.
+                while (need > 0) {
+                    try {
+                        boolean remaining = Boolean.TRUE.equals(transaction.execute(state -> derivatives.closeForCollateral(
+                                userId, position, () -> (long) Math.ceil(cashNeeded(account(userId, true)) * LIQUIDATION_BUFFER))));
+                        if (!remaining) break;
+                        need = cashNeeded(account(userId, false));
+                    } catch (RuntimeException error) {
+                        log.info("사용자 {} 반대매매 파생 청산({})이 보류됐습니다: {}", userId, position, error.getMessage());
+                        break;
+                    }
                 }
             }
         }
-        transaction.executeWithoutResult(state -> {
+        long paid = transaction.execute(state -> {
             Account current = account(userId, true);
             long pay = Math.min(Math.min(current.cash(), current.balance()), Math.max(repayTarget(current.grossAsset(), current.balance()), 0));
             if (pay > 0) settle(userId, pay, current.balance(), "LIQUIDATION");
+            return pay;
         });
-        events.publishEvent(new UserMarketEvent(userId, "LOAN_LIQUIDATED", Map.of("portfolio", market.portfolio(userId))));
-        log.info("사용자 {} 반대매매를 실행했습니다.", userId);
+        if (paid > 0) {
+            events.publishEvent(new UserMarketEvent(userId, "LOAN_LIQUIDATED", Map.of("portfolio", market.portfolio(userId))));
+            log.info("사용자 {} 반대매매를 실행했습니다.", userId);
+        }
+    }
+
+    private static boolean requiresLiquidation(Account account) {
+        return account.balance() > 0 && account.grossAsset() < account.balance() * LIQUIDATION_RATIO;
+    }
+
+    private static long cashNeeded(Account account) {
+        return Math.max(0, repayTarget(account.grossAsset(), account.balance()) - account.cash());
     }
 
     /** 갚고 나면 담보비율이 140%가 되는 금액. 총 자산이 잔액보다 작으면 전액이다. */

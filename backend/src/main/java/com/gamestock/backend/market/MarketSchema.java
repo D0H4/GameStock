@@ -42,8 +42,9 @@ final class MarketSchema {
         protection.ensureTables();
         ensureSimulationBookTables();
         priceMetrics.ensureTables();
+        NewsValuation.ensureTables(jdbc);
         ensureOrderTimestampPrecision();
-        for (String[] field : List.of(new String[]{"trades","created_at"},new String[]{"stock_price_history","recorded_at"},new String[]{"market_trade_buckets","created_at"})) {
+        for (String[] field : List.of(new String[]{"trades","created_at"},new String[]{"settlements","created_at"},new String[]{"stock_price_history","recorded_at"},new String[]{"market_trade_buckets","created_at"})) {
             Integer precision=jdbc.queryForObject("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?",Integer.class,field[0],field[1]);
             if(precision!=null && precision<3)jdbc.execute("ALTER TABLE "+field[0]+" MODIFY COLUMN "+field[1]+" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
         }
@@ -108,7 +109,9 @@ final class MarketSchema {
         addUserColumnIfMissing("profile_image_url", "VARCHAR(500) NULL");
         addUserColumnIfMissing("profile_completed", "BOOLEAN NOT NULL DEFAULT FALSE");
         addUserColumnIfMissing("role", "VARCHAR(20) NOT NULL DEFAULT 'USER'");
-        addUserColumnIfMissing("account_reset_at", "TIMESTAMP NULL");
+        addUserColumnIfMissing("account_reset_at", "TIMESTAMP(3) NULL");
+        Integer resetPrecision=jdbc.queryForObject("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='users' AND column_name='account_reset_at'",Integer.class);
+        if(resetPrecision!=null && resetPrecision<3)jdbc.execute("ALTER TABLE users MODIFY COLUMN account_reset_at TIMESTAMP(3) NULL");
         addUserColumnIfMissing("reset_used_at", "TIMESTAMP NULL");
         addUserColumnIfMissing("nickname_changed_at", "TIMESTAMP NULL");
         // 관리자가 부계정 의심 계정에 거는 기간제 거래 제한.
@@ -351,7 +354,7 @@ final class MarketSchema {
                   status ENUM('PENDING', 'SETTLED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
                   settled_at TIMESTAMP NULL,
                   cancelled_at TIMESTAMP NULL,
-                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
                   CONSTRAINT fk_settlements_trade FOREIGN KEY (trade_id) REFERENCES trades(id),
                   CONSTRAINT fk_settlements_buyer FOREIGN KEY (buyer_id) REFERENCES users(id),
                   CONSTRAINT fk_settlements_seller FOREIGN KEY (seller_id) REFERENCES users(id),

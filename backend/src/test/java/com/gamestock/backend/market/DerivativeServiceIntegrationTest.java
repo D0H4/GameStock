@@ -66,6 +66,7 @@ class DerivativeServiceIntegrationTest {
         template = new TransactionTemplate(manager);
         derivatives = new DerivativeService(jdbc, manager);
         derivatives.ensureTables();
+        BotLedgerJournal.ensureTables(jdbc);
         jdbc.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES ('trader','TEST','trader',100000000)");
         user = jdbc.queryForObject("SELECT id FROM users WHERE username='trader'", Long.class);
         for (String[] stock : List.of(new String[]{"GI", "원신", "오픈월드"}, new String[]{"TR", "트릭컬", "RPG"})) {
@@ -85,8 +86,8 @@ class DerivativeServiceIntegrationTest {
     @BeforeEach
     void begin() {
         transaction = manager.getTransaction(new DefaultTransactionDefinition());
-        derivatives.setClock(Clock.systemUTC());
         new DerivativeIndexHistory(jdbc).initializeBases();
+        marketAt(Instant.parse("2030-01-01T10:00:00Z"));
     }
 
     @AfterEach
@@ -106,6 +107,14 @@ class DerivativeServiceIntegrationTest {
 
     private void moveIndex(double multiplier) {
         jdbc.update("UPDATE stocks SET current_price = ROUND(current_price * ?)", multiplier);
+        Clock current=(Clock)org.springframework.test.util.ReflectionTestUtils.getField(derivatives,"clock");
+        marketAt(current.instant().plusSeconds(1));
+    }
+
+    /** A sustained tape fixture, not an isolated last-price assignment. */
+    private void marketAt(Instant at) {
+        derivatives.setClock(Clock.fixed(at,ZoneOffset.UTC));
+        DerivativeTapeFixture.seed(jdbc,at);
     }
 
     @Test
@@ -161,8 +170,8 @@ class DerivativeServiceIntegrationTest {
     @Test
     @Order(4)
     void optionExpiryPaysIntrinsicValue() {
-        Instant beforeExpiry=Instant.parse("2030-01-01T10:09:58Z");
-        derivatives.setClock(Clock.fixed(beforeExpiry,ZoneOffset.UTC));
+        Instant beforeExpiry=Instant.parse("2030-01-01T10:08:00Z");
+        marketAt(beforeExpiry);
         long before = jdbc.queryForObject("SELECT cash FROM users WHERE id=?", Long.class, user);
         OrderResult opened = inTransaction(() -> derivatives.open(user,
                 new OrderRequest("OPTION", "CALL", 5, null, null, "10M", 1000.0, null)));
@@ -170,9 +179,9 @@ class DerivativeServiceIntegrationTest {
         assertEquals("OPTION", position.kind());
         assertTrue(opened.account().cash() < before);
         moveIndex(1.10);
-        derivatives.setClock(Clock.fixed(beforeExpiry.plusSeconds(1),ZoneOffset.UTC));
+        marketAt(beforeExpiry.plusSeconds(119));
         derivatives.refreshMarks();
-        derivatives.setClock(Clock.fixed(beforeExpiry.plusSeconds(3),ZoneOffset.UTC));
+        derivatives.setClock(Clock.fixed(beforeExpiry.plusSeconds(121),ZoneOffset.UTC));
         derivatives.refreshMarks();
         assertEquals("EXPIRED", jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?", String.class, position.id()));
         long after = jdbc.queryForObject("SELECT cash FROM users WHERE id=?", Long.class, user);
@@ -243,6 +252,17 @@ class DerivativeServiceIntegrationTest {
         assertEquals(1000,history.fixing(cutoff));
     }
 
+    @Test void stalePreExpiryHistoryIsNotPromotedToAnExpiryFixing() {
+        var history=new DerivativeIndexHistory(jdbc);
+        Instant expiry=Instant.parse("2030-01-01T11:00:00Z");
+        history.observe(1000,expiry.minusSeconds(91));
+        assertThrows(IllegalStateException.class,()->history.fixing(expiry));
+        history.observe(1001,expiry.minusSeconds(3));
+        assertEquals(1001,history.fixing(expiry));
+        history.observe(999,expiry.plusSeconds(1));
+        assertEquals(1001,history.fixing(expiry));
+    }
+
     @Test void dailyReferenceRollDoesNotChangeDerivativePricesOrCreateProfit() {
         moveIndex(.9);
         var before=derivatives.snapshot();
@@ -257,7 +277,7 @@ class DerivativeServiceIntegrationTest {
 
     @Test void delayedAndManualExpiryUseTheSameImmutableFixingWithoutAnExpiryFee() {
         Instant openedAt=Instant.parse("2030-01-01T10:59:58Z");
-        derivatives.setClock(Clock.fixed(openedAt,ZoneOffset.UTC));
+        marketAt(openedAt);
         long a=derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"1H",1000.0,null)).account().positions().get(0).id();
         long b=derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"1H",1000.0,null)).account().positions().get(0).id();
         derivatives.setClock(Clock.fixed(openedAt.plusSeconds(1),ZoneOffset.UTC));
@@ -275,7 +295,8 @@ class DerivativeServiceIntegrationTest {
 
     @Test void fiveThousandEtfsCannotStarveLaterExpiriesOrLiquidations() {
         Instant now=Instant.parse("2030-01-01T10:59:58Z");
-        derivatives.setClock(Clock.fixed(now,ZoneOffset.UTC));
+        marketAt(now);
+        derivatives.refreshMarks();
         var rows=new java.util.ArrayList<Object[]>();
         for(int account=0;account<84;account++) {
             jdbc.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES(?,'TEST',?,1000000)","page-"+account,"page-"+account);
@@ -290,6 +311,286 @@ class DerivativeServiceIntegrationTest {
         derivatives.refreshMarks();
         assertEquals("LIQUIDATED",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,future));
         assertEquals("EXPIRED",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,option));
+    }
+
+    @Test void persistentVolatilitySurvivesRestartAndGetRequestsCannotSupplySamples() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        var history=new DerivativeIndexHistory(jdbc);
+        for(int i=0;i<60;i++)history.observe(1000,now.minusSeconds((59-i)*3L));
+        double warm=history.volatility(now);assertEquals(.25,warm,1e-10);
+        var original=derivatives.snapshot();
+        var restarted=new DerivativeService(jdbc,manager);restarted.setClock(Clock.fixed(now,ZoneOffset.UTC));
+        for(int i=0;i<10;i++)assertEquals(original.options(),restarted.snapshot().options());
+        assertEquals(60,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations",Integer.class));
+        assertEquals(warm,new DerivativeIndexHistory(jdbc).volatility(now));
+    }
+
+    @Test void oneLastPricePrintAndReferenceLagCannotGenerateDerivativeRoundTripProfit() {
+        long initial=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        jdbc.update("UPDATE stocks SET current_price=11000");
+        assertEquals(1000,derivatives.snapshot().indexValue(),1e-8);
+        for(String side:List.of("LONG","SHORT")) {
+            var opened=derivatives.open(user,new OrderRequest("FUTURE",side,1,"FUTIDX",10,null,null,null));
+            derivatives.close(user,opened.account().positions().get(0).id(),1);
+        }
+        var etf=derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFIDX",null,null,null,null));
+        derivatives.close(user,etf.account().positions().get(0).id(),1);
+        jdbc.update("UPDATE stocks SET current_price=10500");
+        for(String side:List.of("CALL","PUT")) {
+            var option=derivatives.open(user,new OrderRequest("OPTION",side,1,null,null,"10M",1000.0,null));
+            derivatives.close(user,option.account().positions().get(0).id(),1);
+        }
+        derivatives.refreshMarks();
+        assertEquals(1000,derivatives.snapshot().indexValue(),1e-8,"The protected quote uses the sustained executed tape");
+        assertTrue(jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user)<initial);
+    }
+
+    @Test void staleReferencesCannotOpenCloseOrLiquidatePositionsAndDoNotCreateObservations() {
+        var opened=derivatives.open(user,new OrderRequest("FUTURE","LONG",1,"FUTIDX",10,null,null,null));
+        long position=opened.account().positions().get(0).id();
+        derivatives.setClock(Clock.fixed(Instant.parse("2030-01-01T10:05:00Z"),ZoneOffset.UTC));
+        jdbc.update("UPDATE stocks SET current_price=100");
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFIDX",null,null,null,null)));
+        assertThrows(IllegalArgumentException.class,()->derivatives.close(user,position,1));
+        derivatives.refreshMarks();
+        assertEquals("OPEN",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,position));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations",Integer.class));
+    }
+
+    @Test void splittingOrdersOrUsingCheapOptionsCannotBypassTheAccountExposureLimit() {
+        derivatives.open(user,new OrderRequest("OPTION","CALL",6,null,null,"10M",1000.0,null));
+        long before=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("FUTURE","LONG",5,"FUTIDX",10,null,null,null)));
+        assertEquals(before,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_positions WHERE user_id=?",Integer.class,user));
+    }
+
+    @Test void unrelatedStaleStockDoesNotBlockEtfBuysClosesOrMarks() {
+        var opened=derivatives.open(user,new OrderRequest("ETF","BUY",10,"ETFRPG",null,null,null,null));
+        long position=opened.account().positions().get(0).id();
+        Instant now=Instant.parse("2030-01-01T10:00:03Z");
+        jdbc.update("UPDATE stocks SET current_price=11000 WHERE stock_code='TR'");
+        marketAt(now);
+        jdbc.update("DELETE FROM bot_trade_seconds WHERE stock_id=(SELECT id FROM stocks WHERE stock_code='GI')");
+        jdbc.update("UPDATE derivative_reference_prices SET observed_at=NULL WHERE stock_id=(SELECT id FROM stocks WHERE stock_code='GI')");
+        derivatives.refreshMarks();
+        assertEquals(1100,jdbc.queryForObject("SELECT mark_price FROM derivative_positions WHERE id=?",Double.class,position),1e-8);
+        assertDoesNotThrow(()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFRPG",null,null,null,null)));
+        assertDoesNotThrow(()->derivatives.close(user,position,5));
+        assertDoesNotThrow(()->derivatives.open(user,new OrderRequest("ETF","SELL",1,"ETFRPG",null,null,null,null)));
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("FUTURE","LONG",1,"FUTIDX",10,null,null,null)));
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFIDX",null,null,null,null)));
+        jdbc.update("UPDATE derivative_reference_prices SET observed_at=NULL WHERE stock_id=(SELECT id FROM stocks WHERE stock_code='TR')");
+        assertThrows(IllegalArgumentException.class,()->derivatives.close(user,position,1));
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFRPG",null,null,null,null)));
+    }
+
+    @Test void appreciatedEtfHoldingsCountAtCurrentNavAcrossSplitOrdersAndShortEntries() {
+        for (int i=0;i<50;i++) derivatives.open(user,new OrderRequest("ETF","BUY",100,"ETFIDX",null,null,null,null));
+        long cash=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        // Before the oracle catches up, a SHORT must not use the lower execution index for exposure.
+        jdbc.update("UPDATE stocks SET current_price=12000");
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("FUTURE","SHORT",4,"FUTIDX",5,null,null,null)));
+        marketAt(Instant.parse("2030-01-01T10:00:03Z"));
+        assertEquals(1200,derivatives.snapshot().indexValue(),1e-8);
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("FUTURE","LONG",4,"FUTIDX",5,null,null,null)));
+        assertEquals(cash,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user));
+        assertEquals(50,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_trades WHERE user_id=?",Integer.class,user));
+        assertDoesNotThrow(()->derivatives.open(user,new OrderRequest("FUTURE","LONG",3,"FUTIDX",5,null,null,null)));
+    }
+
+    @Test void sectorEtfExposureUsesItsOwnNavWhenTheOverallIndexFalls() {
+        for (int i=0;i<50;i++) derivatives.open(user,new OrderRequest("ETF","BUY",100,"ETFRPG",null,null,null,null));
+        jdbc.update("UPDATE stocks SET current_price=CASE stock_code WHEN 'TR' THEN 12000 ELSE 8000 END");
+        marketAt(Instant.parse("2030-01-01T10:00:03Z"));
+        double index=derivatives.snapshot().indexValue();
+        assertTrue(index<1000);
+        int quantity=(int)Math.floor(4_000_000/(index*1000))+1;
+        assertTrue(5_000_000+quantity*index*1000<=10_000_000,"Cost-based accounting would have admitted this order");
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("FUTURE","LONG",quantity,"FUTIDX",5,null,null,null)));
+        assertEquals(50,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_positions WHERE user_id=?",Integer.class,user));
+    }
+
+    @Test void staleHoldingsBlockAdditionalExposureButNotClosingAnotherFreshProduct() {
+        derivatives.open(user,new OrderRequest("ETF","BUY",10,"ETFRPG",null,null,null,null));
+        long action=derivatives.open(user,new OrderRequest("ETF","BUY",10,"ETFACT",null,null,null,null)).account().positions().get(0).id();
+        jdbc.update("UPDATE derivative_reference_prices SET observed_at=NULL WHERE stock_id=(SELECT id FROM stocks WHERE stock_code='TR')");
+        long cash=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFACT",null,null,null,null)));
+        assertEquals(cash,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user));
+        assertDoesNotThrow(()->derivatives.close(user,action,5));
+        assertDoesNotThrow(()->derivatives.open(user,new OrderRequest("ETF","SELL",5,"ETFACT",null,null,null,null)));
+    }
+
+    @Test void exposureAtTheLimitIsAllowedButOneMoreUnitIsRejected() {
+        derivatives.open(user,new OrderRequest("FUTURE","LONG",10,"FUTIDX",5,null,null,null));
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFIDX",null,null,null,null)));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_trades WHERE user_id=?",Integer.class,user));
+    }
+
+    @Test void reconstitutionPreservesIndexEtfHoldingsAndRestartPrices() {
+        moveIndex(1.1);
+        var before=derivatives.snapshot();
+        var opened=derivatives.open(user,new OrderRequest("ETF","BUY",10,"ETFRPG",null,null,null,null));
+        long position=opened.account().positions().get(0).id();
+        long holdingValue=opened.account().positions().get(0).value();
+        addListing("NEW","RPG");
+        Instant now=Instant.parse("2030-01-01T10:00:04Z");
+        marketAt(now);
+        var after=derivatives.snapshot();
+        assertEquals(before.indexValue(),after.indexValue(),1e-8);
+        assertEquals(before.indexPrevClose(),after.indexPrevClose(),1e-8);
+        assertEquals(etf(before,"ETFRPG"),etf(after,"ETFRPG"),1e-8);
+        for(int i=0;i<before.etfs().size();i++)assertEquals(before.etfs().get(i).prevClose(),after.etfs().get(i).prevClose(),1e-8);
+        assertEquals(holdingValue,derivatives.account(user).positions().get(0).value());
+        var restarted=new DerivativeService(jdbc,manager);restarted.setClock(Clock.fixed(now,ZoneOffset.UTC));
+        for(int i=0;i<3;i++) {
+            new DerivativeBaskets(jdbc).rebalance();
+            assertEquals(after.indexValue(),restarted.snapshot().indexValue(),1e-8);
+            assertEquals(etf(after,"ETFRPG"),etf(restarted.snapshot(),"ETFRPG"),1e-8);
+        }
+        // Changing the genre transfers a constituent without transferring wealth between funds.
+        jdbc.update("UPDATE games g JOIN stocks s ON s.game_id=g.id SET g.genre='액션' WHERE s.stock_code='NEW'");
+        new DerivativeBaskets(jdbc).rebalance();
+        assertEquals(etf(after,"ETFRPG"),etf(derivatives.snapshot(),"ETFRPG"),1e-8);
+        assertEquals(etf(after,"ETFACT"),etf(derivatives.snapshot(),"ETFACT"),1e-8);
+        // The last constituent becomes a cash basket at its existing value.
+        jdbc.update("INSERT INTO admin_stock_state(stock_id,state,reason) SELECT id,'DELISTED','test' FROM stocks WHERE stock_code='TR'");
+        new DerivativeBaskets(jdbc).rebalance();
+        assertEquals(etf(after,"ETFRPG"),etf(derivatives.snapshot(),"ETFRPG"),1e-8);
+        assertEquals(after.indexValue(),derivatives.snapshot().indexValue(),1e-8);
+        assertEquals(before.indexPrevClose(),derivatives.snapshot().indexPrevClose(),1e-8);
+        long beforeClose=derivatives.account(user).cash();
+        derivatives.close(user,position,10);
+        assertEquals(holdingValue-DerivativePricing.fee(holdingValue,DerivativePricing.ETF_FEE_RATE),derivatives.account(user).cash()-beforeClose);
+        // The composition-only adjustment expires when the market advances its trading day.
+        jdbc.update("UPDATE stock_protection_state p JOIN stocks s ON s.id=p.stock_id SET p.day_reference=s.current_price");
+        jdbc.update("UPDATE market_protection_state SET trading_date=DATE_ADD(trading_date,INTERVAL 1 DAY) WHERE id=1");
+        var nextDay=derivatives.snapshot();
+        assertEquals(nextDay.indexValue(),nextDay.indexPrevClose(),1e-8);
+        for(var quote:nextDay.etfs())assertEquals(quote.price(),quote.prevClose(),1e-8);
+    }
+
+    @Test void rebasedBasketStillTracksSubsequentPaidPriceMoves() {
+        moveIndex(1.1);addListing("NEW","RPG");
+        marketAt(Instant.parse("2030-01-01T10:00:04Z"));
+        double before=etf(derivatives.snapshot(),"ETFRPG");
+        jdbc.update("UPDATE stocks SET current_price=ROUND(current_price*1.1) WHERE stock_code IN ('TR','NEW')");
+        marketAt(Instant.parse("2030-01-01T10:00:07Z"));
+        assertEquals(before*1.1,etf(derivatives.snapshot(),"ETFRPG"),1e-8);
+    }
+
+    @Test void cancellationRepricesUnchangedLastTradeAndInvalidatesInsufficientRemainingTape() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        long stock=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='TR'",Long.class);
+        jdbc.update("UPDATE bot_trade_seconds SET notional=11000*quantity WHERE stock_id=? AND bucket_at<?",stock,now.getEpochSecond()-35);
+        long trade=humanReferenceTrade(stock,now.minusSeconds(10));
+        var oracle=new DerivativePriceOracle(jdbc);oracle.refresh(now);
+        assertEquals(11000,referencePrice(stock),1e-8);
+        var timestamp=jdbc.queryForObject("SELECT observed_at FROM derivative_reference_prices WHERE stock_id=?",java.sql.Timestamp.class,stock);
+        jdbc.update("UPDATE settlements SET status='CANCELLED' WHERE trade_id=?",trade);oracle.invalidate(stock,now.minusSeconds(10));
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,new OrderRequest("ETF","BUY",1,"ETFRPG",null,null,null,null)));
+        oracle.refresh(now);
+        assertEquals(10500,referencePrice(stock),1e-8);
+        assertEquals(timestamp,jdbc.queryForObject("SELECT observed_at FROM derivative_reference_prices WHERE stock_id=?",java.sql.Timestamp.class,stock));
+        oracle.refresh(now.plusSeconds(3));
+        assertEquals(10000,referencePrice(stock),1e-8,"The rolling window also changes without a new last trade");
+        long revision=jdbc.queryForObject("SELECT revision FROM derivative_reference_prices WHERE stock_id=?",Long.class,stock);
+        oracle.refresh(now);
+        assertEquals(revision,jdbc.queryForObject("SELECT revision FROM derivative_reference_prices WHERE stock_id=?",Long.class,stock),"A delayed worker cannot overwrite the newer computation");
+        jdbc.update("DELETE FROM bot_trade_seconds WHERE stock_id=?",stock);oracle.invalidate(stock,now.minusSeconds(10));oracle.refresh(now.plusSeconds(6));
+        assertNull(jdbc.queryForObject("SELECT observed_at FROM derivative_reference_prices WHERE stock_id=?",java.sql.Timestamp.class,stock));
+    }
+
+    @Test void cancelledPreExpiryObservationDefersSettlementWithoutACorrectedSample() {
+        cancelledExpiry(false);
+    }
+
+    @Test void cancelledPreExpiryObservationIsReplacedByACorrectedSampleForSettlement() {
+        cancelledExpiry(true);
+    }
+
+    private void cancelledExpiry(boolean observeCorrection) {
+        Instant last=Instant.parse("2030-01-01T10:09:59Z"),expiry=last.plusSeconds(1);
+        marketAt(last.minusSeconds(59));
+        long position=derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"10M",1000.0,null)).account().positions().get(0).id();
+        marketAt(last);
+        long stock=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='GI'",Long.class);
+        jdbc.update("UPDATE bot_trade_seconds SET notional=11000*quantity WHERE stock_id=? AND bucket_at<?",stock,last.getEpochSecond()-35);
+        long trade=humanReferenceTrade(stock,last.minusSeconds(10));
+        derivatives.refreshMarks();
+        double badIndex=derivatives.snapshot().indexValue();
+        assertTrue(badIndex>1090);
+        jdbc.update("UPDATE settlements SET status='CANCELLED' WHERE trade_id=?",trade);
+        var oracle=new DerivativePriceOracle(jdbc);oracle.invalidate(stock,last.minusSeconds(10));
+        assertTrue(jdbc.queryForObject("SELECT invalidated FROM derivative_index_observations WHERE observed_at=?",Boolean.class,java.sql.Timestamp.from(last)));
+        oracle.refresh(last.plusMillis(500));
+        double corrected=derivatives.snapshot().indexValue();
+        assertTrue(corrected<badIndex && corrected>1000);
+        if(observeCorrection) {
+            derivatives.setClock(Clock.fixed(last.plusMillis(500),ZoneOffset.UTC));
+            derivatives.refreshMarks();
+        }
+        long cash=jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user);
+        derivatives.setClock(Clock.fixed(expiry.plusSeconds(1),ZoneOffset.UTC));
+        derivatives.refreshMarks();
+        if(observeCorrection) {
+            assertEquals("EXPIRED",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,position));
+            assertEquals(corrected,new DerivativeIndexHistory(jdbc).fixing(expiry),1e-8);
+            assertEquals(Math.round((corrected-1000)*1000),jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user)-cash);
+        } else {
+            assertEquals("OPEN",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,position));
+            assertEquals(cash,jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user));
+            assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_expiry_fixings",Integer.class));
+            assertThrows(IllegalStateException.class,()->derivatives.close(user,position,1));
+        }
+    }
+
+    @Test void cancellationExcludesHeldObservationsAndVolatilityButPreservesFixedExpiries() {
+        Instant execution=Instant.parse("2030-01-01T10:00:00Z");
+        var history=new DerivativeIndexHistory(jdbc);
+        for(int i=0;i<60;i++)history.observe(1000,execution.minusSeconds((60-i)*3L));
+        double originalVolatility=history.volatility(execution);
+        history.observe(1100,execution.plusSeconds(60));
+        history.observe(1100,execution.plusSeconds(140)); // held last-good reference
+        assertEquals(1100,history.fixing(execution.plusSeconds(60)));
+        history.invalidate(execution.plusMillis(900));
+        assertEquals(originalVolatility,history.volatility(execution.plusSeconds(150)),1e-10);
+        assertEquals(1100,history.fixing(execution.plusSeconds(60)),"An already fixed expiry is immutable");
+        assertEquals(1000,history.fixing(execution.plusSeconds(61)),"A new fixing can only use an unaffected sample");
+        assertThrows(IllegalStateException.class,()->history.fixing(execution.plusSeconds(141)));
+    }
+
+    private long humanReferenceTrade(long stock,Instant at) {
+        jdbc.update("INSERT INTO users(username,password_hash,nickname,cash) VALUES('oracle-seller','TEST','oracle-seller',1000000)");
+        long seller=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO orders(user_id,stock_id,side,order_type,price,quantity,remaining_quantity,status) VALUES(?,?,'BUY','LIMIT',12000,10,0,'FILLED')",user,stock);
+        long buy=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO orders(user_id,stock_id,side,order_type,price,quantity,remaining_quantity,status) VALUES(?,?,'SELL','LIMIT',12000,10,0,'FILLED')",seller,stock);
+        long sell=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO trades(stock_id,buy_order_id,sell_order_id,buyer_id,seller_id,maker_order_id,taker_order_id,aggressor_side,quantity,price,created_at) VALUES(?,?,?,?,?,?,?,'BUY',10,12000,?)",stock,buy,sell,user,seller,sell,buy,java.sql.Timestamp.from(at));
+        long trade=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO settlements(trade_id,buyer_id,seller_id,stock_id,quantity,gross_amount,settlement_at,status) VALUES(?,?,?,?,10,120000,?,'SETTLED')",trade,user,seller,stock,java.sql.Timestamp.from(at));
+        return trade;
+    }
+
+    private double referencePrice(long stock) {return jdbc.queryForObject("SELECT price FROM derivative_reference_prices WHERE stock_id=?",Double.class,stock);}
+    @Test void emptySectorEtfKeepsItsCashValueWhenTheFirstConstituentJoins() {
+        double before=etf(derivatives.snapshot(),"ETFFPS");
+        derivatives.open(user,new OrderRequest("ETF","BUY",10,"ETFFPS",null,null,null,null));
+        addListing("FIRSTFPS","FPS");
+        jdbc.update("UPDATE stocks SET current_price=11000 WHERE stock_code='FIRSTFPS'");
+        marketAt(Instant.parse("2030-01-01T10:00:04Z"));
+        assertEquals(before,etf(derivatives.snapshot(),"ETFFPS"),1e-8);
+        assertEquals(Math.round(before*10),derivatives.account(user).positions().get(0).value());
+    }
+    private static double etf(DerivativeSnapshot snapshot,String code) {return snapshot.etfs().stream().filter(e->e.code().equals(code)).findFirst().orElseThrow().price();}
+    private void addListing(String code,String genre) {
+        jdbc.update("INSERT INTO games(name,developer,genre) VALUES(?,'test',?)",code,genre);
+        long game=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO stocks(game_id,stock_code,current_price,previous_price,total_volume) VALUES(?,?,10000,10000,0)",game,code);
+        long stock=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO stock_protection_state(stock_id,day_reference,static_reference,dynamic_reference,last_trade_price) VALUES(?,10000,10000,10000,10000)",stock);
     }
 
     @Test void invalidEtfSideCannotMoveCashAndCashFlowReconcilesIncludingFees() throws Exception {

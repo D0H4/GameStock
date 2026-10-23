@@ -100,9 +100,10 @@ final class BotActivityEngine {
             Observation observed=observations.get(stock);
             if(symbol==null||observed==null)continue;
             if(!symbol.continuous){activity.add(new Activity(stock,symbol.code,0,0,false));continue;}
-            // Traders and the LP value the symbol at the moving consensus, not the raw news fundamental.
+            double commonValue=consensus.observe(symbol,observed.fundamental(),observed.news(),observed.environment(),now);
+            // The LP supplies execution liquidity from paid prices and its inventory, not investor sentiment.
             Observation observation=new Observation(observed.metrics(),observed.environment(),
-                    consensus.observe(symbol,observed.fundamental(),observed.news(),observed.environment(),now),observed.news(),observed.scale());
+                    observed.metrics().referenceVwap()*.9+observed.fundamental()*.1,observed.news(),observed.scale());
             var group=entry.getValue();int startFills=book.fills.size(),startOrders=book.accepted.size();
             int recent=recentFills.getOrDefault(stock,0);
             var risk=risks.get(stock);
@@ -161,7 +162,7 @@ final class BotActivityEngine {
                 long equity=account.cash+refundable+Math.round(held.quantity()*m.markPrice());
                 double targetQuantity=strategies.targetQuantity(p,symbol.code,now,equity,1,m.markPrice());
                 var position=new BotStrategyEngine.Position(held.quantity(),account.cash+refundable,held.average(),now-acquired.getOrDefault(participant.id(),now),targetQuantity);
-                double anchor=observation.fundamental();
+                double anchor=BotStrategyEngine.valuationObservation(p,m,observed.fundamental(),commonValue);
                 double researchNoise=.012*(StockMarketProfile.isLargeCap(symbol.code)?StockMarketProfile.of(symbol.code).movementWeight():1);
                 double estimate=strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise));
                 double news=observation.news()*(1+p.valueError()*8+random.nextGaussian()*.25);

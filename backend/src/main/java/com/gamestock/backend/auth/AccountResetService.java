@@ -64,7 +64,7 @@ public class AccountResetService {
                     profile_image_url = '',
                     profile_completed = FALSE,
                     nickname_changed_at = NULL,
-                    account_reset_at = CURRENT_TIMESTAMP,
+                    account_reset_at = CURRENT_TIMESTAMP(3),
                     reset_used_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND reset_used_at IS NULL
                 """, STARTING_CASH, resetNickname, userId);

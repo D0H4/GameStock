@@ -76,7 +76,7 @@ public class AdminSeasonService {
             db.update("DELETE FROM portfolios WHERE user_id=?",user);
             db.update("DELETE FROM attendance_rewards WHERE user_id=?",user);db.update("DELETE FROM mission_rewards WHERE user_id=?",user);
             db.update("INSERT INTO admin_cash_epochs(user_id,last_adjustment_id) SELECT ?,COALESCE(MAX(id),0) FROM admin_cash_adjustments WHERE user_id=? ON DUPLICATE KEY UPDATE last_adjustment_id=VALUES(last_adjustment_id)",user,user);
-            db.update("UPDATE users SET cash=1000000,loan_balance=0,loan_interest_on=NULL,account_reset_at=CURRENT_TIMESTAMP WHERE id=?",user);
+            db.update("UPDATE users SET cash=1000000,loan_balance=0,loan_interest_on=NULL,account_reset_at=CURRENT_TIMESTAMP(3) WHERE id=?",user);
         }
         db.update("UPDATE admin_seasons SET status='RESET' WHERE id=?",id);operations.changed();
         support.audit(actor,"SEASON_RESET",id,why,before,Map.of("users",users.size(),"status","RESET"));

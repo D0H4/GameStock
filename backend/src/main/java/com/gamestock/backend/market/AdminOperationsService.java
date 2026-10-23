@@ -105,6 +105,8 @@ public class AdminOperationsService {
         db.update("UPDATE users SET cash=? WHERE id=?",restored,buyer);
         for(String side:List.of("buyer","seller"))db.update("UPDATE portfolios SET quantity=?,settled_quantity=?,average_price=?,realized_profit_loss=? WHERE user_id=? AND stock_id=?",row.get(side+"_quantity_before"),row.get(side+"_settled_quantity_before"),row.get(side+"_average_price_before"),row.get(side+"_realized_profit_loss_before"),"buyer".equals(side)?buyer:seller,stock);
         db.update("UPDATE settlements SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP WHERE id=?",id);
+        var executionAt=db.queryForObject("SELECT created_at FROM trades WHERE id=?",java.sql.Timestamp.class,row.get("trade_id"));
+        new DerivativePriceOracle(db).invalidate(stock,executionAt.toInstant());
         new PriceMetricService(db).invalidate(stock);db.update("DELETE FROM lp_cash_projection WHERE stock_id=?",stock);
         changed();support.audit(actor,"SETTLEMENT_REVERSE",id,why,row,Map.of("status","CANCELLED","buyerRefund",buyerRefund,"sellerDebit",settled?sellerDebit:0));
     }
@@ -157,6 +159,7 @@ public class AdminOperationsService {
         String code=text(request.code(),12,"종목 코드").toUpperCase(Locale.ROOT);
         if(!code.matches("[A-Z][A-Z0-9_]{0,11}")||Set.of("NEXA","STAR","MOMO","VOID").contains(code)||request.initialPrice()<100||request.initialPrice()>1_000_000_000||request.initialPrice()%PriceLimitPolicy.tickSize(request.initialPrice())!=0)throw new IllegalArgumentException("종목 코드(이전 버전 예약 코드 제외)와 초기 가격·호가 단위를 확인해 주세요.");
         StockChange change=new StockChange(request.name(),request.developer(),request.genre(),request.reason());validateStock(change);lock(db);
+        new DerivativeBaskets(db).lock();
         if(count("SELECT COUNT(*) FROM stocks WHERE stock_code=?",code)>0)throw new IllegalArgumentException("이미 존재하는 종목 코드입니다.");
         db.update("INSERT INTO games(name,developer,genre) VALUES(?,?,?)",request.name().trim(),request.developer().trim(),request.genre().trim());
         long game=db.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
@@ -167,13 +170,15 @@ public class AdminOperationsService {
         db.update("INSERT INTO stock_price_history(stock_id,price) VALUES(?,?)",stock,request.initialPrice());
         db.update("INSERT INTO stock_protection_state(stock_id,day_reference,static_reference,dynamic_reference,last_trade_price) VALUES(?,?,?,?,?)",stock,request.initialPrice(),request.initialPrice(),request.initialPrice(),request.initialPrice());
         db.update("INSERT INTO market_price_metrics(stock_id,mark_price,hidden_fundamental,anchor_price) VALUES(?,?,?,?)",stock,request.initialPrice(),(double)request.initialPrice(),request.initialPrice());
+        new DerivativeBaskets(db).rebalance();
         var after=stock(code);changed();support.audit(actor,"STOCK_CREATE",code,request.reason(),Map.of(),after);return after;
     }
     @Transactional
     public Map<String,Object> updateStock(long actor,String code,StockChange request){
-        validateStock(request);lock(db);var before=stock(code);
+        validateStock(request);lock(db);new DerivativeBaskets(db).lock();var before=stock(code);
         db.update("UPDATE games SET name=?,developer=?,genre=? WHERE id=?",request.name().trim(),request.developer().trim(),request.genre().trim(),before.get("game_id"));
         db.update("INSERT INTO admin_stock_metadata(stock_id,name,developer,genre) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),developer=VALUES(developer),genre=VALUES(genre)",before.get("id"),request.name().trim(),request.developer().trim(),request.genre().trim());
+        new DerivativeBaskets(db).rebalance();
         var after=stock(code);support.audit(actor,"STOCK_UPDATE",code,request.reason(),before,after);changed();return after;
     }
     private void validateStock(StockChange r){text(r.name(),100,"종목명");text(r.developer(),100,"개발사");text(r.genre(),50,"장르");reason(r.reason());}
@@ -181,9 +186,10 @@ public class AdminOperationsService {
     @Transactional
     public Map<String,Object> stockState(long actor,String code,StockState request){
         reason(request.reason());if(request.state()==null||!Set.of("ACTIVE","HALTED","DELISTED").contains(request.state()))throw new IllegalArgumentException("상태는 ACTIVE, HALTED, DELISTED입니다.");
-        lock(db);var before=stock(code);
+        lock(db);new DerivativeBaskets(db).lock();var before=stock(code);
         db.update("INSERT INTO admin_stock_state(stock_id,state,reason) VALUES(?,?,?) ON DUPLICATE KEY UPDATE state=VALUES(state),reason=VALUES(reason),updated_at=CURRENT_TIMESTAMP(3)",before.get("id"),request.state(),request.reason());
         if(!"ACTIVE".equals(request.state()))cancelWhere("TRUE",((Number)before.get("id")).longValue());
+        new DerivativeBaskets(db).rebalance();
         var after=stock(code);changed();support.audit(actor,"STOCK_STATE",code,request.reason(),before,after);return after;
     }
 

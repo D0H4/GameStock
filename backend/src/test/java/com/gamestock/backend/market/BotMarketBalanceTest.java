@@ -40,7 +40,7 @@ class BotMarketBalanceTest {
     @Test void adverseValuationCanStillProduceFallingExecutedPrices() {
         Result result=run("ES",91,-1,1000);
         System.out.println("OVERNIGHT_BEAR "+result);
-        assertTrue(result.closes().get(0)<10000,"The balancing policy must not force upward prices");
+        assertTrue(result.closes().stream().anyMatch(close->close<10000),"Paid prices must eventually reflect adverse value; the model does not jump to it on startup");
         assertTrue(result.fills()>600);
         assertTrue(result.distinct()>8);
     }

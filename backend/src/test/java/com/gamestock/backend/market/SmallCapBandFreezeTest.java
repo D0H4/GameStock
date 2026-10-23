@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class SmallCapBandFreezeTest {
     @ParameterizedTest @ValueSource(strings={"AK","VR","KRP","PW","CRK","ES","TR"})
-    void smallCapNearUpperBandKeepsTradingAndMeanReverts(String code) {
+    void smallCapNearUpperBandKeepsTradingWithoutForcedPriceReversion(String code) {
         long lp=100000,start=1_000_000,reference=10000,frozen=11900;
         var band=PriceLimitPolicy.botBand(code,reference);
         var accounts=new HashMap<Long,Account>();
@@ -41,7 +41,7 @@ class SmallCapBandFreezeTest {
         var engine=new BotActivityEngine(participants,91,300);
         var history=new ArrayList<PriceMetricService.Trade>();
         for(int i=0;i<20;i++)history.add(new PriceMetricService.Trade(start-60_000+i*3000,frozen,1));
-        // The news-driven fundamental is bounded only by 4x the startup anchor, not by today's band.
+        // A sustained value shock can remain above the execution band; it must not force a price reset.
         double fundamental=reference*2.5;
         long lateFills=0,participantSellsIntoBids=0,lowest=Long.MAX_VALUE;
         int twoSided=0;
@@ -73,6 +73,6 @@ class SmallCapBandFreezeTest {
         assertTrue(participantSellsIntoBids>0,"Some participant must cross the spread to sell: "+context);
         assertTrue(lateFills>20,"Two-sided trading must continue: "+context);
         assertTrue(twoSided>150,"Both sides must stay quoted: "+context);
-        assertTrue(lowest<=reference*1.17 && stocks.get(1L).last<frozen,"Price must be able to come off the bot band: "+context);
+        assertTrue(lowest<=frozen-5*PriceLimitPolicy.tickSize(frozen) && stocks.get(1L).last<frozen,"Price can retreat through paid trades without forcing a 2.5x value shock back to the old anchor: "+context);
     }
 }

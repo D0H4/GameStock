@@ -113,6 +113,20 @@ class MarketConcurrencyTest {
         assertTrue(first.settlements(buyer).isEmpty());
     }
 
+    @Test void settlementResetBoundaryDoesNotRoundAMillisecondTradeIntoTheNextSecond() {
+        long buyer=user(1000000),seller=user(0);shares(seller,"UMA",20);
+        first.order(new OrderRequest("UMA","SELL",10,"LIMIT",10000L),seller);
+        first.order(new OrderRequest("UMA","BUY",1,"MARKET",null),buyer);
+        java.time.Instant second=java.time.Instant.parse("2030-01-01T00:00:00Z");
+        var filled=java.sql.Timestamp.from(second.plusMillis(800));
+        db.update("UPDATE settlements SET created_at=? WHERE buyer_id=?",filled,buyer);
+        assertEquals(filled,db.queryForObject("SELECT created_at FROM settlements WHERE buyer_id=?",java.sql.Timestamp.class,buyer));
+        db.update("UPDATE users SET account_reset_at=? WHERE id=?",java.sql.Timestamp.from(second.plusMillis(850)),buyer);
+        assertTrue(first.settlements(buyer).isEmpty());
+        db.update("UPDATE settlements SET created_at=? WHERE buyer_id=?",java.sql.Timestamp.from(second.plusMillis(900)),buyer);
+        assertEquals(1,first.settlements(buyer).size(),"Trades after the reset boundary must remain visible");
+    }
+
     @Test void cancelAllIncludesMoreThanOneHundredOrdersAndReleasesAllReservations() {
         long seller=user(0);shares(seller,"UMA",200);
         long stock=db.queryForObject("SELECT id FROM stocks WHERE stock_code='UMA'",Long.class);

@@ -5,6 +5,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /** Idempotent operations tables; called by the existing startup migration. */
 final class AdminSchema {
     private AdminSchema() { }
+    static void ensureStockState(JdbcTemplate db) {
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS admin_stock_state (
+              stock_id BIGINT PRIMARY KEY, state VARCHAR(16) NOT NULL,
+              reason VARCHAR(300) NOT NULL, updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+              FOREIGN KEY(stock_id) REFERENCES stocks(id))
+            """);
+    }
     static void ensure(JdbcTemplate db) {
         db.execute("""
             CREATE TABLE IF NOT EXISTS admin_permissions (
@@ -19,22 +27,8 @@ final class AdminSchema {
               created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
               INDEX ix_admin_audit_actor(admin_id,id), INDEX ix_admin_audit_action(action,id))
             """);
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS admin_runtime (
-              id INT PRIMARY KEY, bots_paused BOOLEAN NOT NULL DEFAULT FALSE,
-              market_paused BOOLEAN NOT NULL DEFAULT FALSE,
-              cadence_ms INT NULL, target_per_symbol INT NULL)
-            """);
-        db.update("INSERT IGNORE INTO admin_runtime(id) VALUES(1)");
-        addRuntimeColumn(db,"traders_paused","BOOLEAN NOT NULL DEFAULT FALSE AFTER bots_paused");
-        addRuntimeColumn(db,"trader_ramp_seconds","INT NULL");
-        addRuntimeColumn(db,"traders_resumed_at","TIMESTAMP(3) NULL");
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS admin_stock_state (
-              stock_id BIGINT PRIMARY KEY, state VARCHAR(16) NOT NULL,
-              reason VARCHAR(300) NOT NULL, updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-              FOREIGN KEY(stock_id) REFERENCES stocks(id))
-            """);
+        ensureRuntime(db);
+        ensureStockState(db);
         db.execute("""
             CREATE TABLE IF NOT EXISTS admin_stock_metadata (
               stock_id BIGINT PRIMARY KEY, name VARCHAR(100) NOT NULL,
@@ -113,6 +107,18 @@ final class AdminSchema {
     private static void addRuntimeColumn(JdbcTemplate db,String column,String definition){
         Integer count=db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='admin_runtime' AND column_name=?",Integer.class,column);
         if(count!=null&&count==0)db.execute("ALTER TABLE admin_runtime ADD COLUMN "+column+" "+definition);
+    }
+    static void ensureRuntime(JdbcTemplate db) {
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS admin_runtime (
+              id INT PRIMARY KEY, bots_paused BOOLEAN NOT NULL DEFAULT FALSE,
+              market_paused BOOLEAN NOT NULL DEFAULT FALSE,
+              cadence_ms INT NULL, target_per_symbol INT NULL)
+            """);
+        db.update("INSERT IGNORE INTO admin_runtime(id) VALUES(1)");
+        addRuntimeColumn(db,"traders_paused","BOOLEAN NOT NULL DEFAULT FALSE AFTER bots_paused");
+        addRuntimeColumn(db,"trader_ramp_seconds","INT NULL");
+        addRuntimeColumn(db,"traders_resumed_at","TIMESTAMP(3) NULL");
     }
     static void restoreStockMetadata(JdbcTemplate db){
         db.update("UPDATE games g JOIN stocks s ON s.game_id=g.id JOIN admin_stock_metadata a ON a.stock_id=s.id SET g.name=a.name,g.developer=a.developer,g.genre=a.genre");

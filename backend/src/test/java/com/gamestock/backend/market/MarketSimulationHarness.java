@@ -26,7 +26,6 @@ final class MarketSimulationHarness {
         Map<String,Double> startPct=Map.of();
         /** Hidden fundamental as a multiple of the listing reference. */
         Map<String,Double> fundamental=Map.of();
-        boolean pooled=true;
         long sessionMillis=600_000,seed=20261022L;
     }
 
@@ -57,7 +56,6 @@ final class MarketSimulationHarness {
         long start=1_761_000_000_000L;
         var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,start);
         for(long id:stocks.keySet())book.lpCashBudgets.put(id,LP_OPENING_BUDGET);
-        long[] lpReturned={0};
         long initialCash=accounts.values().stream().mapToLong(a->a.cash).sum();
         long initialTraderCash=initialCash-accounts.get(lp).cash;
         var engines=new ArrayList<BotActivityEngine>();
@@ -76,7 +74,6 @@ final class MarketSimulationHarness {
         int cadence=100;long warmup=60_000;
         for(long elapsed=0;elapsed<setup.sessionMillis;elapsed+=cadence) {
             long now=start+elapsed;
-            if(setup.pooled && elapsed%30_000==0)lpReturned[0]+=applyPool(book,accounts,participants,stocks);
             book.beginBatch(now);
             regimes.advance(now,genres);
             Map<Long,BotActivityEngine.Observation> observations=new HashMap<>();
@@ -115,11 +112,11 @@ final class MarketSimulationHarness {
             }
         }
         long reserved=accounts.keySet().stream().flatMap(id->stocks.keySet().stream().flatMap(s->book.working(id,s).stream())).mapToLong(o->o.reservedCash).sum();
-        assertEquals(initialCash,accounts.values().stream().mapToLong(a->a.cash).sum()+reserved,"Bot turnover and the pool conserve cash");
+        assertEquals(initialCash,accounts.values().stream().mapToLong(a->a.cash).sum()+reserved,"Executed turnover conserves cash without inter-account subsidies");
         assertTrue(accounts.values().stream().allMatch(a->a.cash>=0));
         long traderCash=participants.stream().mapToLong(p->accounts.get(p.id()).cash+book.working(p.id(),p.stock()).stream().mapToLong(o->o.reservedCash).sum()).sum();
         long lpReserved=stocks.keySet().stream().flatMap(s->book.working(lp,s).stream()).mapToLong(o->o.reservedCash).sum();
-        System.out.println("CAPITAL lpReturned="+lpReturned[0]+" traderCash="+traderCash+" of "+initialTraderCash+" lpCash="+(accounts.get(lp).cash+lpReserved));
+        System.out.println("CAPITAL traderCash="+traderCash+" of "+initialTraderCash+" lpCash="+(accounts.get(lp).cash+lpReserved));
         Map<String,Path> result=new LinkedHashMap<>();
         for(int s=0;s<CODES.length;s++) {
             String code=CODES[s];long[] v=stats.get(code);
@@ -130,34 +127,6 @@ final class MarketSimulationHarness {
         return result;
     }
 
-    /**
-     * The same plan MarketService applies under the market lock, applied to free cash only. The
-     * LP's net gain over its opening budgets returns to the pool, charged to the symbols that earned it.
-     */
-    static long applyPool(BatchOrderBook book,Map<Long,Account> accounts,List<BotActivityEngine.Participant> participants,Map<Long,Stock> stocks) {
-        var traders=participants.stream().map(p->new TraderCapitalPool.Trader(p.id(),accounts.get(p.id()).cash,stocks.get(p.stock()).last)).toList();
-        long net=0;Map<Long,Long> gains=new HashMap<>();
-        // Like MarketService's trade projection, count cash the LP has parked in resting bids as its own.
-        for(var e:book.lpCashBudgets.entrySet()) {
-            long reserved=book.working(LP,e.getKey()).stream().mapToLong(o->o.reservedCash).sum();
-            long gain=e.getValue()+reserved-LP_OPENING_BUDGET;net+=gain;if(gain>0)gains.put(e.getKey(),gain);
-        }
-        long external=Math.max(0,Math.min(net,accounts.get(LP).cash/2));
-        var deltas=TraderCapitalPool.plan(traders,external);
-        deltas.forEach((id,delta)->accounts.get(id).change(delta));
-        long returned=deltas.values().stream().mapToLong(Long::longValue).sum();
-        if(returned>0) {
-            accounts.get(LP).change(-returned);
-            long total=gains.values().stream().mapToLong(Long::longValue).sum(),charged=0;long largest=0,top=-1;
-            for(var e:gains.entrySet()) {
-                long share=(long)Math.floor(returned*(e.getValue()/(double)total));
-                book.lpCashBudgets.merge(e.getKey(),-share,Long::sum);charged+=share;
-                if(e.getValue()>top){top=e.getValue();largest=e.getKey();}
-            }
-            book.lpCashBudgets.merge(largest,-(returned-charged),Long::sum);
-        }
-        return returned;
-    }
     static final long LP_OPENING_BUDGET=6_666_666L;
 
     static void print(String label,Map<String,Path> paths) {

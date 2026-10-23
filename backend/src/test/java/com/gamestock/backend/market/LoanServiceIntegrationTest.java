@@ -6,6 +6,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -140,6 +142,37 @@ class LoanServiceIntegrationTest {
         Mockito.verify(orders,Mockito.times(2)).submit(Mockito.eq(human),request.capture());
         assertEquals(java.util.Set.of("GI","UMA"),request.getAllValues().stream().map(MarketModels.OrderRequest::stockCode).collect(java.util.stream.Collectors.toSet()));
         assertEquals(500_000,balance(human));
+    }
+
+    @ParameterizedTest @ValueSource(longs={0,500_000})
+    void recoveredOrRepaidAccountKeepsItsOpenOrders(long debt) {
+        db.update("UPDATE users SET cash=750000,loan_balance=? WHERE id=?",debt,human);
+        db.update("INSERT INTO orders(user_id,side,status,reserved_cash,reserved_quantity) VALUES(?,'BUY','OPEN',10000,0)",human);
+        Mockito.when(orders.cancel(Mockito.eq(human),Mockito.anyLong()))
+                .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
+        loans.liquidate(human);
+        Mockito.verifyNoInteractions(orders);
+        assertEquals(750000,cash(human));assertEquals(debt,balance(human));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,human));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM loan_ledger",Integer.class));
+    }
+
+    @Test void recoveryDuringCancellationPreservesTheRemainingOrders() {
+        db.update("UPDATE users SET cash=0,loan_balance=500000 WHERE id=?",human);
+        for(int i=0;i<2;i++)
+            db.update("INSERT INTO orders(user_id,side,status,reserved_cash,reserved_quantity) VALUES(?,'BUY','OPEN',100000,0)",human);
+        Mockito.when(orders.cancel(Mockito.eq(human),Mockito.anyLong())).thenAnswer(call->{
+            long id=call.getArgument(1);
+            db.update("UPDATE orders SET status='CANCELLED',reserved_cash=0 WHERE id=?",id);
+            // Refund plus a committed deposit while the asynchronous cancellation was running.
+            db.update("UPDATE users SET cash=700000 WHERE id=?",human);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        });
+        loans.liquidate(human);
+        Mockito.verify(orders,Mockito.times(1)).cancel(Mockito.eq(human),Mockito.anyLong());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='OPEN'",Integer.class,human));
+        assertEquals(700000,cash(human));assertEquals(500000,balance(human));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM loan_ledger",Integer.class));
     }
 
     @Test
