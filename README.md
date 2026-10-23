@@ -334,6 +334,8 @@
 
 ## 로컬 실행
 
+백엔드(8081)와 웹(5180)은 **동시에 실행해야 합니다.** 웹은 화면만 담당하고 시세·주문·로그인·잔고는 모두 백엔드 API에서 가져오므로, 둘 중 하나만 켜면 화면이 비거나 요청이 실패합니다. 아래 2번과 3번을 터미널 두 개에 나란히 띄워 두세요.
+
 ### 준비물
 
 - Node.js 20.19 이상 또는 22.12 이상, npm
@@ -351,7 +353,7 @@ SOURCE C:/path/to/GameStock/database/schema.sql;
 
 `schema.sql`은 초기 생성용입니다. 이후에 추가된 테이블·컬럼·인덱스·기본 종목은 백엔드가 시작할 때 스스로 보완합니다. 마이그레이션은 DB 잠금으로 보호되어 서버 두 대가 동시에 실행하지 않습니다.
 
-### 2. 백엔드
+### 2. 백엔드 (터미널 1)
 
 ```powershell
 $env:DB_URL = 'jdbc:mysql://localhost:3306/gamestock?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true'
@@ -366,9 +368,9 @@ mvn spring-boot:run
 
 API는 `http://localhost:8081`에서 열립니다. DB 세션은 UTC를 쓰고, 출석·미션·주간 집계 같은 서비스 날짜는 한국시간으로 계산합니다. `scripts/run-backend.ps1`은 루트 `.env`를 읽어 실행하지만, 특정 PC의 Java·Maven 경로에 맞춰져 있어서 다른 환경에서는 위 방법을 권장합니다.
 
-### 3. 웹
+### 3. 웹 (터미널 2)
 
-저장소 루트에서 실행합니다.
+백엔드를 띄운 **별도 터미널**에서 실행합니다. 저장소 루트에서 실행합니다.
 
 ```powershell
 Copy-Item .env.example .env.local
@@ -377,6 +379,8 @@ npm run dev
 ```
 
 `.env.local`의 `VITE_API_BASE_URL`을 `http://localhost:8081`로, `VITE_FIREBASE_*`를 내 Firebase 프로젝트 값으로 바꿉니다. 웹은 http://localhost:5180 에서 열립니다.
+
+두 서버가 함께 떠 있는지 확인합니다. http://localhost:5180 이 열리고 http://localhost:8081/api/health 가 `{"status":"ok",...}`를 반환해야 합니다. 웹만 켜져 있으면 화면은 뜨지만 시세·잔고·주문은 모두 실패합니다.
 
 ```powershell
 npm run typecheck   # 타입 검사

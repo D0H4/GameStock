@@ -12,7 +12,7 @@ import { indexValue, rate, shares, since, won } from "../market/format";
 import { marketOpinion, newsEffect, sessionRate, strengthRatio, type OpinionTone } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
-import { MARKET_PATH, NEWS_PATH, navigate, type Route } from "../router";
+import { API_DOCS_PATH, MARKET_PATH, NEWS_PATH, navigate, type Route } from "../router";
 import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
@@ -25,6 +25,7 @@ const NAV = [
   { label: "파생", to: "/derivatives", match: "derivatives" },
   { label: "뉴스", to: "/news", match: "news" },
   { label: "랭킹", to: "/ranking", match: "ranking" },
+  { label: "API", to: API_DOCS_PATH, match: "apiDocs" },
 ] as const;
 
 /** 테마와 새 화면 표시는 html에 단다. 포털로 뜨는 팝오버도 같은 색을 받아야 한다. */

@@ -1,0 +1,345 @@
+/*
+ * OpenAPI 문서 화면. 새 화면의 토큰과 부품만 쓴다.
+ * 색은 데이터에만: 상승/하락은 시세, 노랑은 거래 보호(선물 방향 주의) 하나.
+ */
+
+.nx-docs {
+  --nx-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.nx-docs-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0 4px;
+}
+
+.nx-docs-kicker {
+  margin: 0;
+  color: var(--ink-muted);
+  font-family: var(--nx-num);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.nx-docs-hero h1 { font-size: 34px; }
+
+.nx-docs-hero-copy {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.nx-docs-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.nx-docs-disclaimer { margin: 4px 0 0; color: var(--ink-muted); font-size: 12px; }
+
+.nx-docs-layout {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  align-items: start;
+  gap: 40px;
+  max-width: 1100px;
+}
+
+/* 목차는 문서가 길어도 화면에 남는다. */
+.nx-docs-toc {
+  position: sticky;
+  top: 76px;
+  align-self: start;
+  padding-left: 16px;
+  border-left: 1px solid var(--nx-line);
+}
+
+.nx-docs-toc-title { margin: 0 0 8px; color: var(--ink-muted); font-size: 11px; }
+.nx-docs-toc ol { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.nx-docs-toc a {
+  display: block;
+  padding: 5px 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.nx-docs-toc a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+.nx-docs-body { min-width: 0; max-width: 860px; }
+
+/* 긴 코드 줄이 문서 폭을 밀어내지 않게: 코드는 pre 안에서만 가로로 넘긴다. */
+.nx-docs-section,
+.nx-docs-steps,
+.nx-docs-steps > li,
+.nx-docs-examples,
+.nx-docs-two-col,
+.nx-docs-code,
+.nx-docs-code-body { min-width: 0; }
+
+.nx-docs-section {
+  padding: 28px 0;
+  border-top: 1px solid var(--nx-line);
+  scroll-margin-top: 76px;
+}
+.nx-docs-section:first-child { padding-top: 0; border-top: 0; }
+
+.nx-docs-section-title { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+.nx-docs-lede {
+  max-width: 68ch;
+  margin: 8px 0 18px;
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.nx-docs h3 { margin: 0 0 6px; font-size: 15px; font-weight: 500; line-height: 1.45; }
+
+/* ───────── 단계 ───────── */
+
+.nx-docs-steps { display: grid; gap: 22px; margin: 0; padding: 0; list-style: none; counter-reset: docs-step; }
+.nx-docs-steps > li { position: relative; padding-left: 40px; counter-increment: docs-step; }
+.nx-docs-steps > li::before {
+  content: counter(docs-step);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--nx-line);
+  border-radius: 50%;
+  color: var(--ink-muted);
+  font-family: var(--nx-num);
+  font-size: 12px;
+}
+.nx-docs-steps p { margin: 0 0 10px; color: var(--ink-muted); font-size: 14px; line-height: 1.7; }
+.nx-docs-steps.is-compact { gap: 10px; }
+.nx-docs-steps.is-compact > li { padding-left: 34px; color: var(--ink-muted); font-size: 14px; line-height: 1.7; }
+.nx-docs-steps.is-compact > li::before { width: 22px; height: 22px; }
+
+/* ───────── 코드 ───────── */
+
+.nx-docs-code { margin: 10px 0 0; }
+.nx-docs-code figcaption { margin-bottom: 6px; color: var(--ink-muted); font-size: 11px; }
+.nx-docs-code-body {
+  position: relative;
+  border: 1px solid var(--nx-line);
+  border-radius: 4px;
+  background: var(--nx-raised);
+}
+.nx-docs-code pre { margin: 0; padding: 14px 76px 14px 14px; overflow-x: auto; }
+.nx-docs-code code {
+  color: var(--ink);
+  font-family: var(--nx-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nx-docs-code-body > .nx-docs-copy { position: absolute; top: 8px; right: 8px; }
+
+.nx-docs-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--nx-line);
+  border-radius: 4px;
+  background: var(--nx-panel);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nx-docs-copy:hover { border-color: var(--ink-faint); color: var(--ink); }
+.nx-docs-copy:disabled { color: var(--ink-faint); cursor: not-allowed; }
+
+.nx-docs :not(pre) > code {
+  padding: 1px 4px;
+  border: 1px solid var(--nx-line);
+  border-radius: 3px;
+  background: var(--nx-raised);
+  color: var(--ink);
+  font-family: var(--nx-mono);
+  font-size: 0.92em;
+}
+
+/* ───────── 표 ───────── */
+
+.nx-docs-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+}
+.nx-docs-table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: 13px; }
+.nx-docs-table th {
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nx-line);
+  background: var(--nx-panel);
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.nx-docs-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--nx-line);
+  color: var(--ink);
+  line-height: 1.55;
+  vertical-align: top;
+}
+.nx-docs-table tbody tr:last-child td { border-bottom: 0; }
+.nx-docs-table tbody tr:hover td { background: var(--nx-tint); }
+.nx-docs-table code { white-space: nowrap; }
+
+.nx-docs-method {
+  display: inline-block;
+  min-width: 48px;
+  padding: 2px 6px;
+  border: 1px solid var(--nx-line);
+  border-radius: 4px;
+  color: var(--ink-muted);
+  font-family: var(--nx-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+.nx-docs-method.is-post { border-color: var(--ink-faint); color: var(--ink); }
+.nx-docs-method.is-delete { border-style: dashed; }
+
+.nx-docs-path { font-family: var(--nx-mono); font-size: 12px; }
+.nx-docs-auth { color: var(--ink-muted); font-size: 11px; white-space: nowrap; }
+
+/* ───────── 보조 블록 ───────── */
+
+.nx-docs-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 14px 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-line);
+}
+.nx-docs-facts > div { display: grid; justify-items: start; gap: 3px; padding: 12px 14px; background: var(--nx-panel); }
+.nx-docs-facts span { color: var(--ink-muted); font-size: 11px; }
+.nx-docs-facts strong,
+.nx-docs-facts code,
+.nx-docs-facts a { color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
+.nx-docs-facts a { text-decoration: underline; text-underline-offset: 3px; }
+.nx-docs-facts .nx-docs-copy { margin-top: 4px; }
+
+.nx-docs-callout {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-raised);
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.nx-docs-callout > strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; font-weight: 500; }
+.nx-docs-callout p { margin: 0 0 8px; }
+.nx-docs-callout p:last-child { margin-bottom: 0; }
+.nx-docs-callout ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; }
+.nx-docs-callout .nx-docs-code { margin-top: 10px; }
+.nx-docs-callout.is-guard { border-color: color-mix(in oklab, var(--amber) 45%, var(--nx-line)); background: var(--amber-wash); }
+.nx-docs-callout.is-guard > strong { color: var(--amber-deep); }
+.nx-docs-callout.is-guard p { color: var(--amber-deep); }
+
+.nx-docs-note-inline { margin: 10px 0 0; color: var(--ink-muted); font-size: 12.5px; line-height: 1.65; }
+.nx-docs-note-inline strong { color: var(--ink); font-weight: 500; }
+
+.nx-docs-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.nx-docs-two-col .nx-docs-code { margin: 0; }
+
+.nx-docs-examples { display: grid; gap: 10px; margin: 14px 0; }
+.nx-docs-examples .nx-docs-code { margin: 0; }
+
+.nx-docs-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.nx-docs-tool {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-panel);
+}
+.nx-docs-tool h3 { margin: 0; color: var(--ink-muted); font-size: 11px; }
+.nx-docs-tool code { color: var(--ink); font-family: var(--nx-mono); font-size: 12px; overflow-wrap: anywhere; }
+.nx-docs-tool p { margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
+.nx-docs-tool-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .nx-docs-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .nx-docs-toc {
+    position: static;
+    padding: 10px 0;
+    border-top: 1px solid var(--nx-line);
+    border-bottom: 1px solid var(--nx-line);
+    border-left: 0;
+  }
+  .nx-docs-toc ol { display: flex; flex-wrap: wrap; gap: 2px 16px; }
+  .nx-docs-toc a { padding: 3px 0; }
+  .nx-docs-tools { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .nx-docs-table-wrap { overflow: visible; border: 0; border-radius: 0; }
+  .nx-docs-table { display: block; min-width: 0; }
+  /* 헤더는 화면에서만 감추고 표 구조에는 남긴다. */
+  .nx-docs-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .nx-docs-table tbody { display: grid; gap: 8px; }
+  .nx-docs-table tr {
+    display: grid;
+    gap: 5px;
+    padding: 12px 14px;
+    border: 1px solid var(--nx-line);
+    border-radius: 8px;
+    background: var(--nx-panel);
+  }
+  .nx-docs-table td {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    line-height: 1.55;
+  }
+  .nx-docs-table td::before {
+    content: attr(data-label);
+    color: var(--ink-muted);
+    font-size: 11px;
+    line-height: 1.8;
+  }
+  .nx-docs-table tbody tr:hover td { background: transparent; }
+  .nx-docs-table td > * { justify-self: start; max-width: 100%; }
+  .nx-docs-table td code { white-space: normal; overflow-wrap: anywhere; }
+}
+
+@media (max-width: 640px) {
+  .nx-docs-hero h1 { font-size: 26px; }
+  .nx-docs-facts { grid-template-columns: minmax(0, 1fr); }
+  .nx-docs-two-col { grid-template-columns: minmax(0, 1fr); }
+  .nx-docs-steps > li { padding-left: 34px; }
+  .nx-docs-code pre { padding: 40px 14px 14px; }
+  .nx-docs-code-body > .nx-docs-copy { top: 6px; right: 6px; }
+}
