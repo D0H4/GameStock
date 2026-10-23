@@ -150,8 +150,9 @@ export function LoginCard({ method, next: nextProp, onDone, onMethodChange }: {
         await sendPasswordResetEmail(firebaseAuth, email.trim());
         setNotice("가입된 이메일이라면 비밀번호 재설정 메일을 보내드렸습니다. 받은편지함과 스팸함을 확인해 주세요.");
       } else if (method === "register") {
-        const validation = await validatePassword(firebaseAuth, password);
-        if (!validation.isValid) {
+        // Auth Emulator does not implement getPasswordPolicy; account creation still validates the password.
+        const validation = firebaseAuth.emulatorConfig ? null : await validatePassword(firebaseAuth, password);
+        if (validation && !validation.isValid) {
           const missing = [
             validation.meetsMinPasswordLength === false ? `${validation.passwordPolicy.customStrengthOptions.minPasswordLength}자 이상` : "",
             validation.containsLowercaseLetter === false ? "영문 소문자" : "",
