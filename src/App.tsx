@@ -14,6 +14,7 @@ import { Link } from "./components/Link";
 import { NxTabbar, NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
 import { HomeBoard } from "./next/HomeBoard";
 import { MarketBoard } from "./next/MarketBoard";
+import { HeatmapBoard } from "./next/HeatmapBoard";
 import { NxAdminPage } from "./next/pages/NxAdminPage";
 import { NxChargePage } from "./next/pages/NxChargePage";
 import { NxLoanPage } from "./next/pages/NxLoanPage";
@@ -44,6 +45,7 @@ function titleFor(route: Route): string {
     return `${label} · 슈엔증권`;
   }
   if (route.name === "etf") return `${route.ticker ? `${route.ticker} · ` : ""}ETF · 주식 · 슈엔증권`;
+  if (route.name === "heatmap") return "히트맵 · 슈엔증권";
   if (route.name === "news") return "뉴스 · 슈엔증권";
   if (route.name === "ranking") return "투자 랭킹 · 슈엔증권";
   if (route.name === "apiDocs") return "OpenAPI · 슈엔증권";
@@ -108,6 +110,7 @@ export default function App() {
         {route.name === "home" && <HomeBoard />}
         {terminal && <TradeTerminal ticker={route.name === "trade" || route.name === "market" ? route.ticker : null} />}
         {route.name === "market" && !terminal && <MarketBoard />}
+        {route.name === "heatmap" && <HeatmapBoard />}
         {route.name === "etf" && <DerivativesPage key={`etf:${route.ticker ?? "list"}`} tab="etf" etfTicker={route.ticker} />}
         {route.name === "derivatives" && <DerivativesPage key={route.tab} tab={route.tab} />}
         {route.name === "news" && <NxNewsPage id={route.id} />}

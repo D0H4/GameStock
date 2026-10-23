@@ -4,7 +4,7 @@
  * 모든 규칙을 data-app-shell="web" + 좁은 폭 조건 안에만 둔다.
  *
  * 화면 이동 메뉴는 엄지가 닿는 아래쪽 탭바(NxTabbar)로 내린다. 지금 화면은 탭 위쪽 핑크 판정선으로 표시한다.
- * 비워진 상단 바에는 넓은 화면처럼 종목 시세 띠를 흘린다.
+ * 비워진 상단 바에는 게임주 지수 한 줄을 둔다.
  */
 
 /* 아래 탭바는 휴대폰 웹에서만 보인다. 나머지 화면에서는 상단 바 메뉴가 같은 일을 한다. */
@@ -29,7 +29,7 @@ html[data-app-shell="web"] body {
     padding-bottom: var(--nx-tabbar);
   }
 
-  /* ───────── 상단 바: 로고 · 밝기 · 시세 띠 · 계정 (문서 순서 그대로) ───────── */
+  /* ───────── 상단 바: 로고 · 밝기 · 지수 · 계정 (문서 순서 그대로) ───────── */
 
   html[data-app-shell="web"][data-nx] .nx-top {
     gap: 0;
@@ -61,27 +61,18 @@ html[data-app-shell="web"] body {
     gap: 0;
   }
 
-  /* 지수는 홈 첫 화면에 크게 있으니 띠에서는 뺀다. */
-  html[data-app-shell="web"][data-nx] .nx-top .nx-index-item { display: none; }
-
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape {
-    padding-left: 0;
-    border-left: 0;
-    mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
-  }
+  /* 시세 띠는 홈으로 옮겼다. 비워진 상단 바에는 지수 한 줄만 둔다. */
+  html[data-app-shell="web"][data-nx] .nx-top .nx-index-item { gap: 6px; font-size: 13px; }
+  html[data-app-shell="web"][data-nx] .nx-top .nx-index-label { font-size: 12px; }
+  html[data-app-shell="web"][data-nx] .nx-top .nx-index-value { font-size: 14px; }
 
   /* 휴대폰에는 마우스 올림이 없다. 손가락이 닿는 순간 띠를 멈춰 누른 종목이 그대로 열리게 한다. */
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape:active .nx-tape-track { animation-play-state: paused; }
+  html[data-app-shell="web"][data-nx] .nx-tape:active .nx-tape-track { animation-play-state: paused; }
 
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-item {
-    gap: 6px;
-    padding-right: 20px;
-    line-height: 52px;
-  }
-
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-name { font-size: 12px; }
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-price { font-size: 13px; }
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape-rate { font-size: 12px; }
+  html[data-app-shell="web"][data-nx] .nx-tape-item { gap: 6px; padding-right: 20px; }
+  html[data-app-shell="web"][data-nx] .nx-tape-name { font-size: 12px; }
+  html[data-app-shell="web"][data-nx] .nx-tape-price { font-size: 13px; }
+  html[data-app-shell="web"][data-nx] .nx-tape-rate { font-size: 12px; }
 
   html[data-app-shell="web"][data-nx] .nx-top .profile-menu { flex: none; }
 
@@ -94,7 +85,7 @@ html[data-app-shell="web"] body {
     left: 0;
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     height: var(--nx-tabbar);
     padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     border-top: 1px solid var(--nx-line);
@@ -158,14 +149,9 @@ html[data-app-shell="web"] body {
 
   /* ───────── 홈 ───────── */
 
-  html[data-app-shell="web"][data-nx] .nx-hero-chart {
-    justify-self: stretch;
-    width: 100%;
-  }
+  html[data-app-shell="web"][data-nx] .nx-hero-value { font-size: 38px; }
 
-  html[data-app-shell="web"][data-nx] .nx-hero-value { font-size: 44px; }
-
-  html[data-app-shell="web"][data-nx] .nx-home-grid > .nx-panel { padding: 14px 14px; }
+  html[data-app-shell="web"][data-nx] .nx-home > .nx-panel { padding: 14px 14px; }
 
   /* ───────── 시장: 엄지로 누르는 칩·정렬·관심 버튼은 44px ───────── */
 

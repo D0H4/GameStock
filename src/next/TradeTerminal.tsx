@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
@@ -12,7 +12,7 @@ import { indexValue, rate, shares, since, won } from "../market/format";
 import { marketOpinion, newsEffect, sessionRate, strengthRatio, type OpinionTone } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
-import { API_DOCS_PATH, MARKET_PATH, NEWS_PATH, navigate, type Route } from "../router";
+import { API_DOCS_PATH, HEATMAP_PATH, MARKET_PATH, NEWS_PATH, navigate, type Route } from "../router";
 import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
@@ -22,6 +22,7 @@ import { MarketTabs } from "./MarketTabs";
 const NAV = [
   { label: "홈", to: "/", match: "home" },
   { label: "주식", to: "/market", match: "market" },
+  { label: "히트맵", to: HEATMAP_PATH, match: "heatmap" },
   { label: "파생", to: "/derivatives", match: "derivatives" },
   { label: "뉴스", to: "/news", match: "news" },
   { label: "랭킹", to: "/ranking", match: "ranking" },
@@ -44,31 +45,11 @@ export function useNxRoot(): void {
   }, [theme]);
 }
 
-/** 종목 하나가 띠를 한 칸 지나가는 시간(초). 종목 수에 곱해 전체 한 바퀴 시간을 정한다. */
-const TAPE_SECONDS_PER_ITEM = 4;
-
-/** 상단 바 시세 자리. 게임주 지수는 왼쪽에 고정하고, 전 종목 시세는 그 옆 띠로 흘려 보낸다. */
-function TopTicker() {
+/** 상단 바 지수 자리. 종목 시세 띠는 홈에 있다(PriceTape.tsx). */
+function TopIndex() {
   const snapshot = useMarket();
-  const codes = snapshot.codes.filter((code) => snapshot.quotes[code] && LISTING_BY_CODE[code]);
   const { value, prevClose } = snapshot.index;
   const change = value - prevClose;
-
-  /* 띠가 끊기지 않게 같은 목록을 두 번 잇는다. 두 번째 줄은 화면 읽기와 탭 이동에서 뺀다. */
-  const items = (copy: boolean) => codes.map((code) => {
-    const quote = snapshot.quotes[code];
-    const ratio = sessionRate(quote);
-    return (
-      <li key={code}>
-        <Link className="nx-tape-item" to={MARKET_PATH(code)} tabIndex={copy ? -1 : undefined}>
-          <span className="nx-tape-name">{LISTING_BY_CODE[code].name}</span>
-          <span className="nx-num nx-tape-price">{won(quote.price)}</span>
-          <span className={`nx-num nx-tape-rate ${ratio > 0 ? "is-up" : ratio < 0 ? "is-down" : ""}`}>{rate(ratio)}</span>
-        </Link>
-      </li>
-    );
-  });
-
   return (
     <div className="nx-index">
       <p className="nx-index-item">
@@ -76,14 +57,6 @@ function TopTicker() {
         <span className="nx-num nx-index-value">{indexValue(value)}</span>
         <span className={`nx-num ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>{rate(prevClose > 0 ? change / prevClose : 0)}</span>
       </p>
-      {codes.length > 0 && (
-        <div className="nx-tape" style={{ "--nx-tape-duration": `${codes.length * TAPE_SECONDS_PER_ITEM}s` } as CSSProperties}>
-          <div className="nx-tape-track">
-            <ul aria-label="종목별 현재 시세">{items(false)}</ul>
-            <ul aria-hidden="true">{items(true)}</ul>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -117,7 +90,7 @@ export function NxTopbar({ route }: { route: Route }) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" /></svg>
         )}
       </button>
-      <TopTicker />
+      <TopIndex />
       <ProfileMenu route={route} />
     </header>
   );

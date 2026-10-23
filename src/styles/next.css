@@ -207,7 +207,7 @@ html[data-nx] .price {
 .nx-nav-link:hover { color: var(--ink); }
 .nx-nav-link.is-active { color: var(--ink); box-shadow: inset 0 -2px var(--brand); }
 
-/* 지수는 고정, 그 오른쪽 남는 폭 전부가 종목 시세 띠. 프로필 버튼까지 이어진다. */
+/* 상단 바 지수. 남는 폭을 차지해 프로필 버튼을 오른쪽 끝으로 민다. */
 .nx-index {
   display: flex;
   flex: 1;
@@ -223,14 +223,13 @@ html[data-nx] .price {
 .nx-index-value { font-size: 16px; font-weight: 600; white-space: nowrap; }
 .nx-index-item > .nx-num:last-child { white-space: nowrap; }
 
-/* 시세 띠: 양 끝은 바탕색으로 흐려 잘린 글자가 보이지 않게 한다. 마우스나 포커스가 오면 멈춘다. */
+/* 홈의 시세 띠(PriceTape.tsx): 지수와 종목 순위 사이를 가로지른다.
+   양 끝은 바탕색으로 흐려 잘린 글자가 보이지 않게 한다. 마우스나 포커스가 오면 멈춘다. */
 .nx-tape {
-  flex: 1;
   min-width: 0;
-  height: 100%;
-  padding-left: 20px;
+  height: 48px;
   overflow: hidden;
-  border-left: 1px solid var(--nx-line);
+  border-block: 1px solid var(--nx-line);
   mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
 }
 
@@ -246,7 +245,7 @@ html[data-nx] .price {
   height: 100%;
   padding: 0 28px 0 0;
   color: var(--ink);
-  line-height: 56px;
+  line-height: 46px;
   text-decoration: none;
   white-space: nowrap;
 }
