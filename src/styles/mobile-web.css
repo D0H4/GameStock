@@ -61,18 +61,10 @@ html[data-app-shell="web"] body {
     gap: 0;
   }
 
-  /* 시세 띠는 홈으로 옮겼다. 비워진 상단 바에는 지수 한 줄만 둔다. */
+  /* 상단 바에는 지수 한 줄만 둔다. */
   html[data-app-shell="web"][data-nx] .nx-top .nx-index-item { gap: 6px; font-size: 13px; }
   html[data-app-shell="web"][data-nx] .nx-top .nx-index-label { font-size: 12px; }
   html[data-app-shell="web"][data-nx] .nx-top .nx-index-value { font-size: 14px; }
-
-  /* 휴대폰에는 마우스 올림이 없다. 손가락이 닿는 순간 띠를 멈춰 누른 종목이 그대로 열리게 한다. */
-  html[data-app-shell="web"][data-nx] .nx-tape:active .nx-tape-track { animation-play-state: paused; }
-
-  html[data-app-shell="web"][data-nx] .nx-tape-item { gap: 6px; padding-right: 20px; }
-  html[data-app-shell="web"][data-nx] .nx-tape-name { font-size: 12px; }
-  html[data-app-shell="web"][data-nx] .nx-tape-price { font-size: 13px; }
-  html[data-app-shell="web"][data-nx] .nx-tape-rate { font-size: 12px; }
 
   html[data-app-shell="web"][data-nx] .nx-top .profile-menu { flex: none; }
 
@@ -156,6 +148,11 @@ html[data-app-shell="web"] body {
   /* ───────── 시장: 엄지로 누르는 칩·정렬·관심 버튼은 44px ───────── */
 
   html[data-app-shell="web"][data-nx] .nx-chip { min-height: 44px; }
+  /* 세그먼트는 바깥 여백을 걷고 단추 자체를 44px로 키운다. 줄의 다른 부품과 높이가 같다. */
+  html[data-app-shell="web"][data-nx] .nx-seg { padding: 0; }
+  html[data-app-shell="web"][data-nx] .nx-seg button { min-height: 44px; }
+  html[data-app-shell="web"][data-nx] .market-chart-toolbar button { min-height: 44px; }
+  html[data-app-shell="web"][data-nx] .nx-docs-toc a { display: flex; align-items: center; min-height: 44px; padding-block: 0; }
   html[data-app-shell="web"][data-nx] .nx-sort { min-width: 44px; min-height: 44px; }
 
   /* 시장 표: 등락률까지 한 화면에, 종목 이름은 두 줄까지 */
@@ -205,9 +202,4 @@ html[data-app-shell="web"] body {
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-}
-
-/* 움직임을 줄인 사용자: 띠는 멈춰 있고 손으로 넘긴다. 흐르는 글자를 가리던 양 끝 흐림은 필요 없다. */
-@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
-  html[data-app-shell="web"][data-nx] .nx-top .nx-tape { mask-image: none; }
 }

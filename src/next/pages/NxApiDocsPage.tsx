@@ -87,7 +87,7 @@ const ERROR_ROWS = [
 ] as const;
 
 const TOC = [
-  ["quick-start", "빠른 시작"],
+  ["quick-start", "API 키 발급"],
   ["auth", "인증과 키"],
   ["quotes", "시세 조회"],
   ["orders", "주문하기"],
@@ -341,7 +341,6 @@ export function NxApiDocsPage() {
         </p>
         <div className="nx-docs-actions">
           <a className="nx-btn is-primary" href={SPEC_URL} target="_blank" rel="noreferrer">OpenAPI 명세 열기</a>
-          <a className="nx-btn" href="#quick-start">빠른 시작</a>
         </div>
         <p className="nx-docs-disclaimer">모의 투자 API입니다. 실제 화폐·금융상품과 관계없습니다.</p>
       </header>
@@ -362,7 +361,6 @@ export function NxApiDocsPage() {
             <p className="nx-docs-note-inline">기본 만기는 90일이며 계정당 활성 키는 최대 10개입니다. 관리자 계정은 조회 전용 키만 발급할 수 있습니다.</p>
             <h3>발급받은 키로 요청하기</h3>
             <p>개인 요청의 <code>Authorization</code> 헤더에 <code>Bearer &lt;발급받은 키&gt;</code>를 넣습니다. 시세는 인증 없이 조회할 수 있습니다.</p>
-            <CodeBlock title="전체 시세 조회" code={quoteCurl} />
           </Section>
 
           <Section id="auth" title="인증과 키" lede="키는 계정 단위로 관리합니다. 요청의 소유자는 항상 키에서 결정되며, 다른 사용자의 계좌를 지정할 수 없습니다.">

@@ -14,7 +14,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "all", label: "전체" }, { id: "up", label: "상승" }, { id: "down", label: "하락" },
 ];
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
-  { key: "name", label: "종목" },
+  { key: "name", label: "종목명" },
   { key: "price", label: "현재가" },
   { key: "changePercent", label: "등락률" },
   { key: "constituents", label: "구성 종목", className: "nx-etf-col-count" },
@@ -61,7 +61,8 @@ export function EtfBoard({ quotes, loading, error }: { quotes: EtfQuote[] | null
     <div className="nx-market nx-etf-market">
       <MarketTabs active="etf" />
       <header className="nx-page-head">
-        <h1 className="nx-page-title">ETF</h1>
+        {/* 주식·ETF 탭이 바로 위에 있어 제목은 화면 낭독기용으로만 둔다. */}
+        <h1 className="vh">ETF</h1>
         <div className="nx-filters" role="group" aria-label="ETF 필터">
           {VIEWS.map(item => <button key={item.id} type="button" className={`nx-chip${view === item.id ? " is-active" : ""}`}
             aria-pressed={view === item.id} onClick={() => setView(item.id)}>{item.label}</button>)}

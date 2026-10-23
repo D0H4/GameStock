@@ -37,8 +37,9 @@
 .nx-btn.is-wide { width: 100%; }
 .nx-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
+/* 한 줄에 함께 놓이는 조작 부품(버튼·세그먼트·칩·검색·선택 상자·체크·글자 버튼)은 모두 44px 높이로 맞춘다. */
 .nx-link-button {
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -58,7 +59,7 @@
 
 .nx-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--nx-raised); }
 .nx-seg button {
-  min-height: 34px;
+  min-height: 38px;
   padding: 0 14px;
   border: 0;
   border-radius: 6px;
@@ -95,7 +96,7 @@
 .nx-tabs .is-active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
 .nx-tab-count { padding: 0 6px; border-radius: 4px; background: var(--nx-raised); color: var(--ink); font-size: 11px; line-height: 18px; }
 
-.nx-check { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--ink-muted); font-size: 13px; cursor: pointer; }
+.nx-check { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--ink-muted); font-size: 13px; cursor: pointer; }
 .nx-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }
 
 /* ───────── 입력 ───────── */
@@ -113,7 +114,7 @@
 .nx-select {
   width: 100%;
   min-width: 0;
-  height: 48px;
+  height: 44px;
   padding: 0 14px;
   border: 1px solid var(--nx-line);
   border-radius: var(--nx-radius);
@@ -213,6 +214,8 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
 .nx-screen { display: flex; flex-direction: column; gap: 32px; }
 .nx-screen-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
 .nx-screen-sub { margin: 10px 0 0; max-width: 68ch; color: var(--ink-muted); font-size: 14px; line-height: 1.6; }
+/* 제목을 화면 낭독기용으로만 둔 화면은 설명이 첫 줄이 된다. */
+.vh + .nx-screen-sub { margin-top: 0; }
 
 .nx-figures { display: flex; flex-wrap: wrap; gap: 20px 48px; margin: 0; }
 .nx-figures div { display: grid; gap: 6px; }

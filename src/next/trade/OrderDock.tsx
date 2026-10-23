@@ -4,9 +4,8 @@ import { useLoginPrompt } from "../../lib/auth";
 const MOBILE_QUERY = "(max-width: 960px)";
 
 /** One ticket stays mounted across desktop, mobile and modal open/close. */
-export function OrderDock({ title, quote, open, onOpenChange, onAfterClose, children }: {
+export function OrderDock({ title, open, onOpenChange, onAfterClose, children }: {
   title: string;
-  quote: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAfterClose?: () => void;
@@ -50,7 +49,8 @@ export function OrderDock({ title, quote, open, onOpenChange, onAfterClose, chil
         <dialog ref={dialog} className="nx-order-dialog" aria-labelledby={heading} onClose={onAfterClose}
           onCancel={(event) => { event.preventDefault(); onOpenChange(false); }}>
           <header className="nx-order-heading">
-            <div><h2 id={heading}>{title} 주문</h2><span>모의 거래 · 원화</span></div>
+            {/* 넓은 화면에서는 바로 왼쪽에 종목 이름이 크게 있다. 이름은 화면을 덮는 휴대폰 주문창에서만 붙인다. */}
+            <div><h2 id={heading}>{mobile ? `${title} 주문` : "주문"}</h2></div>
             <button type="button" className="nx-dock-close" onClick={() => onOpenChange(false)} aria-label="주문창 닫기">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
@@ -58,8 +58,8 @@ export function OrderDock({ title, quote, open, onOpenChange, onAfterClose, chil
           {children}
         </dialog>
       </aside>
+      {/* 종목 이름과 현재가는 화면 머리와 주문창에 있다. 아래 고정 줄은 주문창을 여는 버튼 하나만 둔다. */}
       <div className="nx-mobile-order">
-        <div><span>{title}</span><strong className="nx-num">{quote}</strong></div>
         <button type="button" onClick={() => onOpenChange(true)} aria-haspopup="dialog">주문하기</button>
       </div>
     </>

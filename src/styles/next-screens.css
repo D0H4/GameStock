@@ -65,7 +65,7 @@ html[data-nx][data-nx-theme="light"] .nx-news-layout > .nx-panel { box-shadow: i
 .nx-article-game { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; text-decoration: none; }
 .nx-article-game:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nx-article-game .game-icon { width: 28px; height: 28px; border-radius: 6px; }
-/* 출처 표시: 게임사 공지는 브랜드 색 글자, 언론 기사는 무채색. 테두리는 둘 다 무채색. 목록과 본문이 같은 표시를 쓴다. */
+/* 출처 표시: 게임사 공지에만 붙는다. 브랜드 색 글자, 무채색 테두리. 목록과 본문이 같은 표시를 쓴다. */
 .nx-news-kind { flex: none; padding: 1px 7px; border: 1px solid var(--nx-line); border-radius: 4px; color: var(--ink-muted); font-size: 11px; line-height: 18px; white-space: nowrap; }
 .nx-news-kind.is-official { color: var(--brand-deep); }
 .nx-article-head .nx-icon-link { margin-left: auto; }
@@ -313,6 +313,8 @@ html[data-nx] .login-button.is-primary { border-color: var(--ink); background: v
 html[data-nx] .login-field input { border: 1px solid var(--nx-line); border-radius: 8px; background: var(--nx-raised); color: var(--ink); }
 html[data-nx] .login-field input:focus { border-color: var(--ink-muted); outline: 0; }
 html[data-nx] .login-close { border-radius: 8px; color: var(--ink-muted); }
+/* 웹에서는 바로 위 상단 바에 같은 로고가 있다. 상단 바가 없는 앱 화면에서만 카드에 로고를 둔다. */
+html[data-app-shell="web"][data-nx] .login-brand { display: none; }
 html[data-nx] .login-message.is-error { color: var(--up-deep); }
 
 /* ───────── 관리자 ───────── */

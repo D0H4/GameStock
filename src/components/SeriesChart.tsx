@@ -231,7 +231,8 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
       </div>
     </div>
     <div className="market-chart-readout" aria-live="off">
-      <div className="market-chart-symbol"><strong>{code}</strong><span>{mode === "candle" ? rangeOption.interval : "가격"}</span><span>KRW</span>
+      {/* 종목 코드는 화면 머리에, 통화는 차트 아래 줄에 이미 있다. 여기에는 봉 간격만 둔다. */}
+      <div className="market-chart-symbol"><span>{mode === "candle" ? rangeOption.interval : "가격"}</span>
         {selected && <time className="num" dateTime={new Date(selected.at).toISOString()}>{timeFormatter.format(selected.at)}</time>}
       </div>
       <dl className={`market-chart-ohlc num is-${selectedTone}`}>

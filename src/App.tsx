@@ -9,7 +9,7 @@ import { SuspensionNotice, useSuspendedUntil } from "./components/SuspensionNoti
 import { useProfile } from "./lib/profile";
 import { openLoginPrompt, useAuthUser } from "./lib/auth";
 import { LISTING_BY_CODE } from "./market/universe";
-import { ETF_PATH, MARKET_PATH, navigate, useRoute } from "./router";
+import { ETF_PATH, MARKET_PATH, PRIVATE_ROUTES, navigate, useRoute } from "./router";
 import { Link } from "./components/Link";
 import { NxTabbar, NxTopbar, TradeTerminal, useNxRoot } from "./next/TradeTerminal";
 import { HomeBoard } from "./next/HomeBoard";
@@ -28,8 +28,6 @@ import { NxTitlesPage } from "./next/pages/NxTitlesPage";
 import { NxAttendancePage } from "./next/pages/NxAttendancePage";
 import { DerivativesPage } from "./pages/DerivativesPage";
 import type { Route } from "./router";
-
-const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "attendance", "charge", "loan", "admin"]);
 
 function titleFor(route: Route): string {
   if (route.name === "market") {

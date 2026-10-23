@@ -226,6 +226,8 @@
 .nx-docs-facts a { color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
 .nx-docs-facts a { text-decoration: underline; text-underline-offset: 3px; }
 .nx-docs-facts .nx-docs-copy { margin-top: 4px; }
+/* 도구 칸에서는 옆의 작은 버튼(36px)과 높이를 맞춘다. */
+.nx-docs-tool-actions .nx-docs-copy { min-height: 36px; padding: 0 12px; border-radius: var(--nx-radius); font-size: 13px; }
 
 .nx-docs-callout {
   margin: 24px 0;

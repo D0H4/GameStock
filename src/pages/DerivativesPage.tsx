@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { Delta } from "../components/Delta";
 import { Link } from "../components/Link";
-import { MarketTabs } from "../next/MarketTabs";
 import { EtfBoard } from "../next/EtfBoard";
 import { requireSignIn } from "../lib/auth";
 import { useMarketApi } from "../market/MarketProvider";
@@ -63,7 +62,6 @@ export function DerivativesPage({ tab, etfTicker = null }: { tab: DerivativesTab
   if (isEtf && !etfTicker) return <EtfBoard quotes={snapshot?.etfs ?? null} loading={loading} error={error} />;
 
   if (isEtf && snapshot && !selectedEtf) return <div className="nx-market">
-    <MarketTabs active="etf" />
     <section className="nx-empty-state">
       <h1 className="nx-page-title">ETF를 찾을 수 없어요.</h1>
       <p>{etfTicker} 종목이 상장되어 있지 않습니다.</p>
@@ -73,10 +71,10 @@ export function DerivativesPage({ tab, etfTicker = null }: { tab: DerivativesTab
 
   return (
     <div className={`page-stack derivatives-page nx-product-page${isEtf ? " nx-etf-page" : ""}`}>
-      {isEtf && <MarketTabs active="etf" />}
       {!isEtf && <header className="derivatives-head">
         <div>
-          <h1>{label}</h1>
+          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
+          <h1 className="vh">{label}</h1>
           <p className="derivatives-lede">
             게임주 지수 선물과 옵션을 거래하세요. 모의 시장 · 24시간
           </p>

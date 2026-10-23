@@ -22,7 +22,7 @@ const VIEWS: { id: View; label: string }[] = [
 ];
 
 const COLUMNS: { key: SortKey; label: string; numeric: boolean; className?: string }[] = [
-  { key: "name", label: "종목", numeric: false },
+  { key: "name", label: "종목명", numeric: false },
   { key: "price", label: "현재가", numeric: true },
   { key: "rate", label: "등락률", numeric: true },
   { key: "volume", label: "거래량", numeric: true },
@@ -117,7 +117,8 @@ export function MarketBoard() {
     <div className="nx-market">
       <MarketTabs active="stocks" />
       <header className="nx-page-head">
-        <h1 className="nx-page-title">주식</h1>
+        {/* 주식·ETF 탭이 바로 위에 있어 제목은 화면 낭독기용으로만 둔다. */}
+        <h1 className="vh">주식</h1>
         <div className="nx-filters" role="group" aria-label="종목 필터">
           {VIEWS.map((item) => (
             <button key={item.id} type="button" className={`nx-chip${view === item.id ? " is-active" : ""}`} aria-pressed={view === item.id} onClick={() => setView(item.id)}>

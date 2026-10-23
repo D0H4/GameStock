@@ -80,7 +80,7 @@ export function EtfPanel({ selected, account, busy, onOpen, onClose, notice }: P
             </div>
           </div>
 
-          <OrderDock title={selected.name} quote={won(selected.price)} open={orderOpen} onOpenChange={setOrderOpen}>
+          <OrderDock title={selected.name} open={orderOpen} onOpenChange={setOrderOpen}>
           <form
             className="derivative-ticket nx-etf-ticket"
             aria-label="ETF 주문 입력" aria-busy={busy}

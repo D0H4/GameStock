@@ -16,11 +16,11 @@
 .nx-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-bottom: 32px; }
 .nx-page-title { margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; }
 
-.nx-more { color: var(--ink-muted); font-size: 13px; text-decoration: none; }
+.nx-more { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-muted); font-size: 13px; text-decoration: none; }
 .nx-more:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 .nx-chip {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   border: 1px solid var(--nx-line);
   border-radius: var(--nx-radius);
@@ -58,7 +58,7 @@ html[data-nx] .nx-search input:focus-visible { outline: none; }
 .nx-empty-state { display: grid; justify-items: center; gap: 8px; padding: 56px 16px; color: var(--ink-muted); }
 
 /* 로그인이 필요한 화면, 없는 주소. 막다른 곳이 아니라 다음 행동 두 개를 준다. */
-.nx-gate { display: grid; justify-items: start; gap: 4px; max-width: 560px; padding: 72px 24px; }
+.nx-gate { display: grid; justify-items: start; gap: 4px; max-width: 560px; padding: 72px 0; }
 .nx-gate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .nx-gate-actions .nx-btn { min-height: 44px; }
 
@@ -131,40 +131,25 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 .nx-board-list li { padding: 14px 0; border-top: 1px solid var(--nx-line); }
 .nx-board-list li:nth-child(5n + 1) { border-top: 0; }
 
+/* 줄마다 따로 그리는 격자라 숫자 칸은 폭을 고정해 위아래 줄의 가격·등락률 끝을 맞춘다. */
 .nx-board-row {
   display: grid;
-  grid-template-columns: 20px 28px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 20px 28px minmax(0, 1fr) 96px 80px;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-height: 44px;
   color: var(--ink);
   text-decoration: none;
 }
+.nx-board-list.is-cap .nx-board-row { grid-template-columns: 20px 28px minmax(0, 1fr) 72px 96px 80px; }
 
 .nx-board-row .game-icon { width: 28px; height: 28px; border-radius: 6px; }
 .nx-board-no { color: var(--ink-muted); font-size: 13px; text-align: right; }
 .nx-board-name { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .nx-board-row:hover .nx-board-name { text-decoration: underline; text-underline-offset: 3px; }
-.nx-board-cap { color: var(--ink-muted); font-size: 13px; }
-.nx-board-price { font-size: 14px; }
-.nx-board-rate { min-width: 72px; font-size: 15px; font-weight: 600; text-align: right; }
-
-.nx-board-news {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 0 68px;
-  color: var(--ink-muted);
-  font-size: 13px;
-  text-decoration: none;
-}
-
-.nx-board-news:hover .nx-board-headline { color: var(--ink); }
-.nx-board-news.is-none { display: block; font-size: 12px; }
-.nx-board-tag { color: var(--brand-deep); font-size: 12px; }
-.nx-board-headline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nx-board-when { color: var(--ink-muted); font-size: 11px; }
+.nx-board-cap { color: var(--ink-muted); font-size: 13px; text-align: right; }
+.nx-board-price { font-size: 14px; text-align: right; white-space: nowrap; }
+.nx-board-rate { font-size: 15px; font-weight: 600; text-align: right; white-space: nowrap; }
 
 /* ───────── 히트맵 ───────── */
 
@@ -306,5 +291,8 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
   .nx-rate-chart .nx-day-note { font-size: 11px; }
   /* 시가총액 탭은 가격 대신 시가총액을 남긴다. 그 탭이 보여 주려는 값이다. */
   .nx-board-list.is-cap .nx-board-price { display: none; }
-  .nx-board-news { min-height: 44px; margin: 0 0 0 30px; }
+  .nx-board-row,
+  .nx-board-list.is-cap .nx-board-row { grid-template-columns: 18px 28px minmax(0, 1fr) 72px 72px; gap: 8px; }
+  .nx-board-price,
+  .nx-board-rate { font-size: 14px; }
 }

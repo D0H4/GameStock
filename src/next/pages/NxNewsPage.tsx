@@ -22,9 +22,9 @@ function tone(value: number): string {
   return value > 0 ? "is-up" : value < 0 ? "is-down" : "";
 }
 
-/** 공식 공지와 언론 기사를 목록에서 한눈에 가르는 표시. */
+/** 게임사가 직접 올린 공지에만 붙는 표시. 대부분인 언론 기사에는 줄마다 같은 글자를 반복하지 않는다. */
 function SourceTag({ source }: { source: NewsSource }) {
-  return <span className={`nx-news-kind${source === "업데이트 노트" ? " is-official" : ""}`}>{source}</span>;
+  return source === "업데이트 노트" ? <span className="nx-news-kind is-official">{source}</span> : null;
 }
 
 function NewsRow({ item, selected, now }: { item: NewsItem; selected: boolean; now: number }) {
@@ -178,7 +178,8 @@ export function NxNewsPage({ id }: { id: number | null }) {
     <div className={`nx-screen nx-news-screen${id !== null ? " has-article" : ""}`}>
       <header className="nx-screen-head">
         <div>
-          <h1 className="nx-page-title">뉴스</h1>
+          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
+          <h1 className="vh">뉴스</h1>
           <p className="nx-screen-sub">게임 뉴스가 나온 뒤 그 종목 가격이 얼마나 움직였는지 함께 보여 줘요.</p>
         </div>
         <div className="nx-news-filters">

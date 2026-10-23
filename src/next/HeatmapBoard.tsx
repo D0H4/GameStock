@@ -105,7 +105,8 @@ export function HeatmapBoard() {
     <div className="nx-screen nx-heatmap-screen">
       <header className="nx-screen-head">
         <div>
-          <h1 className="nx-page-title">히트맵</h1>
+          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
+          <h1 className="vh">히트맵</h1>
           <p className="nx-screen-sub">칸 크기는 시가총액, 색이 짙을수록 많이 움직였어요. 5초마다 새로 그려요.</p>
         </div>
       </header>

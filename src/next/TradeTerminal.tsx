@@ -17,7 +17,6 @@ import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
 import { OrderDock } from "./trade/OrderDock";
-import { MarketTabs } from "./MarketTabs";
 
 const NAV = [
   { label: "홈", to: "/", match: "home" },
@@ -45,9 +44,13 @@ export function useNxRoot(): void {
   }, [theme]);
 }
 
-/** 상단 바 지수 자리. 종목 시세 띠는 홈에 있다(PriceTape.tsx). */
-function TopIndex() {
+/** 본문에 게임주 지수를 크게 띄우는 화면. 상단 바에는 같은 숫자를 다시 두지 않는다. */
+const INDEX_IN_BODY = new Set<Route["name"]>(["home", "login", "derivatives"]);
+
+/** 상단 바 지수 자리. 숫자가 빠져도 자리는 남아 밝기·로그인 버튼을 오른쪽 끝으로 민다. */
+function TopIndex({ route }: { route: Route }) {
   const snapshot = useMarket();
+  if (INDEX_IN_BODY.has(route.name)) return <div className="nx-index" />;
   const { value, prevClose } = snapshot.index;
   const change = value - prevClose;
   return (
@@ -83,7 +86,7 @@ export function NxTopbar({ route }: { route: Route }) {
           );
         })}
       </nav>
-      <TopIndex />
+      <TopIndex route={route} />
       <button type="button" className="nx-icon-button" onClick={toggleNxTheme} aria-label={theme === "dark" ? "밝은 화면으로 바꾸기" : "어두운 화면으로 바꾸기"}>
         {theme === "dark" ? (
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" /></svg>
@@ -435,7 +438,6 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
 
   return (
     <div className="nx-trade-page">
-      <MarketTabs active="stocks" />
       <div className="nx-trade-toolbar">
         <Link to="/market" className="nx-back-link"><span aria-hidden="true">←</span> 주식 목록</Link>
         <StockSelector current={code} />
@@ -460,7 +462,7 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
         </div>
         <p className="nx-trade-disclaimer">게임 뉴스와 모의 주문으로 형성되는 시세입니다. 실제 금융상품이나 투자 수익과 관계없습니다.</p>
         </div>
-        <OrderDock title={listing.name} quote={won(quote.price)} open={orderOpen} onOpenChange={setOrderOpen}
+        <OrderDock title={listing.name} open={orderOpen} onOpenChange={setOrderOpen}
           onAfterClose={() => { if (accountFocusPending.current) focusAccount(); }}>
           <NxOrderTicket
             key={code}

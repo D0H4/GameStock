@@ -78,8 +78,7 @@ html[data-nx] .nx-trade-page .chart-control-button.is-active { background: var(-
 .nx-order-dialog { position: static; box-sizing: border-box; width: 100%; max-width: none; max-height: calc(100dvh - 100px); margin: 0; padding: 28px; overflow: auto; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); background: var(--trade-surface); color: var(--ink); scrollbar-width: thin; }
 .nx-order-dialog:not([open]) { display: none; }
 .nx-order-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
-.nx-order-heading h2 { margin: 0 0 4px; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
-.nx-order-heading span { color: var(--ink-muted); font-size: 12px; }
+.nx-order-heading h2 { margin: 0; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
 .nx-dock-close { display: none; }
 .nx-mobile-order { display: none; }
 .nx-order-dialog .nx-ticket { gap: 18px; }
@@ -186,11 +185,8 @@ html[data-nx] .nx-order-dialog :is(.nx-seg, .nx-ticket-sides, .nx-ticket-submit:
   .nx-order-heading { margin-bottom: 18px; }
   .nx-dock-close { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 0; border-radius: 6px; background: var(--trade-field); color: var(--ink); cursor: pointer; }
   .nx-dock-close svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; fill: none; }
-  .nx-mobile-order { position: fixed; z-index: 25; bottom: var(--nx-tabbar, 0px); left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 24px; background: var(--trade-surface); }
-  .nx-mobile-order > div { display: grid; min-width: 0; gap: 3px; }
-  .nx-mobile-order span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-muted); font-size: 12px; }
-  .nx-mobile-order strong { font-size: 20px; }
-  .nx-mobile-order > button { flex: none; min-height: 48px; min-width: 148px; border: 0; border-radius: 6px; background: var(--brand); color: var(--brand-ink); font: inherit; cursor: pointer; transition: transform 140ms var(--trade-press); }
+  .nx-mobile-order { position: fixed; z-index: 25; bottom: var(--nx-tabbar, 0px); left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); display: flex; padding: 12px 24px; background: var(--trade-surface); }
+  .nx-mobile-order > button { flex: 1; min-height: 48px; border: 0; border-radius: 6px; background: var(--brand); color: var(--brand-ink); font: inherit; cursor: pointer; transition: transform 140ms var(--trade-press); }
   .nx-mobile-order > button:active { transform: translateY(1px); }
   .nx-trade-details { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
@@ -212,8 +208,7 @@ html[data-nx] .nx-order-dialog :is(.nx-seg, .nx-ticket-sides, .nx-ticket-submit:
   .nx-trade-details { grid-template-columns: minmax(0, 1fr); }
   .nx-trade-page .nx-ladder { grid-template-columns: 84px minmax(0, 1fr); }
   .nx-trade-page .nx-acct-bar { padding-inline: 4px; }
-  .nx-mobile-order { padding-inline: 16px; gap: 16px; }
-  .nx-mobile-order > button { min-width: 128px; }
+  .nx-mobile-order { padding-inline: 16px; }
   .nx-product-page .derivatives-head { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .nx-product-page .derivatives-head-index { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; padding: 0; }
   .nx-product-page .derivatives-head-index > strong { font-size: 20px; }

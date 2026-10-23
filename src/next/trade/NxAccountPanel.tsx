@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "../../components/Link";
 import { apiFetch } from "../../lib/api";
-import { openLoginPrompt, useAuthUser } from "../../lib/auth";
+import { useAuthUser } from "../../lib/auth";
 import { fillTime, won } from "../../market/format";
 import { useMarket } from "../../market/MarketProvider";
 import { LISTING_BY_CODE } from "../../market/universe";
@@ -117,11 +117,10 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
         {count === 0 ? (
           <div className="nx-acct-empty">
             <p>{emptyText}</p>
-            {ready && (!user ? (
-              <button type="button" className="nx-btn" onClick={() => openLoginPrompt()}>로그인</button>
-            ) : !(tab === "orders" && (loading || error)) && (
+            {/* 로그아웃 상태의 로그인 버튼은 상단 바에 하나만 둔다. */}
+            {ready && user && !(tab === "orders" && (loading || error)) && (
               <button type="button" className="nx-btn" onClick={onFocusTicket}>주문 입력하기</button>
-            ))}
+            )}
           </div>
         ) : (
           <table className="nx-grid-table">

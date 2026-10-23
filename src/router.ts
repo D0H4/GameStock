@@ -20,6 +20,9 @@ export type Route =
   | { name: "login"; method: LoginMethod }
   | { name: "notFound" };
 
+/** 로그인해야 열리는 화면. 로그아웃 상태에서는 본문이 로그인 안내로 바뀐다. */
+export const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "attendance", "charge", "loan", "admin"]);
+
 export type DerivativesTab = "futures" | "options";
 const DERIVATIVE_TABS: readonly DerivativesTab[] = ["futures", "options"];
 

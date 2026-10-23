@@ -7,14 +7,13 @@ import { PriceCell } from "../components/PriceCell";
 import { apiFetch } from "../lib/api";
 import { useNarrow, useWidth } from "../lib/useWidth";
 import { BUCKET_MS, bucketPrices, kstMidnight, type PricePoint } from "../market/dayHistory";
-import { compactWon, hm, indexValue, rate, signedNumber, since } from "../market/format";
+import { compactWon, hm, indexValue, rate, signedNumber } from "../market/format";
 import { useMarket } from "../market/MarketProvider";
 import { holdings, sessionRate, totals } from "../market/selectors";
 import type { MarketSnapshot } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
 import { useSteadySnapshot } from "../market/useSteadySnapshot";
-import { MARKET_PATH, NEWS_PATH } from "../router";
-import { PriceTape } from "./PriceTape";
+import { MARKET_PATH } from "../router";
 
 /*
  * 지수 기록 API가 없어서 서버 지수와 같은 식(종목별 기준가 대비 비율을 시가총액으로 가중 평균 × 1000)을
@@ -181,7 +180,6 @@ function RankBoard() {
   const [tab, setTab] = useState<RankTab>("movers");
   const current = RANK_TABS.find((item) => item.id === tab)!;
   const codes = rankCodes(snapshot, tab);
-  const now = snapshot.updatedAt || Date.now();
 
   /* 화살표, Home, End로 탭 사이를 옮긴다(WAI-ARIA 탭 패턴). */
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -212,7 +210,6 @@ function RankBoard() {
             {codes.map((code, index) => {
               const quote = snapshot.quotes[code];
               const ratio = sessionRate(quote);
-              const news = tab === "movers" ? snapshot.news.filter((item) => item.code === code).sort((a, b) => b.at - a.at)[0] : undefined;
               return (
                 <li key={code}>
                   <Link to={MARKET_PATH(code)} className="nx-board-row">
@@ -223,13 +220,6 @@ function RankBoard() {
                     <PriceCell className="nx-num nx-board-price" value={quote.price} />
                     <span className={`nx-num nx-board-rate ${ratio > 0 ? "is-up" : ratio < 0 ? "is-down" : ""}`}>{rate(ratio)}</span>
                   </Link>
-                  {tab === "movers" && (news ? (
-                    <Link to={NEWS_PATH(news.id)} className="nx-board-news">
-                      <span className="nx-board-tag">뉴스</span>
-                      <span className="nx-board-headline">{news.title}</span>
-                      <span className="nx-board-when">{since(news.at, now)}</span>
-                    </Link>
-                  ) : <p className="nx-board-news is-none">최근 관련 뉴스가 없어요</p>)}
                 </li>
               );
             })}
@@ -276,8 +266,6 @@ export function HomeBoard() {
         <IndexChart points={history.points} live={value} status={history.status} />
       </section>
 
-      <PriceTape />
-
       <RankBoard />
 
       {held.length > 0 && (
@@ -292,7 +280,7 @@ export function HomeBoard() {
 
       <section className="nx-panel nx-home-news" aria-labelledby="nx-news-title">
         <header className="nx-panel-head">
-          <h2 id="nx-news-title" className="nx-panel-title">뉴스</h2>
+          <h2 id="nx-news-title" className="nx-panel-title">최근 게임 뉴스</h2>
           <Link to="/news" className="nx-more">전체 보기</Link>
         </header>
         <NewsFeed limit={6} />

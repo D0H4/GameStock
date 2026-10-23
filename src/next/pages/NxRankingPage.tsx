@@ -140,7 +140,8 @@ export function NxRankingPage() {
     <div className="nx-screen nx-ranking-screen">
       <header className="nx-screen-head">
         <div>
-          <h1 className="nx-page-title">랭킹</h1>
+          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
+          <h1 className="vh">랭킹</h1>
           <p className="nx-screen-sub">실제 이용자끼리만 순위를 매겨요.</p>
         </div>
       </header>

@@ -216,12 +216,13 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
 
       {restriction && <p className="nx-ticket-guard" role="status"><strong>{restriction.label}</strong> {restriction.effect}</p>}
 
-      <dl className="nx-ticket-power">
+      {/* 로그아웃 상태에서는 아래 안내 줄이 로그인을 알려 준다. 같은 말을 여기서 다시 하지 않는다. */}
+      {user && <dl className="nx-ticket-power">
         <div>
           <dt>{side === "buy" ? "주문 가능 금액" : "매도 가능 수량"}</dt>
           <dd className="nx-num">
-            {user ? (side === "buy" ? won(snapshot.portfolio.cash) : `${maxQty.toLocaleString()}주`) : "로그인 필요"}
-            {user && side === "sell" && heldQty > maxQty && <>{" "}<span className="nx-ticket-held">보유 {heldQty.toLocaleString()}주</span></>}
+            {side === "buy" ? won(snapshot.portfolio.cash) : `${maxQty.toLocaleString()}주`}
+            {side === "sell" && heldQty > maxQty && <>{" "}<span className="nx-ticket-held">보유 {heldQty.toLocaleString()}주</span></>}
           </dd>
         </div>
         {user && side === "buy" && (loanRoom >= 10_000 || money.loan > 0) && (
@@ -233,7 +234,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
             </dd>
           </div>
         )}
-      </dl>
+      </dl>}
 
       <div className="nx-field">
         <div className="nx-field-head">
@@ -286,7 +287,7 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
       </dl>
 
       <button type="submit" className={`nx-ticket-submit is-${side}`} disabled={submitting || blocked || !valid || !affordable || (orderType === "LIMIT" && !validLimitPrice)}>
-        {submitting ? "주문 접수 중…" : profileLoading ? "권한 확인 중…" : adminTradingBlocked ? "관리자 계정 주문 불가" : blocked ? "거래 제한 중" : valid ? `${parsed.toLocaleString()}주 ${sideLabel}` : sideLabel}
+        {submitting ? "주문 접수 중…" : profileLoading ? "권한 확인 중…" : adminTradingBlocked ? "관리자 계정 주문 불가" : blocked ? "거래 제한 중" : valid ? `${parsed.toLocaleString()}주 ${sideLabel}` : `${sideLabel} 주문`}
       </button>
 
       <p className={`nx-ticket-status${result ? (result.ok ? " is-success" : " is-error") : ""}`} role="status" aria-live="polite">{statusMessage}</p>

@@ -6,7 +6,7 @@ import { firebaseAuth } from "../lib/firebase";
 import { openLoginPrompt, useAuthUser } from "../lib/auth";
 import { useProfile } from "../lib/profile";
 import { DEFAULT_PROFILE_AVATAR } from "../lib/profileAvatars";
-import { navigate, type Route } from "../router";
+import { PRIVATE_ROUTES, navigate, type Route } from "../router";
 
 const ITEMS = [
   {
@@ -92,6 +92,8 @@ export function ProfileMenu({ route }: { route: Route }) {
   if (!auth.ready) return <span className="profile-menu" aria-hidden="true" />;
 
   if (!auth.user) {
+    /* 본문이 이미 로그인 화면·로그인 안내인 곳에서는 같은 버튼을 두 번 보이지 않는다. 자리는 남겨 밝기 버튼이 움직이지 않게 한다. */
+    if (route.name === "login" || PRIVATE_ROUTES.has(route.name)) return <span className="profile-menu" aria-hidden="true" />;
     /* 홈에도 같은 자리에 둔다. 화면마다 상단 바 오른쪽이 비었다 찼다 하면 메뉴 위치를 다시 찾게 된다. */
     return (
       <div className="profile-menu">
