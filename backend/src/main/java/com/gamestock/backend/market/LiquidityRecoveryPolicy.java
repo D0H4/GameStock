@@ -20,8 +20,9 @@ final class LiquidityRecoveryPolicy {
     private final Map<Long,State> states=new HashMap<>();
     private final Map<Long,Long> lastFlowAt=new HashMap<>();
     private final Map<Long,String> lastFlowSide=new HashMap<>();
+    private final Map<Long,Long> lastFlowParticipant=new HashMap<>();
 
-    void reset(){states.clear();lastFlowAt.clear();lastFlowSide.clear();}
+    void reset(){states.clear();lastFlowAt.clear();lastFlowSide.clear();lastFlowParticipant.clear();}
 
     boolean stalled(Stock stock,long now) {
         State state=states.computeIfAbsent(stock.id,id->new State(stock.last,now));
@@ -92,48 +93,42 @@ final class LiquidityRecoveryPolicy {
 
     /**
      * Restart a book that has had no paid-price movement with one small, funded
-     * participant order against an existing LP quote. The order still goes
-     * through the ordinary matcher; this method never changes price or holdings
-     * directly and never creates a paired counterorder.
+     * participant order against the best quote when that quote is the LP's. The
+     * order still goes through the ordinary matcher; this method never changes
+     * price or holdings directly, never cancels a participant's working orders and
+     * never creates a paired counterorder. Failed attempts wait the same interval.
      */
-    boolean submitStalledFlow(BatchOrderBook book,BatchOrderBook.Stock stock,Collection<Long> participants,
+    boolean submitStalledFlow(BatchOrderBook book,BatchOrderBook.Stock stock,List<Long> participants,
                               long lp,long now) {
-        if(stock==null || !stock.continuous || stock.adminHalted || !stalled(stock,now))return false;
+        if(stock==null || !stock.continuous || stock.adminHalted || participants.isEmpty() || !stalled(stock,now))return false;
         long previous=lastFlowAt.getOrDefault(stock.id,Long.MIN_VALUE);
-        if(previous!=Long.MIN_VALUE) {
-            if(now<previous){lastFlowAt.remove(stock.id);lastFlowSide.remove(stock.id);}
-            else if(now-previous<STALLED_FLOW_INTERVAL)return false;
-        }
+        if(previous!=Long.MIN_VALUE && now>=previous && now-previous<STALLED_FLOW_INTERVAL)return false;
+        lastFlowAt.put(stock.id,now);
         double pressure=book.liquidityPressure(stock.id,lp);
         String previousSide=lastFlowSide.get(stock.id);
         String preferred=pressure>.2?"SELL":pressure<-.2?"BUY":"BUY".equals(previousSide)?"SELL":"BUY";
+        // Rotate the first candidate so one funded bot does not take every restart trade.
+        int first=participants.indexOf(lastFlowParticipant.getOrDefault(stock.id,Long.MIN_VALUE))+1;
         for(String side:List.of(preferred,preferred.equals("BUY")?"SELL":"BUY")) {
             String quoteSide=side.equals("BUY")?"SELL":"BUY";
-            Order quote=book.resting(stock.id,quoteSide).stream()
-                    .filter(order->order.user==lp&&!order.market()&&order.remaining>1
-                            &&botBand(stock.code,stock.reference).contains(order.price))
-                    .findFirst().orElse(null);
-            if(quote==null)continue;
+            // Only the best resting order guarantees the probe fills against the LP and nobody else.
+            Order quote=book.resting(stock.id,quoteSide).stream().findFirst().orElse(null);
+            if(quote==null || quote.user!=lp || quote.market() || quote.remaining<=1
+                    || !botBand(stock.code,stock.reference).contains(quote.price))continue;
             int quantity=Math.min(STALLED_FLOW_QUANTITY,quote.remaining-1);
-            if(quantity<=0)continue;
-            for(long participant:participants) {
+            long gross=quote.price*(long)quantity;
+            for(int i=0;i<participants.size();i++) {
+                long participant=participants.get((first+i)%participants.size());
                 Account account=book.accounts.get(participant);
                 if(account==null||!account.bot||account.liquidityProvider)continue;
-                List<Order> working=book.working(participant,stock.id);
-                long refundableCash=working.stream().mapToLong(order->order.reservedCash).sum();
-                int refundableShares=working.stream().mapToInt(order->order.reservedQuantity).sum();
-                long cashAfterCancel=account.cash+refundableCash;
-                int sharesAfterCancel=book.available(participant,stock.id)+refundableShares;
-                long gross=quote.price*(long)quantity;
-                if(side.equals("BUY") && cashAfterCancel<gross+BatchOrderBook.fee(gross)
-                        || side.equals("SELL") && sharesAfterCancel<quantity)continue;
-                working.forEach(book::cancel);
+                if(side.equals("BUY") && account.cash<gross+BatchOrderBook.fee(gross)
+                        || side.equals("SELL") && book.available(participant,stock.id)<quantity)continue;
                 int fillsBefore=book.fills.size();
                 Order submitted=book.submit(participant,stock.id,side,"LIMIT",quantity,quote.price,now,500);
-                if(book.fills.size()>fillsBefore) {
-                    lastFlowAt.put(stock.id,now);lastFlowSide.put(stock.id,side);return true;
-                }
                 if(submitted!=null&&submitted.status.equals("OPEN"))book.cancel(submitted);
+                if(book.fills.size()>fillsBefore) {
+                    lastFlowSide.put(stock.id,side);lastFlowParticipant.put(stock.id,participant);return true;
+                }
             }
         }
         return false;

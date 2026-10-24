@@ -29,7 +29,6 @@ final class BotActivityEngine {
     private final Map<Long,Long> due=new HashMap<>(),acquired=new HashMap<>();
     private final Map<Long,Integer> cursors=new HashMap<>();
     private final Map<Long,Double> credits=new HashMap<>();
-    private final Map<Long,List<Long>> participantIdsBySymbol=new HashMap<>();
     private final BotStrategyEngine strategies;
     private final BotOrderPolicy policy=new BotOrderPolicy();
     private final Random random;
@@ -48,7 +47,6 @@ final class BotActivityEngine {
         this.consensus=new MarketConsensusValue(seed^113);
         for(Participant p:participants){
             bySymbol.computeIfAbsent(p.stock(),k->new ArrayList<>()).add(p);
-            participantIdsBySymbol.computeIfAbsent(p.stock(),k->new ArrayList<>()).add(p.id());
             executionMemory.put(new ParticipantKey(p.id(),p.stock()),new ExecutionMemory());
         }
         for(var group:bySymbol.values())Collections.shuffle(group,random);
@@ -121,15 +119,12 @@ final class BotActivityEngine {
                 if(recovery.absorbWall(book,symbol,risk,lp,maker.fairValue(observation.metrics(),observation.fundamental()),now))
                     nextQuote.remove(stock);
             }
-            int recoveryFills=book.fills.size()-startFills;
-            recent+=recoveryFills;
             var marketMetrics=withBook(observation.metrics(),symbol.last,book.depth(stock));
             refreshLiquidity(book,symbol,observation,risk,lp,now,true);
-            int postRefreshFills=book.fills.size()-startFills;
-            recent+=postRefreshFills-recoveryFills;
-            recoveryFills=postRefreshFills;
-            if(stalled && recoveryFills==0 && recent==0 && traderShare>0
-                    && recovery.submitStalledFlow(book,symbol,participantIdsBySymbol.getOrDefault(stock,List.of()),lp,now)) {
+            // LP recovery and refresh fills stay out of `recent`; only the participant restart trade counts.
+            int lpFills=book.fills.size()-startFills;
+            if(stalled && lpFills==0 && recent==0 && (traderShare>=1 || traderShare>0 && random.nextDouble()<traderShare)
+                    && recovery.submitStalledFlow(book,symbol,group.stream().map(Participant::id).toList(),lp,now)) {
                 recent+=book.fills.size()-startFills;
                 rememberNewFills(book,now);
             }
