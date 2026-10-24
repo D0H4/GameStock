@@ -10,14 +10,18 @@ final class LiquidityRecoveryPolicy {
     static final int MAX_BOT_LEVEL_QUANTITY=100;
     static final int WALL_QUANTITY=200;
     private static final long RECOVERY_INTERVAL=1_000;
+    private static final long STALLED_FLOW_INTERVAL=5_000;
+    private static final int STALLED_FLOW_QUANTITY=2;
     private static final int MAX_DISPERSION_TICKS=8;
     private static final class State {
         long price,since,lastRecovery=Long.MIN_VALUE;
         State(long price,long now){this.price=price;this.since=now;}
     }
     private final Map<Long,State> states=new HashMap<>();
+    private final Map<Long,Long> lastFlowAt=new HashMap<>();
+    private final Map<Long,String> lastFlowSide=new HashMap<>();
 
-    void reset(){states.clear();}
+    void reset(){states.clear();lastFlowAt.clear();lastFlowSide.clear();}
 
     boolean stalled(Stock stock,long now) {
         State state=states.computeIfAbsent(stock.id,id->new State(stock.last,now));
@@ -84,5 +88,54 @@ final class LiquidityRecoveryPolicy {
         }
         if(withdrawn)state.lastRecovery=now;
         return withdrawn;
+    }
+
+    /**
+     * Restart a book that has had no paid-price movement with one small, funded
+     * participant order against an existing LP quote. The order still goes
+     * through the ordinary matcher; this method never changes price or holdings
+     * directly and never creates a paired counterorder.
+     */
+    boolean submitStalledFlow(BatchOrderBook book,BatchOrderBook.Stock stock,Collection<Long> participants,
+                              long lp,long now) {
+        if(stock==null || !stock.continuous || stock.adminHalted || !stalled(stock,now))return false;
+        long previous=lastFlowAt.getOrDefault(stock.id,Long.MIN_VALUE);
+        if(previous!=Long.MIN_VALUE) {
+            if(now<previous){lastFlowAt.remove(stock.id);lastFlowSide.remove(stock.id);}
+            else if(now-previous<STALLED_FLOW_INTERVAL)return false;
+        }
+        double pressure=book.liquidityPressure(stock.id,lp);
+        String previousSide=lastFlowSide.get(stock.id);
+        String preferred=pressure>.2?"SELL":pressure<-.2?"BUY":"BUY".equals(previousSide)?"SELL":"BUY";
+        for(String side:List.of(preferred,preferred.equals("BUY")?"SELL":"BUY")) {
+            String quoteSide=side.equals("BUY")?"SELL":"BUY";
+            Order quote=book.resting(stock.id,quoteSide).stream()
+                    .filter(order->order.user==lp&&!order.market()&&order.remaining>1
+                            &&botBand(stock.code,stock.reference).contains(order.price))
+                    .findFirst().orElse(null);
+            if(quote==null)continue;
+            int quantity=Math.min(STALLED_FLOW_QUANTITY,quote.remaining-1);
+            if(quantity<=0)continue;
+            for(long participant:participants) {
+                Account account=book.accounts.get(participant);
+                if(account==null||!account.bot||account.liquidityProvider)continue;
+                List<Order> working=book.working(participant,stock.id);
+                long refundableCash=working.stream().mapToLong(order->order.reservedCash).sum();
+                int refundableShares=working.stream().mapToInt(order->order.reservedQuantity).sum();
+                long cashAfterCancel=account.cash+refundableCash;
+                int sharesAfterCancel=book.available(participant,stock.id)+refundableShares;
+                long gross=quote.price*(long)quantity;
+                if(side.equals("BUY") && cashAfterCancel<gross+BatchOrderBook.fee(gross)
+                        || side.equals("SELL") && sharesAfterCancel<quantity)continue;
+                working.forEach(book::cancel);
+                int fillsBefore=book.fills.size();
+                Order submitted=book.submit(participant,stock.id,side,"LIMIT",quantity,quote.price,now,500);
+                if(book.fills.size()>fillsBefore) {
+                    lastFlowAt.put(stock.id,now);lastFlowSide.put(stock.id,side);return true;
+                }
+                if(submitted!=null&&submitted.status.equals("OPEN"))book.cancel(submitted);
+            }
+        }
+        return false;
     }
 }

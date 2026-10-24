@@ -96,6 +96,23 @@ class LiquidityRecoveryPolicyTest {
         assertFalse(policy.absorbWall(book,stock,risk(),1,10000,62000));assertTrue(book.fills.isEmpty());
     }
 
+    @Test void stalledFlowUsesFundedParticipantAgainstExistingLpQuote() {
+        var book=book();var policy=new LiquidityRecoveryPolicy();var stock=book.stocks.get(1L);
+        book.accounts.put(3L,new Account(3,5000000,false,true));
+        book.holdings.put(new PositionKey(3,1),new Holding(1000,1000,10000,0));
+        book.submit(1,1,"SELL","LIMIT",20,10000,0,100000);
+        book.submit(1,1,"BUY","LIMIT",20,9990,0,100000);
+        policy.stalled(stock,0);assertTrue(policy.stalled(stock,60000));
+        assertTrue(policy.submitStalledFlow(book,stock,List.of(3L),1L,60000));
+        assertEquals(1,book.fills.size());
+        var first=book.fills.get(0);
+        assertEquals(3,first.taker().user);assertEquals(1,first.maker().user);
+        assertFalse(policy.submitStalledFlow(book,stock,List.of(3L),1L,61000));
+        assertEquals(1,book.fills.size());
+        assertTrue(policy.submitStalledFlow(book,stock,List.of(3L),1L,65000));
+        assertEquals(2,book.fills.size());
+    }
+
     private long reserved(BatchOrderBook book) {
         return book.accounts.keySet().stream().flatMap(id->book.working(id,1).stream()).mapToLong(o->o.reservedCash).sum();
     }
