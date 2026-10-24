@@ -41,6 +41,8 @@ class BotLiquidityRecoveryTest {
         assertTrue(shares>=Math.max(512,target*4));
         var risk=new MarketMakerEngine.RiskBook(0,0,target,Math.max(1200,target*4),Math.max(1200,target*4)*10000L);
         var engine=new BotActivityEngine(participants,91+index,300);
+        // Large-cap flow traders size buys to their allocation need, down to one funded share.
+        int minimumBuy=StockMarketProfile.isLargeCap(code)?1:BotProfile.MIN_ORDER_SIZE;
         var history=new ArrayList<PriceMetricService.Trade>();
         long fills=0,lateFills=0,lpPurchases=0,largerOrders=0;
         int twoSided=0;
@@ -55,7 +57,7 @@ class BotLiquidityRecoveryTest {
             assertTrue(book.accepted.size()<=400,"Immediate replenishment must retain the two-pass order bound");
             for(var order:book.accepted)if(order.user!=lp) {
                 assertTrue(order.quantity<=10);
-                if(order.side.equals("BUY"))assertTrue(order.quantity>=5,"Unfunded minimum lots must not be submitted");
+                if(order.side.equals("BUY"))assertTrue(order.quantity>=minimumBuy,"Unfunded minimum lots must not be submitted");
                 if(order.quantity>=5)largerOrders++;
             }
             fills+=book.fills.size();
