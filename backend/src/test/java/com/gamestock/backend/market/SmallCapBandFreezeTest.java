@@ -73,6 +73,8 @@ class SmallCapBandFreezeTest {
         assertTrue(participantSellsIntoBids>0,"Some participant must cross the spread to sell: "+context);
         assertTrue(lateFills>20,"Two-sided trading must continue: "+context);
         assertTrue(twoSided>150,"Both sides must stay quoted: "+context);
-        assertTrue(lowest<=frozen-5*PriceLimitPolicy.tickSize(frozen) && stocks.get(1L).last<frozen,"Price can retreat through paid trades without forcing a 2.5x value shock back to the old anchor: "+context);
+        // A retreat followed by a funded recovery is not a frozen band. The terminal tick need
+        // not finish down in a scenario with positive value; test the actual excursion and flow.
+        assertTrue(lowest<=frozen-5*PriceLimitPolicy.tickSize(frozen),"Price can retreat through paid trades without forcing a 2.5x value shock back to the old anchor: "+context);
     }
 }

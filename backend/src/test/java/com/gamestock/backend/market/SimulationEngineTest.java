@@ -6,6 +6,113 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BotProfile.*;
 
 class SimulationEngineTest {
+    @Test void marketPacingSlowsOnlyCompressedLargeCapProfilesAndPreservesRisk() {
+        var profile=BotProfile.activePopulation(73,100).stream()
+                .filter(p->p.cancelSpeed()>10 && BotStrategyEngine.hasInventoryDemand(p)).findFirst().orElseThrow();
+        var paced=profile.forMarket("UMA");
+        assertEquals(profile.decisionInterval()*10,paced.decisionInterval());
+        assertEquals(profile.holdingTimePreference()*10,paced.holdingTimePreference());
+        assertEquals(profile.maxOrderSize(),paced.maxOrderSize());
+        assertEquals(profile.positionLimit(),paced.positionLimit());
+        assertEquals(profile.stopLoss(),paced.stopLoss());
+        assertSame(profile,profile.forMarket("TR"));
+        assertSame(paced,paced.forMarket("UMA"),"Pacing cannot compound when reusing a profile");
+    }
+
+    @Test void zeroAllocationStillAllowsSellingAnExistingPosition() {
+        var engine=new BotStrategyEngine(73);
+        boolean sold=false;
+        for(int i=0;i<100;i++) {
+            var decision=engine.decide(profile(Strategy.NOISE_RANDOM),history(0),neutral,
+                    new BotStrategyEngine.Position(3,0,10000,1000,0),10000,0,10,1,"UMA",10000);
+            assertTrue(decision.quantity()<=3);
+            if(decision.quantity()>0) {assertEquals("SELL",decision.side());sold=true;}
+        }
+        assertTrue(sold);
+    }
+
+    @Test void allocationOrdersCanUseSmallLotsWithoutOvershootingTheTarget() {
+        for(var position:List.of(new BotStrategyEngine.Position(5,1000000,10000,1000,8),
+                new BotStrategyEngine.Position(8,1000000,10000,1000,5))) {
+            var engine=new BotStrategyEngine(73);
+            boolean traded=false;
+            for(int i=0;i<100;i++) {
+                var decision=engine.decide(profile(Strategy.NOISE_RANDOM),history(0),neutral,
+                        position,10000,0,10,1,"UMA",10000);
+                assertTrue(decision.quantity()<=3,"A three-share need must not create a five-share round trip");
+                if(decision.quantity()>0) {
+                    traded=true;
+                    assertEquals(position.quantity()<position.targetQuantity()?"BUY":"SELL",decision.side());
+                }
+            }
+            assertTrue(traded,"A small funded allocation is executable instead of being discarded");
+        }
+    }
+
+    @Test void alternatingBidAskPrintsDoNotExpandQuoteRiskButRealMovesStillDo() {
+        var bounce=new ArrayList<PriceMetricService.Trade>();
+        var trend=new ArrayList<PriceMetricService.Trade>();
+        var jump=new ArrayList<PriceMetricService.Trade>();
+        for(int i=0;i<=60;i++) {
+            bounce.add(new PriceMetricService.Trade(i*1000L,i%2==0?9950:10050,20));
+            trend.add(new PriceMetricService.Trade(i*1000L,10000+i*10,20));
+            jump.add(new PriceMetricService.Trade(i*1000L,i<30?10000:10100,20));
+        }
+        var b=PriceMetricService.calculate(bounce,10000,9950,10050,100,100,60000);
+        var t=PriceMetricService.calculate(trend,10600,10590,10610,100,100,60000);
+        var j=PriceMetricService.calculate(jump,10100,10090,10110,100,100,60000);
+        assertTrue(b.volatility()<.0001,"A stationary spread must not feed back into a wider spread");
+        assertTrue(t.volatility()>.0008,"Directional execution risk must survive");
+        assertTrue(j.volatility()>.001,"An isolated real jump must survive");
+        assertEquals(10050,b.recentHigh());assertEquals(9950,b.recentLow());
+        assertEquals(9950,b.lastPrice(),"No filtering of actual prints");
+    }
+
+    @Test void shortExecutionAnchorUsesPaidNotionalAndExcludesOldTrades() {
+        var trades=List.of(new PriceMetricService.Trade(0,9000,1000),
+                new PriceMetricService.Trade(56000,10000,9),new PriceMetricService.Trade(60000,10100,1));
+        var m=PriceMetricService.calculate(trades,10100,10000,10100,100,100,60000);
+        assertEquals(10010,m.executionVwap());
+        assertTrue(m.referenceVwap()<9100);
+        assertEquals(10100,m.lastPrice());
+    }
+
+    @Test void allocationBotsDoNotCreateRoundTripsAtTheirTarget() {
+        for(Strategy strategy:List.of(Strategy.NOISE_FLOW,Strategy.NOISE_RANDOM,Strategy.LIQUIDITY_TAKER)) {
+            var engine=new BotStrategyEngine(17);
+            var p=profile(strategy);
+            for(int i=0;i<200;i++) {
+                var decision=engine.decide(p,history(0),neutral,
+                        new BotStrategyEngine.Position(5,1000000,10000,1000,5),10000,0,10,1,"UMA",10000);
+                assertEquals(0,decision.quantity(),strategy+" must wait for a new allocation need");
+            }
+        }
+    }
+
+    @Test void pressureMovesBothQuoteSidesWithinTheFundedBand() {
+        var maker=new MarketMakerEngine();
+        var risk=new MarketMakerEngine.RiskBook(5000000,400,400,1200,12000000);
+        var limits=new MarketMakerEngine.QuoteConstraints(8000,12000,0,0);
+        var buys=maker.quotes(history(0),neutral,risk,10,1,limits,10000,1);
+        var sells=maker.quotes(history(0),neutral,risk,10,1,limits,10000,-1);
+        for(String side:List.of("BUY","SELL")) {
+            double buyCenter=buys.stream().filter(q->q.side().equals(side)).mapToDouble(MarketMakerEngine.Quote::price).average().orElseThrow();
+            double sellCenter=sells.stream().filter(q->q.side().equals(side)).mapToDouble(MarketMakerEngine.Quote::price).average().orElseThrow();
+            assertTrue(buyCenter>sellCenter);
+            assertTrue(buyCenter-sellCenter<=40);
+        }
+    }
+
+    @Test void liquidIntradayValuationUsesConsensusAndPreservesSmallCapPolicy() {
+        var m=history(0);var p=profile(Strategy.SCALPER);
+        assertEquals(11500,BotStrategyEngine.valuationObservation(p,m,11000,12000,"UMA"));
+        assertEquals(BotStrategyEngine.valuationObservation(p,m,11000,12000),
+                BotStrategyEngine.valuationObservation(p,m,11000,12000,"TR"));
+        var momentum=profile(Strategy.FAST_MOMENTUM);
+        assertTrue(BotStrategyEngine.valuationObservation(momentum,m,10000,10200,"UMA")>
+                BotStrategyEngine.valuationObservation(momentum,m,10000,10000,"UMA"));
+    }
+
     @Test void desiredInventoryDoesNotExpireIntoAnAutomaticSale() {
         var engine=new BotStrategyEngine(1);
         var p=profile(Strategy.FAST_MOMENTUM);var m=history(0);

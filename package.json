@@ -7,6 +7,8 @@
     "node": ">=24.22.1"
   },
   "scripts": {
+    "simulate:chart": "node scripts/simulate-chart.mjs",
+    "simulate:chart:stats": "node scripts/analyze-chart.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "export": "node scripts/export-zip.mjs",
