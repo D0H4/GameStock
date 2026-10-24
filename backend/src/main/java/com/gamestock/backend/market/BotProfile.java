@@ -65,6 +65,16 @@ public record BotProfile(String username, String nickname, Strategy strategy,
         }
         return List.copyOf(profiles);
     }
+    /** Large-cap micro-lot participants use a twofold clock, not a twentyfold clock. */
+    BotProfile forMarket(String code) {
+        if(!StockMarketProfile.isLargeCap(code) || cancelSpeed<10)return this;
+        boolean flow=strategy.family()==Family.NOISE || strategy.family()==Family.AGGRESSIVE_LIQUIDITY_TAKER;
+        return new BotProfile(username,nickname,strategy,riskTolerance,aggression,confidenceThreshold,marketOrderProbability,
+                minOrderSize,maxOrderSize,flow?holdingTimePreference*10:holdingTimePreference,positionLimit,
+                stopLoss,takeProfit,decisionInterval*10,reactionLatency*10,
+                newsSensitivity,volatilityTolerance,inventoryAversion,buyBias,sellBias,noiseLevel,cancelSpeed/10,
+                valueError,confidence,entryThreshold,exitThreshold,updateSpeed);
+    }
     public BotProfile atSpeed(double timeScale) {
         if(timeScale<=0 || timeScale>1) throw new IllegalArgumentException("Bot time scale must be in (0,1]");
         return new BotProfile(username,nickname,strategy,riskTolerance,aggression,confidenceThreshold,marketOrderProbability,

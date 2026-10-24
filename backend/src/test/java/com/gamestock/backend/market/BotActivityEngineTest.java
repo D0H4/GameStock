@@ -6,6 +6,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BotActivityEngineTest {
+    @Test void largeCapLpUsesPassiveSkewForSmallInventoryChangesButStillReducesLargeRisk() {
+        for(int extra:List.of(20,200)) {
+            var accounts=new HashMap<Long,Account>();
+            accounts.put(1L,new Account(1,0,false,true));
+            accounts.put(2L,new Account(2,5000000,true,true));
+            accounts.put(3L,new Account(3,1000000,false,false));
+            var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,"UMA",10000,10000,10000,10000,true));
+            var holdings=new HashMap<PositionKey,Holding>();
+            holdings.put(new PositionKey(2,1),new Holding(500+extra,500+extra,10000,0));
+            var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,10000);
+            book.lpCashBudgets.put(1L,5000000L);
+            book.submit(3,1,"BUY","LIMIT",20,10000,10000,100000);
+            var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,BotProfile.defaults(1).get(2),1)),1,300);
+            engine.act(book,Map.of(1L,observation()),Map.of(1L,10000),10000,0,
+                    Map.of(1L,new MarketMakerEngine.RiskBook(5000000,500+extra,500,2000,20000000)),2);
+            assertEquals(extra>500/3,!book.fills.isEmpty(),"Small deviations must not trigger a reversing aggressive trade");
+        }
+    }
+
     @Test void stalledEngineTrimsParticipantConcentrationAndKeepsHumanOrdersAndTwoSidedLpQuotes() {
         var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(3,BotProfile.defaults(1).get(2),1)),1,300);
         var accounts=new HashMap<Long,Account>();

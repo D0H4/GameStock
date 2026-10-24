@@ -15,7 +15,7 @@ public final class PriceMetricService {
             double bestBid, double bestAsk, long bidDepth, long askDepth, double imbalance,
             double return5s, double return20s, double emaSlope, double recentHigh, double recentLow,
             double volumeTrend, double acceleration, double rsi, double zscore, double volatility, long volume,
-            double return60s, double return300s, double referenceVwap, long recentVolume) {
+            double return60s, double return300s, double referenceVwap, long recentVolume, double executionVwap) {
         public double spread() { return Math.max(0,bestAsk-bestBid); }
     }
     private final JdbcTemplate jdbc;
@@ -86,6 +86,7 @@ public final class PriceMetricService {
         double last=trades.isEmpty()?fallback:trades.get(trades.size()-1).price;
         double mid=bd>0&&ad>0?(bid+ask)/2:last;
         double micro=bd>0&&ad>0?(ask*bd+bid*ad)/(bd+ad):mid;
+        double executionNotional=0; long executionVolume=0;
         double notional=0, referenceNotional=0, mean=0, sq=0, gain=0, loss=0;
         double high=Double.NEGATIVE_INFINITY, low=Double.POSITIVE_INFINITY, p5=last, p20=last, retSq=0;
         double p60=last,p300=last;
@@ -100,6 +101,7 @@ public final class PriceMetricService {
             if(t.time<=now-300_000) p300=t.price;
             if(t.time<now-60_000) continue;
             notional+=t.notional; volume+=t.quantity;
+            if(t.time>=now-5_000 && t.time<=now) {executionNotional+=t.notional;executionVolume+=t.quantity;}
             if(t.time<now-5_000) { high=Math.max(high,t.high); low=Math.min(low,t.low); }
             if(t.time>=now-20_000) recentVol+=t.quantity; else if(t.time>=now-40_000) priorVol+=t.quantity;
         }
@@ -113,11 +115,16 @@ public final class PriceMetricService {
         while(cursor<trades.size() && trades.get(cursor).time<=windowStart) observed=trades.get(cursor++).price;
         double prev=observed, ema=observed, oldEma=observed;
         int n=0;
+        double previousReturn=0,lagProduct=0;
         for(long time=windowStart;time<=now;time+=1000) {
             while(cursor<trades.size() && trades.get(cursor).time<=time) observed=trades.get(cursor++).price;
             double p=observed;
             double d=p-prev; gain+=Math.max(d,0); loss+=Math.max(-d,0);
-            retSq+=Math.pow(d/Math.max(1,prev),2); mean+=p; sq+=p*p; n++;
+            double priceReturn=d/Math.max(1,prev);
+            retSq+=priceReturn*priceReturn;
+            if(n>1)lagProduct+=priceReturn*previousReturn;
+            previousReturn=priceReturn;
+            mean+=p; sq+=p*p; n++;
             oldEma=ema; ema=.2*p+.8*ema; prev=p;
         }
         if(!Double.isFinite(high)) high=last;
@@ -132,7 +139,21 @@ public final class PriceMetricService {
                 priorVol==0?0:clamp(recentVol/(double)priorVol-1,-1,3),
                 (last/Math.max(1,p5)-1)-(last/Math.max(1,p20)-1)/4,
                 gain+loss==0?50:100*gain/(gain+loss),sd<.001?0:(last-mean)/sd,
-                n<2?0:Math.sqrt(retSq/(n-1)),volume,last/Math.max(1,p60)-1,last/Math.max(1,p300)-1,
-                referenceVolume==0?last:referenceNotional/referenceVolume,recentVol);
+                executionVolatility(retSq,lagProduct,n-1),volume,last/Math.max(1,p60)-1,last/Math.max(1,p300)-1,
+                referenceVolume==0?last:referenceNotional/referenceVolume,recentVol,
+                executionVolume==0?last:executionNotional/executionVolume);
+    }
+
+    /**
+     * Adjacent transaction returns share a bid/ask bounce with opposite signs. Remove that
+     * negatively correlated component from quote risk, rather than widening the spread in
+     * response to our own spread. Positive serial correlation never adds risk beyond raw RV.
+     * Actual prints, OHLC, momentum and mark-price calculations remain untouched.
+     */
+    private static double executionVolatility(double squares,double lagProduct,int returns) {
+        if(returns<1)return 0;
+        double variance=squares/returns;
+        if(returns>=10)variance+=2*Math.min(0,lagProduct/(returns-1));
+        return Math.sqrt(Math.max(0,variance));
     }
 }

@@ -48,8 +48,10 @@ public final class MarketMakerEngine {
         double referenceVwap=positive(m.referenceVwap(),m.lastPrice());
         double boundedFundamental=positive(fundamental,referenceVwap);
         boundedFundamental=clamp(boundedFundamental,referenceVwap*.75,referenceVwap*1.25);
-        double raw=.40*boundedFundamental+.35*referenceVwap+.20*positive(m.vwap(),referenceVwap)
-                +.05*last;
+        // A ten-minute reference is a guardrail, not an inexhaustible wall. Let recent paid
+        // demand move the center while retaining a slower value component against isolated prints.
+        double raw=.40*boundedFundamental+.10*positive(m.vwap(),referenceVwap)
+                +.50*positive(m.executionVwap(),last);
         // Fundamental/VWAP drift must be earned through executions; never leave
         // a visible quote ladder more than half a percent from the last trade.
         return clamp(raw,last*.995,last*1.005);
@@ -75,12 +77,12 @@ public final class MarketMakerEngine {
     public double halfSpread(PriceMetricService.Metrics m,MarketEnvironment e,RiskBook risk,double tick) {
         double inventoryRisk=Math.min(2,Math.abs(risk.inventory()-risk.targetInventory())/(double)Math.max(1,risk.targetInventory()));
         // Volatility is per second. Quote risk covers the ~2s refresh horizon, not an entire price swing.
-        double riskSpread=tick+m.lastPrice()*(m.volatility()*Math.sqrt(2)*.6
+        double riskSpread=tick*.5+m.lastPrice()*(m.volatility()*Math.sqrt(2)*.6
                 +.0001*Math.max(0,e.volatilityMultiplier()-1)+.0001*inventoryRisk
                 +.00005*Math.abs(m.imbalance())+.0001*Math.max(0,1/e.liquidityMultiplier()-1));
         double spread=riskSpread*Math.sqrt(e.spreadMultiplier());
         // Riskier markets also reduce size. Do not manufacture gaps comparable to the 6% dynamic VI.
-        return clamp(spread,tick,Math.max(tick,m.lastPrice()*.004));
+        return clamp(spread,tick*.5,Math.max(tick,m.lastPrice()*.004));
     }
     public List<Quote> quotes(PriceMetricService.Metrics m,MarketEnvironment e,RiskBook risk,double tick,double scale,
                                QuoteConstraints constraints) {
@@ -92,10 +94,14 @@ public final class MarketMakerEngine {
         return quotes(m,e,risk,tick,scale,constraints,fundamental,m.imbalance());
     }
 
-    /** Positive pressure is buying demand: supply more asks, rather than add to the bids. */
+    /** Buying pressure raises the reservation price and offers more funded ask liquidity. */
     public List<Quote> quotes(PriceMetricService.Metrics m,MarketEnvironment e,RiskBook risk,double tick,double scale,
                               QuoteConstraints constraints,double fundamental,double pressure) {
         double reference=reservationPrice(m,risk,tick,fundamental),spread=halfSpread(m,e,risk,tick);
+        double flow=Double.isFinite(pressure)?clamp(pressure,-1,1):0;
+        // Reprice both sides together within two ticks. Demand must be allowed to consume
+        // a level instead of receiving unlimited replenishment at the old reservation price.
+        reference+=flow*Math.min(tick*2,spread);
         boolean emergency=m.bidDepth()<=4 || m.askDepth()<=4;
         if(emergency) spread=Math.min(spread*1.4,Math.max(tick,m.lastPrice()*.005));
         double step=Math.max(tick,spread*.5);
@@ -108,8 +114,10 @@ public final class MarketMakerEngine {
                 ? clamp(reference,bidRoom+spread,askRoom-spread) : (lower+upper)/2.0;
         long bidCeiling=constraints.bestExternalAsk()>0?Math.min(upper,previousTickPrice(constraints.bestExternalAsk())):upper;
         long askFloor=constraints.bestExternalBid()>0?Math.max(lower,nextTickPrice(constraints.bestExternalBid())):lower;
-        long bid=Math.min(floorToTick(reference-spread),bidCeiling);
-        long ask=Math.max(ceilToTick(reference+spread),askFloor);
+        // Round to the nearest legal level rather than adding a full outward tick on both
+        // sides. A quiet book can quote one tick wide; external price-time priority still wins.
+        long bid=Math.min(floorToTick(reference-spread+tick*.5),bidCeiling);
+        long ask=Math.max(Math.max(ceilToTick(reference+spread-tick*.5),askFloor),nextTickPrice(bid));
         // Offer the remaining shares progressively higher instead of selling the last lots at the touch.
         double shortfall=clamp((risk.targetInventory()-risk.inventory())/(double)Math.max(1,risk.targetInventory()),0,1);
         if(shortfall>0 && constraints.inventoryAskPremium()>0)
@@ -129,7 +137,6 @@ public final class MarketMakerEngine {
             int size=emergency?Math.max(EMERGENCY_QUOTE_SIZE,(int)Math.ceil(EMERGENCY_QUOTE_SIZE*scale))
                     :Math.max(EMERGENCY_QUOTE_SIZE,(int)(18*scale*e.liquidityMultiplier()*riskSize/(1+level*.5)));
             size=Math.min(32,size);
-            double flow=Double.isFinite(pressure)?clamp(pressure,-1,1):0;
             int bidSize=Math.min(32,(int)Math.ceil(size*(1+Math.max(0,-flow)*1.5)));
             int askSize=Math.min(32,(int)Math.ceil(size*(1+Math.max(0,flow)*1.5)));
             // Keep a fillable lot near the market while reserving one share for each deeper level.

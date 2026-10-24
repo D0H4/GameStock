@@ -43,9 +43,9 @@ final class MarketConsensusValue {
         });
     }
 
-    /** Daily volatility of the consensus; smaller, deeper companies diffuse more slowly. */
+    /** Daily diffusion calibration for the simulation, not a measured market volatility. */
     static double dailyVolatility(String code) {
-        return StockMarketProfile.isLargeCap(code) ? .05 : Math.min(.12,.05*StockMarketProfile.of(code).movementWeight());
+        return StockMarketProfile.isLargeCap(code) ? .10 : Math.min(.12,.05*StockMarketProfile.of(code).movementWeight());
     }
 
     /** Minutes for the consensus to close half the gap to a changed news target. */

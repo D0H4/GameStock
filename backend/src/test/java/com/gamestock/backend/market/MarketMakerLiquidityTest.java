@@ -57,6 +57,6 @@ class MarketMakerLiquidityTest {
 
     private PriceMetricService.Metrics metrics(double shortReturn) {
         return new PriceMetricService.Metrics(10000,10000,10000,10000,10000,9990,10010,0,0,0,
-                shortReturn,0,0,10000,10000,0,0,50,0,0,10,0,0,10000,10);
+                shortReturn,0,0,10000,10000,0,0,50,0,0,10,0,0,10000,10,10000);
     }
 }

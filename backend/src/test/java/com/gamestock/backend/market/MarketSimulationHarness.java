@@ -27,6 +27,9 @@ final class MarketSimulationHarness {
         /** Hidden fundamental as a multiple of the listing reference. */
         Map<String,Double> fundamental=Map.of();
         long sessionMillis=600_000,seed=20261022L;
+        Set<String> symbols=Set.of(CODES);
+        java.util.function.BiConsumer<Long,Fill> onFill=(time,fill) -> {};
+        java.util.function.BiConsumer<Long,Map<Long,MarketConsensusValue.Checkpoint>> onConsensus;
     }
 
     static Map<String,Path> run(Setup setup) {
@@ -37,6 +40,7 @@ final class MarketSimulationHarness {
         var targets=new HashMap<Long,Integer>();
         for(int s=0;s<CODES.length;s++) {
             long id=s+1;String code=CODES[s];
+            if(!setup.symbols.contains(code))continue;
             long price=Math.round(reference*(1+setup.startPct.getOrDefault(code,0.0)/100)/10)*10;
             stocks.put(id,new Stock(id,code,price,reference,reference,reference,true));
             int target=StockMarketProfile.initialLiquidityInventory(code,100);targets.put(id,target);
@@ -48,6 +52,7 @@ final class MarketSimulationHarness {
         var participants=new ArrayList<BotActivityEngine.Participant>();
         for(int i=0;i<profiles.size();i++) {
             long id=i+1,stock=i%CODES.length+1;String code=CODES[(int)stock-1];
+            if(!stocks.containsKey(stock))continue;
             boolean broke=setup.broke.contains(code),holds=code.equals("AK")&&broke||!broke&&i%2==0;
             accounts.put(id,new Account(id,broke?0:1_000_000,false,true));
             if(holds){holdings.put(new PositionKey(id,stock),new Holding(10,10,reference,0));stocks.get(stock).circulatingShares+=10;}
@@ -88,8 +93,11 @@ final class MarketSimulationHarness {
                 observations.put(symbol.id,new BotActivityEngine.Observation(metrics,environment,fundamental,0,StockMarketProfile.liquidityScale(symbol.code,.65)));
             }
             for(var engine:engines)engine.microBatches(book,observations,Map.of(),now,cadence,risks,lp,300);
+            if(setup.onConsensus!=null && elapsed%1000==0)
+                for(var engine:engines)setup.onConsensus.accept(elapsed,engine.consensusCheckpoint());
             Map<Long,long[]> batch=new HashMap<>();
             for(Fill fill:book.fills) {
+                setup.onFill.accept(elapsed,fill);
                 long[] b=batch.computeIfAbsent(fill.buy().stock,k->new long[]{0,0,0,Long.MAX_VALUE,0});
                 b[0]++;b[1]+=fill.quantity();b[2]+=(long)fill.price()*fill.quantity();
                 b[3]=Math.min(b[3],fill.price());b[4]=Math.max(b[4],fill.price());
@@ -114,12 +122,18 @@ final class MarketSimulationHarness {
         long reserved=accounts.keySet().stream().flatMap(id->stocks.keySet().stream().flatMap(s->book.working(id,s).stream())).mapToLong(o->o.reservedCash).sum();
         assertEquals(initialCash,accounts.values().stream().mapToLong(a->a.cash).sum()+reserved,"Executed turnover conserves cash without inter-account subsidies");
         assertTrue(accounts.values().stream().allMatch(a->a.cash>=0));
+        assertTrue(holdings.values().stream().allMatch(h->h.quantity()>=0));
+        for(Stock symbol:stocks.values()) {
+            long shares=holdings.entrySet().stream().filter(e->e.getKey().stock()==symbol.id).mapToLong(e->e.getValue().quantity()).sum();
+            assertEquals(symbol.circulatingShares,shares,"Shares reconcile to recorded issuance for "+symbol.code);
+        }
         long traderCash=participants.stream().mapToLong(p->accounts.get(p.id()).cash+book.working(p.id(),p.stock()).stream().mapToLong(o->o.reservedCash).sum()).sum();
         long lpReserved=stocks.keySet().stream().flatMap(s->book.working(lp,s).stream()).mapToLong(o->o.reservedCash).sum();
         System.out.println("CAPITAL traderCash="+traderCash+" of "+initialTraderCash+" lpCash="+(accounts.get(lp).cash+lpReserved));
         Map<String,Path> result=new LinkedHashMap<>();
         for(int s=0;s<CODES.length;s++) {
             String code=CODES[s];long[] v=stats.get(code);
+            if(!setup.symbols.contains(code))continue;
             double low=v[3]==Long.MAX_VALUE?0:(v[3]/(double)reference-1)*100,high=v[4]==0?0:(v[4]/(double)reference-1)*100;
             result.put(code,new Path(v[0],v[2],low,high,(stocks.get(s+1L).last/(double)reference-1)*100,distinct.get(code).size(),
                     v[5]==0?0:v[6]/(double)v[5],v[5]==0?0:v[7]/(double)v[5]));
