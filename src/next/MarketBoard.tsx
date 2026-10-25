@@ -144,7 +144,7 @@ export function MarketBoard() {
       <MarketTabs active="stocks" />
       <header className="nx-page-head nx-market-toolbar">
         <h1 className="vh">주식</h1>
-        <div className="nx-text-tabs" role="group" aria-label="종목 필터">
+        <div className="nx-filter-chips" role="group" aria-label="종목 필터">
           {VIEWS.map((item) => (
             <button key={item.id} type="button" className={view === item.id ? "is-active" : undefined} aria-pressed={view === item.id} onClick={() => setView(item.id)}>
               <span className="nx-bold-reserve" data-label={item.label}>{item.label}</span><span className="nx-text-tab-count nx-num">{counts[item.id]}</span>

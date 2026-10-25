@@ -157,6 +157,8 @@ function IndexChart({ points, live, status }: { points: number[]; live: number; 
 const RANK_LIMIT = 10;
 
 type RankTab = "movers" | "cap" | "gainers" | "losers";
+// 화면을 오가며 다시 마운트돼도 현재 접속 중 선택한 순위를 유지한다.
+let lastRankTab: RankTab = "movers";
 const RANK_TABS: ReadonlyArray<{ id: RankTab; label: string; empty: string }> = [
   { id: "movers", label: "많이 움직인 종목", empty: "아직 체결된 종목이 없어요." },
   { id: "cap", label: "시가총액 순위", empty: "시가총액이 잡힌 종목이 아직 없어요." },
@@ -178,7 +180,11 @@ function rankCodes(snapshot: MarketSnapshot, tab: RankTab): string[] {
 /** 순위 표는 5초마다 한꺼번에 바뀐다. 체결마다 줄이 자리를 바꾸면 누르려던 종목이 도망간다. */
 function RankBoard() {
   const snapshot = useSteadySnapshot();
-  const [tab, setTab] = useState<RankTab>("movers");
+  const [tab, updateTab] = useState<RankTab>(() => lastRankTab);
+  const setTab = (next: RankTab) => {
+    lastRankTab = next;
+    updateTab(next);
+  };
   const current = RANK_TABS.find((item) => item.id === tab)!;
   const codes = rankCodes(snapshot, tab);
 
