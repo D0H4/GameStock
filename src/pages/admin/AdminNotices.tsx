@@ -3,7 +3,7 @@ import { Panel } from "../../components/Panel";
 import { SiteNoticeContent } from "../../components/SiteNoticeDialog";
 import { apiFetch } from "../../lib/api";
 import { joinNoticeCode, noticeItem, splitNoticeCode } from "../../notice";
-import { adminTime, num, type Row } from "./adminShared";
+import { adminTime, num, toInstant, toLocalInput, type Row } from "./adminShared";
 
 type Draft = { title: string; body: string; code: string; published: boolean; startsAt: string; endsAt: string };
 type State = "live" | "scheduled" | "ended" | "hidden";
@@ -11,15 +11,6 @@ type State = "live" | "scheduled" | "ended" | "hidden";
 const EMPTY: Draft = { title: "", body: "", code: "", published: true, startsAt: "", endsAt: "" };
 const STATE_LABEL: Record<State, string> = { live: "게시 중", scheduled: "예약", ended: "종료", hidden: "숨김" };
 
-/** 서버 시각 → datetime-local 값(한국 시간). */
-function toLocalInput(value: unknown) {
-  if (!value) return "";
-  const date = new Date(typeof value === "number" ? value : String(value));
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16).replace(" ", "T");
-}
-/** datetime-local 값(한국 시간) → ISO. 비어 있으면 null. */
-const toInstant = (value: string) => (value ? new Date(`${value}:00+09:00`).toISOString() : null);
 
 function stateOf(published: boolean, startsAt: unknown, endsAt: unknown, now = Date.now()): State {
   if (!published) return "hidden";

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Panel } from "../../components/Panel";
 import { apiFetch } from "../../lib/api";
-import { adminTime, count, num, type Row } from "./adminShared";
+import { adminTime, count, num, toInstant, toLocalInput, type Row } from "./adminShared";
 
 type CatalogTitle = { id: string; name: string; category: string };
 type Draft = { code: string; rewardCash: string; titleIds: string[]; maxUses: string; startsAt: string; endsAt: string; active: boolean; memo: string };
@@ -13,15 +13,6 @@ const STATE_LABEL: Record<State, string> = { live: "사용 가능", scheduled: "
 const CATEGORY_ORDER = ["특별", "자산", "수익률", "보유", "거래", "활동", "수집"];
 const MAX_REWARD_CASH = 100_000_000;
 
-/** 서버 시각 → datetime-local 값(한국 시간). */
-function toLocalInput(value: unknown) {
-  if (!value) return "";
-  const date = new Date(typeof value === "number" ? value : String(value));
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16).replace(" ", "T");
-}
-/** datetime-local 값(한국 시간) → ISO. 비어 있으면 null. */
-const toInstant = (value: string) => (value ? new Date(`${value}:00+09:00`).toISOString() : null);
 const digits = (value: string) => value.replace(/[^0-9]/g, "");
 const won = (value: number) => `${count(value)}원`;
 

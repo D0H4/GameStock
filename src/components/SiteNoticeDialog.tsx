@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useSiteNotice, type SiteNotice, type SiteNoticeItem } from "../notice";
+import { useModalDialog } from "../lib/useModalDialog";
 
 const SEEN_KEY = "gamestock-site-notice-seen";
 
@@ -41,20 +42,7 @@ export function SiteNoticeContent({ items, onClose, titleId = "site-notice-title
 }
 
 function NoticeDialog({ notice, onClose }: { notice: SiteNotice; onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    element.showModal();
-    return () => {
-      element.close();
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus({ preventScroll: true });
-    };
-  }, []);
+  const dialog = useModalDialog();
 
   return createPortal(
     <dialog ref={dialog} className="circuit-notice site-notice" aria-labelledby="site-notice-title"

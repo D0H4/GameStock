@@ -20,6 +20,10 @@ interface Selection {
 
 const CYCLE_IDS = ["10M", "1H", "SUN"] as const;
 
+const sameContract = (contract: OptionContract, selection: Selection) =>
+  contract.cycleId === selection.cycleId && contract.type === selection.type
+  && contract.strike === selection.strike && contract.expiryEpoch === selection.expiryEpoch;
+
 /** 10분(0DTE)·1시간(주간)·일요일 18:00(월간) 만기 옵션 체인. */
 export function OptionsPanel({ snapshot, account, busy, onOpen, onClose }: Props) {
   const [cycleId, setCycleId] = useState<(typeof CYCLE_IDS)[number]>("10M");
@@ -28,9 +32,7 @@ export function OptionsPanel({ snapshot, account, busy, onOpen, onClose }: Props
   const now = useNow(1000);
   const cycle = snapshot.cycles.find((item) => item.id === cycleId) ?? snapshot.cycles[0];
   const contracts = cycle ? snapshot.options.filter((contract) => contract.cycleId === cycle.id) : [];
-  const selected = selection ? snapshot.options.find((contract) =>
-    contract.cycleId === selection.cycleId && contract.type === selection.type
-    && contract.strike === selection.strike && contract.expiryEpoch === selection.expiryEpoch) : undefined;
+  const selected = selection ? snapshot.options.find((contract) => sameContract(contract, selection)) : undefined;
   const positions = account?.positions.filter((position) => position.kind === "OPTION") ?? [];
   const quantity = Number(quantityInput);
   const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= 100;
@@ -42,9 +44,7 @@ export function OptionsPanel({ snapshot, account, busy, onOpen, onClose }: Props
 
   useEffect(() => {
     if (!selection) return;
-    const stillListed = snapshot.options.some((contract) =>
-      contract.cycleId === selection.cycleId && contract.type === selection.type
-      && contract.strike === selection.strike && contract.expiryEpoch === selection.expiryEpoch);
+    const stillListed = snapshot.options.some((contract) => sameContract(contract, selection));
     if (!stillListed) setSelection(null);
   }, [snapshot.options, selection]);
 

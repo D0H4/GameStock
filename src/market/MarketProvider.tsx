@@ -53,6 +53,14 @@ type BackendMarketStatus = { indexValue: number; tradingDate: string; restrictio
 type BackendOrderBookLevel = { price: number; quantity: number; orderCount: number };
 type BackendOrderBook = { stockCode: string; bids: BackendOrderBookLevel[]; asks: BackendOrderBookLevel[] };
 type BackendTrade = { side: string; quantity: number; price: number; orderType?: string; createdAt: string };
+
+const toPrint = (trade: BackendTrade) => ({
+  at: serverTimestamp(trade.createdAt) || Date.now(),
+  price: trade.price,
+  qty: trade.quantity,
+  side: trade.side.toUpperCase() === "BUY" ? "buy" as const : "sell" as const,
+});
+const topLevels = (value: BackendOrderBookLevel[]) => value.slice(0, 5).map((level) => ({ price: level.price, qty: level.quantity }));
 type BackendEvent = {
   stockCode: string;
   title: string;
@@ -261,16 +269,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           const prevClose = stock.referencePrice ?? old.prevClose;
           const band = dailyPriceBand(data.symbol, prevClose);
           const prices = old.series[old.series.length - 1] === stock.price ? old.series : [...old.series, stock.price].slice(-60);
-          const prints = data.trades?.length ? data.trades.map((trade) => ({
-            at: serverTimestamp(trade.createdAt) || Date.now(), price: trade.price, qty: trade.quantity,
-            side: trade.side.toUpperCase() === "BUY" ? "buy" as const : "sell" as const,
-          })) : old.prints;
-          const levels = (value: BackendOrderBookLevel[]) => value.slice(0, 5).map((level) => ({ price: level.price, qty: level.quantity }));
+          const prints = data.trades?.length ? data.trades.map(toPrint) : old.prints;
           return { ...current, updatedAt: Date.now(), quotes: { ...current.quotes, [data.symbol]: {
             ...old, price: stock.price, volume: stock.volume, restriction: stock.restriction, prevClose,
             limitUp: stock.limitUp ?? band.limitUp, limitDown: stock.limitDown ?? band.limitDown,
             high: Math.max(old.high, stock.price), low: Math.min(old.low, stock.price), series: prices, prints,
-            bids: data.orderbook ? levels(data.orderbook.bids) : old.bids, asks: data.orderbook ? levels(data.orderbook.asks) : old.asks,
+            bids: data.orderbook ? topLevels(data.orderbook.bids) : old.bids, asks: data.orderbook ? topLevels(data.orderbook.asks) : old.asks,
           } } };
         });
       } else if (["AUTHENTICATED", "ACCOUNT_UPDATED", "PORTFOLIO_UPDATED", "ORDER_CANCELLED", "ORDER_EXPIRED", "LOAN_LIQUIDATED"].includes(message.type)) {
@@ -420,14 +424,9 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             const [code, detail] = entry;
             const quote = quotes[code];
             if (!quote) continue;
-            const asks = (detail.book.asks ?? []).slice(0, 5).map((level) => ({ price: level.price, qty: level.quantity }));
-            const bids = (detail.book.bids ?? []).slice(0, 5).map((level) => ({ price: level.price, qty: level.quantity }));
-            const prints = (detail.trades ?? []).map((trade) => ({
-              at: serverTimestamp(trade.createdAt) || Date.now(),
-              price: trade.price,
-              qty: trade.quantity,
-              side: trade.side.toUpperCase() === "BUY" ? "buy" as const : "sell" as const,
-            }));
+            const asks = topLevels(detail.book.asks ?? []);
+            const bids = topLevels(detail.book.bids ?? []);
+            const prints = (detail.trades ?? []).map(toPrint);
             if (sameLevels(quote.asks, asks) && sameLevels(quote.bids, bids) && samePrints(quote.prints, prints)) continue;
             quotes[code] = {
               ...quote,
