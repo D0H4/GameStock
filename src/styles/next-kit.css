@@ -197,10 +197,10 @@ html[data-nx] .nx-select:focus-visible { border-color: var(--nx-line); }
   text-align: right;
   white-space: nowrap;
 }
-.nx-grid-table thead th:first-child,
-.nx-grid-table tbody th { text-align: left; }
 .nx-grid-table tbody th,
 .nx-grid-table tbody td { height: 56px; padding: 0 16px; border-bottom: 1px solid var(--nx-line); font-weight: 500; text-align: right; white-space: nowrap; }
+.nx-grid-table thead th:first-child,
+.nx-grid-table tbody th { text-align: left; }
 .nx-grid-table tbody tr:last-child > * { border-bottom: 0; }
 .nx-grid-table tbody tr:hover > * { background: var(--nx-tint); }
 .nx-grid-table a { color: var(--ink); text-decoration: none; }

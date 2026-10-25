@@ -1,4 +1,4 @@
-/* 상품 전환은 밑줄 탭, 그 아래 목록 거르기는 글자 탭. 둘 다 고른 것은 굵은 잉크색, 나머지는 보조 잉크다. */
+/* 상품 전환은 밑줄 탭, 그 아래 목록 거르기는 배경색으로 선택을 구분하는 필터 칩. */
 /* 탭 글자는 48px 칸 가운데라, 다른 화면 제목과 글자 윗선이 같도록 칸을 위로 당긴다. */
 .nx-product-tabs { display: flex; margin: -10px 0 16px; border-bottom: 1px solid var(--nx-line); }
 .nx-product-tabs > a { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 18px; color: var(--ink-muted); font-size: 17px; font-weight: 500; text-decoration: none; }
@@ -12,11 +12,12 @@
 /* 거르기·관심·검색은 한 줄에 38px로 맞춘다. */
 .nx-market-toolbar { flex-wrap: nowrap; gap: 8px; margin-bottom: 16px; }
 .nx-market-toolbar .nx-search { height: 38px; }
-.nx-text-tabs { display: flex; gap: 4px; }
-.nx-text-tabs button { display: inline-flex; align-items: center; gap: 4px; min-height: 38px; padding: 0 10px; border: 0; background: transparent; color: var(--ink-muted); font: inherit; font-size: 15px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: color 180ms cubic-bezier(.2,.8,.2,1); }
-.nx-text-tabs button:first-child { margin-left: -10px; }
-.nx-text-tabs button:hover, .nx-text-tabs button.is-active { color: var(--ink); }
-.nx-text-tabs button.is-active { font-weight: 700; }
+.nx-filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.nx-filter-chips button { display: inline-flex; align-items: center; gap: 4px; min-height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--nx-tint); color: var(--ink-muted); font: inherit; font-size: 15px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: color 180ms cubic-bezier(.2,.8,.2,1); }
+.nx-filter-chips button:hover { color: var(--ink); }
+.nx-filter-chips button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nx-filter-chips button.is-active { background: var(--ink); color: var(--nx-tint); font-weight: 700; }
+.nx-filter-chips button.is-active .nx-text-tab-count { color: inherit; }
 .nx-text-tab-count { color: var(--ink-muted); font-size: 12px; font-weight: 500; }
 .nx-market-watch-toggle svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
 .nx-market-watch-toggle.is-active svg { fill: currentColor; }
@@ -24,8 +25,8 @@
   .nx-product-tabs { margin-top: -8px; }
   .nx-product-tabs > a { min-height: 44px; padding: 0 14px; font-size: 16px; }
   .nx-market-toolbar { flex-wrap: wrap; }
-  .nx-text-tabs { flex-basis: 100%; }
-  .nx-text-tabs button { min-height: 44px; }
+  .nx-filter-chips { flex-basis: 100%; }
+  .nx-filter-chips button { min-height: 44px; }
   .nx-market-toolbar .nx-search { flex-basis: 100%; height: 44px; }
 }
 .nx-market-status { margin: -8px 0 16px; color: var(--ink-muted); font-size: 13px; }
@@ -37,5 +38,5 @@
 html[data-app-shell="web"][data-nx] .nx-tabbar.nx-animated-nav { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 html[data-app-shell="web"][data-nx] .nx-tabbar.nx-animated-nav .nx-tabbar-link.is-active::before { content: none; }
 @media (prefers-reduced-motion: reduce) {
-  .nx-animated-nav > *, .nx-text-tabs button { transition: none; }
+  .nx-animated-nav > *, .nx-filter-chips button { transition: none; }
 }
