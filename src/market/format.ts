@@ -56,11 +56,6 @@ export function rate(ratio: number, digits = 2): string {
   return `${percent > 0 ? "+" : "-"}${Math.abs(percent).toFixed(digits)}%`;
 }
 
-/** 비율 0.0097 → "0.97%" — 부호 없이 */
-export function plainRate(ratio: number, digits = 2): string {
-  return `${(ratio * 100).toFixed(digits)}%`;
-}
-
 /** 큰 금액을 조·억·만 단위로 줄여 쓴다. 거래대금처럼 자릿수가 긴 값에 쓴다. */
 export function compactWon(value: number): string {
   const abs = Math.abs(value);
@@ -154,10 +149,4 @@ export function dayLabel(at: number, now: number): string {
 /** 체결 시각 12:04 */
 export function hm(at: number): string {
   return clock(at).slice(0, 5);
-}
-
-/** 2초 → "2초" */
-export function tickLabel(ms: number): string {
-  const seconds = ms / 1000;
-  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}초`;
 }

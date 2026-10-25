@@ -233,7 +233,7 @@ public class TradingProtectionService {
     /** Evaluate the prospective fill before transferring cash or shares. */
     public boolean beforeTrade(String code, long price) {
         if (!continuous(code)) return false;
-        return !triggerVi(code, price, null);
+        return !triggerVi(code, price);
     }
 
     public void recordTrade(long stockId, long price) {
@@ -241,19 +241,14 @@ public class TradingProtectionService {
                 price, price, stockId);
     }
 
-    /** Synthetic news moves also cool the stock; subsequent moves stay frozen. */
-    public void observeSyntheticMove(String code, long previous, long next) {
-        if (continuous(code)) triggerVi(code, next, previous);
-    }
-
-    private boolean triggerVi(String code, long price, Long syntheticReference) {
+    private boolean triggerVi(String code, long price) {
         List<long[]> refs = jdbc.query("""
                 SELECT p.stock_id, p.static_reference, p.dynamic_reference
                 FROM stock_protection_state p JOIN stocks s ON s.id = p.stock_id WHERE s.stock_code = ?
                 """, (rs, row) -> new long[]{rs.getLong(1), rs.getLong(2), rs.getLong(3)}, code);
         if (refs.isEmpty()) return false;
         long[] ref = refs.get(0);
-        long dynamicReference = syntheticReference == null ? ref[2] : syntheticReference;
+        long dynamicReference = ref[2];
         boolean dynamic = Math.abs(price / (double) dynamicReference - 1) >= PriceLimitPolicy.dynamicViRate(code) - 1e-10;
         boolean fixed = Math.abs(price / (double) ref[1] - 1) >= PriceLimitPolicy.staticViRate(code) - 1e-10;
         if (!dynamic && !fixed) return false;

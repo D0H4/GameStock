@@ -6,6 +6,7 @@ import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WEB_APP_URL } from './config';
 import { THEME_KEY, useTheme } from './theme';
+import { authInjection, isTrustedAppUrl } from './web-origin';
 
 const PRICE_ALERT_PERMISSION_KEY = 'gamestock-price-alert-permission-asked';
 const SIGN_OUT_FLAG = 'gamestock-native-signout';
@@ -58,7 +59,8 @@ export const WebPane = forwardRef(function WebPane({ visible, initialPath, schem
   const startUrl = `${WEB_APP_URL}${withShell(initialPath)}`;
 
   const inject = script => webViewRef.current?.injectJavaScript(`${script}; true;`);
-  const sendToken = token => inject(`window.dispatchEvent(new CustomEvent('gamestock-native-auth',{detail:${JSON.stringify({ type: 'FIREBASE_CUSTOM_TOKEN', customToken: token })}}))`);
+  // 토큰은 앱 주소의 최상위 문서에만 건넨다. 다른 사이트로 이동한 WebView에는 보내지 않는다.
+  const sendToken = token => webViewRef.current?.injectJavaScript(authInjection({ type: 'FIREBASE_CUSTOM_TOKEN', customToken: token }, WEB_APP_URL));
   const navigateNow = path => {
     const target = JSON.stringify(withShell(path));
     inject(`if (location.pathname + location.search !== ${target}) { history.pushState(null, '', ${target}); window.dispatchEvent(new PopStateEvent('popstate')); window.scrollTo(0, 0); }`);
@@ -96,6 +98,7 @@ export const WebPane = forwardRef(function WebPane({ visible, initialPath, schem
   }), []);
 
   const handleMessage = event => {
+    if (!isTrustedAppUrl(event.nativeEvent.url, WEB_APP_URL)) return;
     let message;
     try { message = JSON.parse(event.nativeEvent.data); } catch { return; }
     if (message?.type === 'ROUTE') { onRoute?.(message.path); return; }

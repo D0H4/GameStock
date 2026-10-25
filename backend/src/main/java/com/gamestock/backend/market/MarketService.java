@@ -126,8 +126,6 @@ public class MarketService {
     public boolean inlineLiquidity(){return batchEnabled&&inlineMarketMaker;}
     @Value("${market.batch.adaptive:true}")
     private boolean adaptiveActivity;
-    @Value("${market.batch.idle-target-per-symbol:30}")
-    private int idleTargetPerSymbol=30;
     @Value("${market.batch.idle-after-ms:120000}")
     private long idleAfterMillis=120000;
     @Value("${market.batch.active-cadence-ms:100}")
@@ -1434,7 +1432,7 @@ public class MarketService {
                 tickSize(Math.round(metrics.midPrice())), marketScale(code),constraints,fundamental,pressure)) {
             insertLiquidityQuote(code, lp, quote);
         }
-        MatchSummary matched = matchOrders(code);
+        matchOrders(code);
         refreshMarkPrice(code);
         events.publishEvent(new MarketChangedEvent());
     }
@@ -1917,8 +1915,8 @@ public class MarketService {
                 rs.getString(6), databaseInstant(rs.getTimestamp(7)), rs.getLong(8), rs.getInt(9), rs.getString(10), rs.getBoolean(11));
     }
 
-    private MatchSummary matchOrders(String code) {
-        if(!protection.continuous(code))return MatchSummary.empty();
+    private void matchOrders(String code) {
+        if(!protection.continuous(code))return;
         long now=clock.millis(),id=stockId(code);
         var repository=new BatchMarketRepository(jdbc,compactLedger?botJournal:null);
         var book=repository.load(now,Set.of(id),Set.of());
@@ -1926,9 +1924,6 @@ public class MarketService {
         repository.persist(book,now);
         for(var stock:book.stocks.values())if(stock.viTrigger>0)protection.beforeTrade(stock.code,stock.viTrigger);
         publishBookEvents(book);events.publishEvent(bookEvent(book,now));
-        MatchSummary summary=MatchSummary.empty();
-        for(var fill:book.fills)summary=summary.add(fill.quantity(),fill.price(),fill.taker().side);
-        return summary;
     }
 
     private boolean canSettle(MatchRow buy, MatchRow sell, int quantity, long tradePrice, long stockId) {
@@ -2375,25 +2370,6 @@ public class MarketService {
 
     private record MatchRow(long id, long userId, long price, int quantity, int remainingQuantity, String orderType,
                             Instant createdAt, long reservedCash, int reservedQuantity, String side, boolean bot) { }
-    private record MatchSummary(long lastTradePrice, long totalQuantity, long totalNotional, String aggressorSide,
-                                long buyQuantity, long sellQuantity) {
-        private static MatchSummary empty() { return new MatchSummary(0, 0, 0, null, 0, 0); }
-        private boolean hasTrades() { return totalQuantity > 0; }
-        private MatchSummary add(int quantity, long price, String side) {
-            return new MatchSummary(price, totalQuantity + quantity, totalNotional + price * quantity, side,
-                    buyQuantity + ("BUY".equals(side) ? quantity : 0), sellQuantity + ("SELL".equals(side) ? quantity : 0));
-        }
-        private MatchSummary merge(MatchSummary other) {
-            if (!hasTrades()) return other;
-            if (!other.hasTrades()) return this;
-            return new MatchSummary(other.lastTradePrice, totalQuantity + other.totalQuantity,
-                    totalNotional + other.totalNotional, other.aggressorSide,
-                    buyQuantity + other.buyQuantity, sellQuantity + other.sellQuantity);
-        }
-        private long vwap() {
-            return totalQuantity == 0 ? 0 : Math.round(totalNotional / (double) totalQuantity);
-        }
-    }
     private record OrderState(long id, long userId, long price, int quantity, int remainingQuantity, String status,
                               String orderType, long reservedCash, int reservedQuantity) { }
     private record OrderReservation(long id, long userId, long reservedCash) { }

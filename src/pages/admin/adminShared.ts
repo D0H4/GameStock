@@ -24,6 +24,16 @@ export function adminTime(value: unknown): string {
     : date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "medium", hour12: false });
 }
 
+/** 서버 시각 → datetime-local 값(한국 시간). */
+export function toLocalInput(value: unknown) {
+  if (!value) return "";
+  const date = new Date(typeof value === "number" ? value : String(value));
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16).replace(" ", "T");
+}
+/** datetime-local 값(한국 시간) → ISO. 비어 있으면 null. */
+export const toInstant = (value: string) => (value ? new Date(`${value}:00+09:00`).toISOString() : null);
+
 export const num = (value: unknown) => (typeof value === "number" ? value : Number(value ?? 0));
 
 /**

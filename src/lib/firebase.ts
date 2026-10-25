@@ -12,8 +12,6 @@ const configuredFirebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const missing = Object.entries(configuredFirebaseConfig).filter(([, value]) => !value).map(([key]) => key);
-
 /* Firebase 설정이 없는 개발 환경에서도 공개 시세와 뉴스는 볼 수 있어야 한다.
  * 인증을 누르면 Firebase가 설정된 환경에서만 실제 로그인 요청이 동작한다. */
 const firebaseConfig = {
@@ -24,8 +22,6 @@ const firebaseConfig = {
   messagingSenderId: configuredFirebaseConfig.messagingSenderId || "000000000000",
   appId: configuredFirebaseConfig.appId || "1:000000000000:web:local-development",
 };
-
-export const firebaseConfigured = missing.length === 0;
 
 export const firebaseApp = getApps()[0] ?? initializeApp(firebaseConfig);
 export const firebaseAuth = getAuth(firebaseApp);

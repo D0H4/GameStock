@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMarket } from "../market/MarketProvider";
 import { kstDateTime } from "../market/format";
 import type { TradingRestriction } from "../market/types";
+import { useModalDialog } from "../lib/useModalDialog";
 
 // Keep acknowledgements across home/market navigation, but announce each new phase.
 const acknowledged = new Set<string>();
@@ -44,20 +45,7 @@ export function CircuitBreakerNotice() {
 }
 
 function NoticeDialog({ restriction, onClose, onConfirm }: { restriction: TradingRestriction; onClose: () => void; onConfirm: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    element.showModal();
-    return () => {
-      element.close();
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus({ preventScroll: true });
-    };
-  }, []);
+  const dialog = useModalDialog();
 
   const phase = restriction.phase === "AUCTION" ? "단일가 접수 중" : restriction.phase === "CLOSED" ? "오늘 거래 종료" : "거래 일시 중단";
   const next = restriction.phase === "HALTED" ? "단일가 접수 시작 예정" : restriction.phase === "CLOSED" ? "다음 거래일 시작" : "단일가 체결 예정";

@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
@@ -37,7 +36,6 @@ import static com.gamestock.backend.market.DerivativeModels.*;
 @Service
 public class DerivativeService {
     private static final Logger log = LoggerFactory.getLogger(DerivativeService.class);
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final int MAX_ORDER_QUANTITY = 100;
     private static final int MAX_OPEN_POSITIONS = 60;
     private static final int SERIES_LIMIT = 120;
