@@ -81,6 +81,12 @@
     border-radius: 8px;
   }
 
+  .brand-logo { display: inline-flex; flex: none; }
+  .brand-logo img { display: block; width: auto; }
+  .brand-logo-dark { display: none !important; }
+  html[data-nx-theme="dark"] .brand-logo-light { display: none !important; }
+  html[data-nx-theme="dark"] .brand-logo-dark { display: block !important; }
+
   .brand-text {
     font-size: var(--step-3);
     font-weight: 700;
@@ -553,6 +559,8 @@
     padding: 4px;
     object-fit: contain;
     object-position: center;
+    /* 투명 심볼이라 어두운 바탕 위에서는 회색 고리가 묻힌다. 테마와 상관없이 흰 바탕에 올린다. */
+    background: #fff;
   }
 
   .empty {

@@ -204,7 +204,9 @@ class BotActivityEngineTest {
         new BotActivityEngine(participants,1,300).act(book,Map.of(1L,strongValue),Map.of(),10000,500,Map.of(1L,risk),lp);
         assertFalse(book.fills.isEmpty());assertTrue(accounts.get(lp).cash>0);
         assertTrue(book.accepted.size()<=200,"Proceeds-funded replenishment also needs reserved order slots");
-        assertTrue(book.depth(1)[2]>0);assertTrue(book.depth(1)[3]>0);
+        assertTrue(book.depth(1)[2]>0,"Sale proceeds fund real replacement bids");
+        assertEquals(0,book.holding(lp,1).quantity(),"Buyers can consume all 48 published LP shares");
+        assertEquals(0,book.depth(1)[3],"A sold-out LP must not leave fictitious asks");
         assertEquals(48,book.holdings.values().stream().mapToLong(Holding::quantity).sum());
         long reserved=book.accepted.stream().mapToLong(o->o.reservedCash).sum();
         assertEquals(300_000_000,accounts.values().stream().mapToLong(a->a.cash).sum()+reserved);
@@ -274,13 +276,55 @@ class BotActivityEngineTest {
         assertEquals(a,b);assertEquals(BotProfile.defaults(91),a.subList(0,20));
         assertEquals(6020,a.stream().map(BotProfile::username).distinct().count());
         assertEquals(6020,a.stream().map(BotProfile::nickname).distinct().count());
-        assertEquals(60,a.get(20).positionLimit());assertNotEquals(a.get(20).aggression(),a.get(28).aggression());
+        assertEquals(60,a.stream().skip(20).filter(p->p.strategy().family()==BotProfile.Family.VALUE).findFirst().orElseThrow().positionLimit());
+        assertNotEquals(a.get(20).aggression(),a.get(28).aggression());
         for(int symbol=0;symbol<15;symbol++) {
             Set<BotProfile.Family> families=new HashSet<>();
             for(int i=symbol;i<a.size();i+=15)families.add(a.get(i).strategy().family());
             assertEquals(Set.of(BotProfile.Family.values()),families,"Every symbol needs independent value and flow traders");
         }
     }
+    @Test void strategyMixSurvivesSeventeenListingsAndOtherPopulationStrides() {
+        for(long seed:List.of(7L,91L,20261024L)) {
+            var profiles=BotProfile.activePopulation(seed,6020);
+            for(int listings:List.of(15,16,17,18,34)) {
+                for(int symbol=0;symbol<listings;symbol++) {
+                    Set<BotProfile.Family> families=EnumSet.noneOf(BotProfile.Family.class);
+                    for(int i=symbol;i<profiles.size();i+=listings)families.add(profiles.get(i).strategy().family());
+                    assertEquals(Set.of(BotProfile.Family.values()),families,
+                            "seed="+seed+" listings="+listings+" symbol="+symbol);
+                }
+            }
+        }
+    }
+
+    @Test void aLegacyHoldingDoesNotShareItsDecisionTimerWithTheNewPrimaryStock() {
+        var profile=BotProfile.defaults(91).stream().filter(p->p.strategy().family()==BotProfile.Family.NOISE).findFirst().orElseThrow();
+        var engine=new BotActivityEngine(List.of(new BotActivityEngine.Participant(1,profile,1,2),
+                new BotActivityEngine.Participant(1,profile,2,2)),91,300);
+        var accounts=new HashMap<Long,Account>();
+        accounts.put(1L,new Account(1,1_000_000,false,true));
+        accounts.put(2L,new Account(2,1_000_000,true,true));
+        var stocks=new LinkedHashMap<Long,Stock>();
+        stocks.put(1L,new Stock(1,"GI",10000,10000,10000,10000,true));
+        stocks.put(2L,new Stock(2,"WH",10000,10000,10000,10000,true));
+        var holdings=new HashMap<PositionKey,Holding>();
+        for(long stock:List.of(1L,2L))holdings.put(new PositionKey(2,stock),new Holding(100,100,10000,0));
+        var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,1000);
+        for(long stock:List.of(1L,2L)) {
+            book.submit(2,stock,"BUY","LIMIT",50,9990,1000,120000);
+            book.submit(2,stock,"SELL","LIMIT",50,10010,1000,120000);
+        }
+        Set<Long> traded=new HashSet<>();
+        for(long now=1000;now<61000;now+=1000) {
+            book.beginBatch(now);
+            engine.act(book,Map.of(1L,observation(),2L,observation()),Map.of(),now,1000,Map.of(),-1);
+            for(var fill:book.fills)traded.add(fill.buy().stock);
+        }
+        assertEquals(Set.of(1L,2L),traded,"Both watched positions must get independently scheduled decisions");
+        assertTrue(accounts.values().stream().allMatch(a->a.cash>=0));
+    }
+
     private BotActivityEngine.Observation observation() {
         var metric=PriceMetricService.calculate(List.of(new PriceMetricService.Trade(1000,10000,1)),10000,9990,10010,50,50,1000);
         return new BotActivityEngine.Observation(metric,MarketEnvironment.neutral(),10000,0,.65);

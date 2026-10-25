@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, validatePassword } from "firebase/auth";
-import { BrandMark } from "../components/BrandMark";
+import { BrandLogo } from "../components/BrandMark";
 import { Link } from "../components/Link";
 import { firebaseAuth, googleProvider } from "../lib/firebase";
 import { apiFetch } from "../lib/api";
@@ -200,8 +200,7 @@ export function LoginCard({ method, next: nextProp, onDone, onMethodChange }: {
         </Link>
       ))}
       <div className="login-brand">
-        <BrandMark size={26} />
-        <span>슈엔증권</span>
+        <BrandLogo />
       </div>
       <header className="login-header">
         <h1 id="login-title">{TITLES[method]}</h1>

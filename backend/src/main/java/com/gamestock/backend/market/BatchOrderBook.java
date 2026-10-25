@@ -193,24 +193,9 @@ final class BatchOrderBook {
             long price=buy.market()&&sell.market()?stock.last:maker.price;
             boolean buyBot=accounts.get(buy.user).bot,sellBot=accounts.get(sell.user).bot;
             int quantity=Math.min(buy.remaining,sell.remaining);
-            // Keep the final share at each LP level available for a human order between refreshes.
-            // Bot orders still match all ordinary counterparties using the usual price-time priority.
-            if(accounts.get(sell.user).liquidityProvider && buyBot && sell.remaining<=1) {
-                cancel(buy);continue;
-            }
-            if(accounts.get(sell.user).liquidityProvider && buyBot)quantity=Math.min(quantity,sell.remaining-1);
-            if(accounts.get(buy.user).liquidityProvider && sellBot) {
-                if(buy.remaining<=1){cancel(sell);continue;}
-                quantity=Math.min(quantity,buy.remaining-1);
-                // Absorb ordinary selling on both sides while retaining a funded human reserve.
-                long available=Math.min(accounts.get(buy.user).cash,lpCashBudgets.getOrDefault(stock.id,accounts.get(buy.user).cash));
-                // Resting bids have already deducted their cash from both balances. Count that
-                // symbol's funded bids once; otherwise reserving a quote falsely blocks inventory recovery.
-                available+=working(buy.user,stock.id).stream().mapToLong(o->o.reservedCash).sum();
-                long gross=price*quantity;
-                long reserve=MarketMakerEngine.emergencyCashRequirement(botBand(stock.code,stock.reference).upperPrice());
-                if(available-gross<reserve){cancel(sell);continue;}
-            }
+            // Published, funded liquidity is executable for every counterparty, including
+            // the last share. Reserve/capacity decisions belong to quote sizing, not a
+            // hidden matcher veto that leaves visible one-share levels impossible to consume.
             PriceBand marketBand=buyBot&&sellBot?dailyBand(stock.code,stock.reference):marketExecutionBand(stock.last);
             if((buy.market()||sell.market())&&!marketBand.contains(price)) {
                 if(buy.market()) {if(buyBot)cancel(buy);else if(sellBot)cancel(sell);else return;}

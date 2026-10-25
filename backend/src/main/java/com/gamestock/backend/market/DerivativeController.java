@@ -28,6 +28,17 @@ public class DerivativeController {
         return derivatives.snapshot();
     }
 
+    @GetMapping("/options/flow")
+    public OptionFlow optionFlow(@RequestParam(defaultValue = "1d") String range,
+                                 @RequestParam(defaultValue = "5m") String interval) {
+        return derivatives.optionFlow(range, interval);
+    }
+
+    @GetMapping("/futures/chart")
+    public java.util.List<IndexCandle> futureChart(@RequestParam(defaultValue = "1h") String range) {
+        return derivatives.futureChart(range);
+    }
+
     @GetMapping("/account")
     public Account account(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return derivatives.account(auth.requireUser(authorization).id());

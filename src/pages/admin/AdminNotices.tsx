@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Panel } from "../../components/Panel";
-import { SiteNoticeContent } from "../../components/SiteNoticeDialog";
+import { SiteNoticeCard } from "../../components/SiteNoticeDialog";
 import { apiFetch } from "../../lib/api";
-import { joinNoticeCode, noticeItem, splitNoticeCode } from "../../notice";
+import { joinNoticeCode, splitNoticeCode, type SiteNoticeItem } from "../../notice";
 import { adminTime, num, type Row } from "./adminShared";
 
-type Draft = { title: string; body: string; code: string; published: boolean; startsAt: string; endsAt: string };
+type Draft = {
+  title: string; body: string; code: string; image: string; actionLabel: string; actionUrl: string; dismissLabel: string;
+  published: boolean; startsAt: string; endsAt: string;
+};
 type State = "live" | "scheduled" | "ended" | "hidden";
 
-const EMPTY: Draft = { title: "", body: "", code: "", published: true, startsAt: "", endsAt: "" };
+const EMPTY: Draft = { title: "", body: "", code: "", image: "", actionLabel: "", actionUrl: "", dismissLabel: "", published: true, startsAt: "", endsAt: "" };
+/** 서버와 같은 규칙: 사이트 안 경로(/...)나 https 주소. */
+const LINK = /^(https:\/\/\S+|\/(?!\/)\S*)$/i;
 const STATE_LABEL: Record<State, string> = { live: "게시 중", scheduled: "예약", ended: "종료", hidden: "숨김" };
 
 /** 서버 시각 → datetime-local 값(한국 시간). */
@@ -35,6 +40,10 @@ function draftFrom(row: Row): Draft {
     title: String(row.title ?? ""),
     body,
     code,
+    image: String(row.image_url ?? ""),
+    actionLabel: String(row.action_label ?? ""),
+    actionUrl: String(row.action_url ?? ""),
+    dismissLabel: String(row.dismiss_label ?? ""),
     published: Boolean(row.published),
     startsAt: toLocalInput(row.starts_at),
     endsAt: toLocalInput(row.ends_at),
@@ -42,9 +51,8 @@ function draftFrom(row: Row): Draft {
 }
 
 /**
- * 첫 방문 공지 편집. 게시 중인 공지는 모두 한 창에 모여 사용자에게 한 번 보이고,
- * 하나라도 고치면 이미 확인한 사람에게도 다시 보인다. 오른쪽 미리보기는 실제
- * 공지 창과 같은 마크업이다.
+ * 첫 방문 공지 편집. 게시 중인 공지는 접속할 때마다 아직 확인하지 않은 최신 공지 하나씩 사용자에게 보이고,
+ * 고친 공지는 이미 확인한 사람에게도 다시 보인다. 오른쪽 미리보기는 실제 공지 창과 같은 마크업이다.
  */
 export function AdminNotices() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -75,17 +83,22 @@ export function AdminNotices() {
 
   const draftState = stateOf(draft.published, toInstant(draft.startsAt), toInstant(draft.endsAt));
   const timeError = draft.startsAt && draft.endsAt && draft.endsAt <= draft.startsAt ? "끝나는 시각은 시작 시각보다 뒤여야 합니다." : "";
-  const valid = draft.title.trim() && draft.body.trim() && reason.trim() && !timeError;
+  const image = draft.image.trim(), actionLabel = draft.actionLabel.trim(), actionUrl = draft.actionUrl.trim();
+  const linkError = (image && !LINK.test(image)) || (actionUrl && !LINK.test(actionUrl))
+    ? "그림·이동 주소는 /로 시작하는 경로나 https:// 주소여야 합니다."
+    : Boolean(actionLabel) !== Boolean(actionUrl) ? "이동 버튼은 문구와 주소를 함께 적어 주세요." : "";
+  const valid = draft.title.trim() && draft.body.trim() && reason.trim() && !timeError && !linkError;
+  const liveCount = rows.filter((row) => num(row.id) !== editingId && rowState(row) === "live").length + (draftState === "live" ? 1 : 0);
 
-  // 사용자가 보게 될 창: 지금 게시 중인 다른 공지 + 편집 중인 공지(지금 보이는 상태라면). 최신 공지가 위.
-  const preview = useMemo(() => {
-    const others = rows.filter((row) => num(row.id) !== editingId && rowState(row) === "live")
-      .map((row) => ({ id: num(row.id), item: noticeItem({ title: String(row.title), body: String(row.body) }) }));
-    const mine = draftState === "live" && draft.title.trim()
-      ? [{ id: editingId ?? Number.MAX_SAFE_INTEGER, item: { heading: draft.title.trim(), body: draft.body.trim(), ...(draft.code.trim() ? { code: draft.code.trim() } : {}) } }]
-      : [];
-    return [...mine, ...others].sort((a, b) => b.id - a.id).map((entry) => entry.item);
-  }, [rows, editingId, draft, draftState]);
+  const preview = useMemo<SiteNoticeItem>(() => ({
+    key: "preview",
+    heading: draft.title.trim() || "제목",
+    body: draft.body.trim() || "본문",
+    ...(draft.code.trim() ? { code: draft.code.trim() } : {}),
+    ...(image ? { image } : {}),
+    ...(actionLabel && actionUrl ? { action: { label: actionLabel, url: actionUrl } } : {}),
+    ...(draft.dismissLabel.trim() ? { dismissLabel: draft.dismissLabel.trim() } : {}),
+  }), [draft, image, actionLabel, actionUrl]);
 
   const save = async () => {
     if (!valid) return;
@@ -98,6 +111,10 @@ export function AdminNotices() {
           kind: "NOTICE",
           title: draft.title.trim(),
           body: joinNoticeCode(draft.body, draft.code),
+          imageUrl: image || null,
+          actionLabel: actionLabel || null,
+          actionUrl: actionUrl || null,
+          dismissLabel: draft.dismissLabel.trim() || null,
           stockCode: null,
           published: draft.published,
           startsAt: toInstant(draft.startsAt),
@@ -172,6 +189,26 @@ export function AdminNotices() {
               onChange={(event) => set("code", event.target.value.replace(/\s/g, ""))} />
             <p className="account-hint">적으면 본문 아래에 복사하기 쉬운 코드 상자로 보입니다.</p>
 
+            <label htmlFor="notice-image">머리 그림 주소 (선택)</label>
+            <input id="notice-image" value={draft.image} maxLength={500} placeholder="예: /notice/season-2.png" autoCapitalize="none" spellCheck={false}
+              onChange={(event) => set("image", event.target.value)} />
+            <p className="account-hint">창 위쪽에 16:7 비율로 잘려 보입니다(권장 960×420). 비우면 글만 보입니다.</p>
+            <div className="admin-form-pair">
+              <div className="account-field">
+                <label htmlFor="notice-action-label">이동 버튼 문구 (선택)</label>
+                <input id="notice-action-label" value={draft.actionLabel} maxLength={40} placeholder="예: 지금 확인하기" onChange={(event) => set("actionLabel", event.target.value)} />
+              </div>
+              <div className="account-field">
+                <label htmlFor="notice-action-url">이동 주소</label>
+                <input id="notice-action-url" value={draft.actionUrl} maxLength={500} placeholder="예: /market 또는 https://…" autoCapitalize="none" spellCheck={false}
+                  onChange={(event) => set("actionUrl", event.target.value)} />
+              </div>
+            </div>
+            <label htmlFor="notice-dismiss">닫기 버튼 문구 (선택)</label>
+            <input id="notice-dismiss" value={draft.dismissLabel} maxLength={40} placeholder={actionLabel ? "닫기" : "확인했어요"} onChange={(event) => set("dismissLabel", event.target.value)} />
+            <p className="account-hint">이동 버튼이 없으면 닫기 버튼 하나만 진하게 보입니다.</p>
+            {linkError && <p className="admin-form-message" role="alert">{linkError}</p>}
+
             <label className="notice-check">
               <input type="checkbox" checked={draft.published} onChange={(event) => set("published", event.target.checked)} />
               사용자에게 보이기
@@ -200,16 +237,14 @@ export function AdminNotices() {
 
         <aside className="notice-preview" aria-label="사용자에게 보이는 공지 창 미리보기">
           <p className="notice-preview-label">
-            {draftState === "live" ? "사용자가 처음 들어오면 이렇게 보입니다." : `이 공지는 지금 ${STATE_LABEL[draftState]} 상태라 아래 창에 들어가지 않습니다.`}
+            {draftState === "live"
+              ? liveCount > 1 ? `사용자가 처음 들어오면 이렇게 보입니다. 게시 중인 공지가 ${liveCount}개라 접속할 때마다 최신 것부터 하나씩 뜹니다.` : "사용자가 처음 들어오면 이렇게 보입니다."
+              : `이 공지는 지금 ${STATE_LABEL[draftState]} 상태라 사용자에게 뜨지 않습니다.`}
           </p>
           <div className="notice-preview-stage">
-            {preview.length ? (
-              <div className="notice-preview-card site-notice">
-                <SiteNoticeContent items={preview} titleId="notice-preview-title" />
-              </div>
-            ) : (
-              <p className="notice-preview-empty">게시 중인 공지가 없어서 공지 창이 뜨지 않습니다.</p>
-            )}
+            <div className="notice-preview-card site-notice">
+              <SiteNoticeCard item={preview} titleId="notice-preview-title" />
+            </div>
           </div>
         </aside>
       </div>

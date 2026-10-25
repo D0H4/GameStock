@@ -32,13 +32,14 @@ class SimulationEngineTest {
     }
 
     @Test void allocationOrdersCanUseSmallLotsWithoutOvershootingTheTarget() {
+        for(String code:MarketSimulationHarness.CODES)
         for(var position:List.of(new BotStrategyEngine.Position(5,1000000,10000,1000,8),
                 new BotStrategyEngine.Position(8,1000000,10000,1000,5))) {
             var engine=new BotStrategyEngine(73);
             boolean traded=false;
             for(int i=0;i<100;i++) {
                 var decision=engine.decide(profile(Strategy.NOISE_RANDOM),history(0),neutral,
-                        position,10000,0,10,1,"UMA",10000);
+                        position,10000,0,10,1,code,10000);
                 assertTrue(decision.quantity()<=3,"A three-share need must not create a five-share round trip");
                 if(decision.quantity()>0) {
                     traded=true;
@@ -78,14 +79,77 @@ class SimulationEngineTest {
     }
 
     @Test void allocationBotsDoNotCreateRoundTripsAtTheirTarget() {
+        for(String code:MarketSimulationHarness.CODES)
         for(Strategy strategy:List.of(Strategy.NOISE_FLOW,Strategy.NOISE_RANDOM,Strategy.LIQUIDITY_TAKER)) {
             var engine=new BotStrategyEngine(17);
             var p=profile(strategy);
             for(int i=0;i<200;i++) {
                 var decision=engine.decide(p,history(0),neutral,
-                        new BotStrategyEngine.Position(5,1000000,10000,1000,5),10000,0,10,1,"UMA",10000);
+                        new BotStrategyEngine.Position(5,1000000,10000,1000,5),10000,0,10,1,code,10000);
                 assertEquals(0,decision.quantity(),strategy+" must wait for a new allocation need");
             }
+        }
+    }
+
+    @Test void allocationExecutionBudgetSurvivesLongHoldingHorizonsAndMarketPacing() {
+        var profiles=BotProfile.activePopulation(73,6020);
+        for(String code:MarketSimulationHarness.CODES) {
+            var engine=new BotStrategyEngine(71);
+            var m=PriceMetricService.calculate(List.of(new PriceMetricService.Trade(60000,10000,100)),
+                    10000,9900,10100,100,100,60000);
+            for(var p:profiles.stream().filter(BotStrategyEngine::hasInventoryDemand).limit(30).toList()) {
+                for(var profile:List.of(p,p.forMarket(code))) {
+                    for(var pos:List.of(new BotStrategyEngine.Position(0,1000000,0,0,8),
+                            new BotStrategyEngine.Position(8,1000000,10000,0,2))) {
+                        for(int attempt=0;attempt<20;attempt++) {
+                            var d=engine.decide(profile,m,neutral,pos,10000,0,10,1,code,10000);
+                            if(d.quantity()==0)continue;
+                            assertFalse(d.market(),code+" allocation must have a finite execution budget");
+                            double room=30;
+                            if(d.side().equals("BUY"))assertTrue(d.limitPrice()<=10000+room+.01,code);
+                            else assertTrue(d.limitPrice()>=10000-room-.01,code);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test void distantResearchCannotBlockAnAllocationReductionOrReplenishment() {
+        for(String code:MarketSimulationHarness.CODES) {
+            var m=history(0);var p=profile(Strategy.LIQUIDITY_TAKER);
+            for(boolean buy:List.of(true,false)) {
+                var engine=new BotStrategyEngine(71);boolean crosses=false;
+                var position=buy?new BotStrategyEngine.Position(0,1000000,0,0,8)
+                        :new BotStrategyEngine.Position(8,1000000,10000,0,0);
+                for(int attempt=0;attempt<200;attempt++) {
+                    var d=engine.decide(p,m,neutral,position,buy?5000:25000,0,10,1,code,10000);
+                    if(d.quantity()==0)continue;
+                    assertFalse(d.market());
+                    assertEquals(buy?"BUY":"SELL",d.side());
+                    crosses|=buy?d.limitPrice()>=m.bestAsk():d.limitPrice()<=m.bestBid();
+                }
+                assertTrue(crosses,code+" funded allocation can execute despite distant research");
+            }
+        }
+    }
+
+    @Test void passivePriceDispersionNeverAddsSlippageBeyondTheOppositeTouch() {
+        for(String code:MarketSimulationHarness.CODES) {
+            var engine=new BotStrategyEngine(19);var m=history(0);
+            int checked=0;
+            for(var p:BotProfile.defaults(19)) {
+                if(BotStrategyEngine.hasInventoryDemand(p))continue;
+                for(int attempt=0;attempt<100;attempt++) {
+                    var position=new BotStrategyEngine.Position(attempt%2==0?0:20,1000000,10000,0,5);
+                    var d=engine.decide(p,m,neutral,position,10000,0,10,1,code,10000);
+                    if(d.quantity()==0 || d.market())continue;
+                    checked++;
+                    if(d.side().equals("BUY"))assertTrue(d.limitPrice()<=m.bestAsk(),code+" passive offset must not sweep asks");
+                    else assertTrue(d.limitPrice()>=m.bestBid(),code+" passive offset must not sweep bids");
+                }
+            }
+            assertTrue(checked>0,code);
         }
     }
 

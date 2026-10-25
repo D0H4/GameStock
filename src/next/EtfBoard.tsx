@@ -21,7 +21,7 @@ const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
   { key: "prevClose", label: "기준가", className: "nx-col-open" },
 ];
 
-function EtfTrend({ quote }: { quote: EtfQuote }) {
+export function EtfTrend({ quote }: { quote: EtfQuote }) {
   if (quote.series.length < 2) return <span className="nx-day-note">기록 없음</span>;
   const tone = quote.changePercent > 0 ? "up" : quote.changePercent < 0 ? "down" : "flat";
   return <span className="nx-etf-trend" role="img" aria-label={`${quote.name} 최근 가격 흐름`}>

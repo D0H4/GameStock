@@ -131,8 +131,8 @@
     /* 실제 공지 창의 계산된 모습과 같게: 테두리·그림자 없이 둥근 종이 한 장. */
     border-radius: 20px; background: var(--paper); color: var(--ink);
   }
-  .notice-preview-card .circuit-notice-confirm { pointer-events: none; }
-  .notice-preview-empty { max-width: 28ch; font-size: var(--step-0); color: var(--paper); text-align: center; }
+  .notice-preview-card { max-width: 480px; overflow-x: hidden; }
+  .notice-preview-card :is(.site-notice-button, .site-notice-close) { pointer-events: none; }
 
   .admin-actions-heading { margin-bottom: var(--space-3); padding-top: var(--space-4); border-top: var(--rule-heavy); font-size: var(--step-2); font-weight: 700; }
   .admin-actions-wide { grid-column: 1 / -1; }

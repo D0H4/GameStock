@@ -59,7 +59,7 @@ curl --fail-with-body -X DELETE "$GAMESTOCK_API_URL/api/openapi/keys/key-id" \
 | `GET /futures` | `FUTIDX` 선물 가격·승수·레버리지 |
 | `GET /options?cycleId=1H&type=CALL` | 옵션 체인; 필터는 생략 가능 |
 
-종목 코드는 대문자입니다. 차트 기간은 `1h`, `6h`, `12h`, `1d`, `1w`, `1m`, `1y`, 각각의 봉 간격은 1분·5분·10분·30분·2시간·1일·1주입니다. 차트의 기존 `volume` 필드는 가격 표본·집계 건수이며 거래 주식 수가 아닙니다.
+종목 코드는 대문자입니다. 차트 기간은 `1h`, `6h`, `12h`, `1d`, `3d`, `1w`, `2w`, `1m`, `1y`, 각각의 봉 간격은 1분·5분·10분·30분·1시간·2시간·6시간·1일·1주입니다. 차트의 기존 `volume` 필드는 가격 표본·집계 건수이며 거래 주식 수가 아닙니다.
 
 ```fish
 curl --fail-with-body "$GAMESTOCK_API_URL/api/openapi/v1/quotes"

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "../lib/api";
 import { useAuthUser } from "../lib/auth";
-import { DEFAULT_PROFILE_AVATAR } from "../lib/profileAvatars";
+import { RankingAvatar } from "../components/RankingAvatar";
 import { titleColor } from "../lib/titles";
 
 export type RankingEntry = {
@@ -132,12 +132,10 @@ export function usePolledRanking<T>(path: string, cacheKey: string, initial: T |
 function RankingRow({ entry, percent, mine = false }: { entry: Omit<RankingEntry, "changePercent">; percent: number; mine?: boolean }) {
   return (
     <tr className={mine ? "ranking-row-mine" : undefined} aria-current={mine ? "true" : undefined}>
-      <th scope="row" className="ranking-page-rank num">
+      <th scope="row" className="ranking-page-rank num" aria-label={medalByRank[entry.rank]?.label}>
         <span className="ranking-rank-content">
           {medalByRank[entry.rank] ? (
-            <span className="ranking-medal" role="img" aria-label={medalByRank[entry.rank].label}>
-              {medalByRank[entry.rank].emoji}
-            </span>
+            <RankingAvatar rank={entry.rank} src={entry.profileImageUrl} />
           ) : (
             <span>{entry.rank}</span>
           )}
@@ -145,17 +143,6 @@ function RankingRow({ entry, percent, mine = false }: { entry: Omit<RankingEntry
       </th>
       <td className="ranking-page-name">
         <span className="ranking-name-cell">
-          <img
-            className="ranking-avatar"
-            src={entry.profileImageUrl || DEFAULT_PROFILE_AVATAR}
-            alt=""
-            loading="lazy"
-            onError={(event) => {
-              // 깨진 외부 이미지 대신 기본 아바타를 보여 준다. 대체 텍스트가 칸을 넘치지 않게 alt 는 비운다.
-              if (event.currentTarget.src.endsWith(DEFAULT_PROFILE_AVATAR)) return;
-              event.currentTarget.src = DEFAULT_PROFILE_AVATAR;
-            }}
-          />
           <span className="ranking-name-text">
             {entry.equippedTitle && (
               <span className={`ranking-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`} title={entry.equippedTitle} style={{ color: titleColor(entry.equippedTitle) }}>{entry.equippedTitle}</span>

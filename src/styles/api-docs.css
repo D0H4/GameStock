@@ -12,10 +12,11 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 14px;
-  padding: 8px 0 4px;
+  padding: 0 0 4px;
 }
 
-.nx-docs-hero h1 { font-size: 34px; }
+/* 제목은 다른 화면과 같은 18px. 제목 아래는 다른 화면처럼 20px(간격 14 + 6). */
+.nx-docs-hero > .nx-panel-title { margin: 0 0 6px; }
 
 .nx-docs-hero-copy {
   max-width: 68ch;
@@ -330,7 +331,6 @@
 }
 
 @media (max-width: 640px) {
-  .nx-docs-hero h1 { font-size: 26px; }
   .nx-docs-facts { grid-template-columns: minmax(0, 1fr); }
   .nx-docs-two-col { grid-template-columns: minmax(0, 1fr); }
   .nx-docs-steps > li { padding-left: 34px; }

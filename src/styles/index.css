@@ -20,4 +20,6 @@
 @import "./mobile-web.css";
 @import "./derivatives.css";
 @import "./trading-workspace.css";
+@import "./options.css";
 @import "./market-chart.css";
+@import "./trade-navigation.css";

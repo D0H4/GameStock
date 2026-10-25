@@ -1,5 +1,5 @@
 import { AuthBridge } from "./components/AuthBridge";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { MissionRewardToast } from "./components/MissionRewardToast";
 import { TitleWatcher } from "./components/TitleWatcher";
 import { LoginModal } from "./components/LoginModal";
@@ -32,7 +32,7 @@ import type { Route } from "./router";
 function titleFor(route: Route): string {
   if (route.name === "market") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
-    return name ? `${name} · 주식 · 슈엔증권` : "주식 · 슈엔증권";
+    return name ? `${name} · 거래 · 슈엔증권` : "주식 · 거래 · 슈엔증권";
   }
   if (route.name === "trade") {
     const name = route.ticker ? LISTING_BY_CODE[route.ticker]?.name : undefined;
@@ -40,7 +40,7 @@ function titleFor(route: Route): string {
   }
   if (route.name === "derivatives") {
     const label = route.tab === "futures" ? "선물" : "옵션";
-    return `${label} · 슈엔증권`;
+    return `${label} · 거래 · 슈엔증권`;
   }
   if (route.name === "etf") return `${route.ticker ? `${route.ticker} · ` : ""}ETF · 주식 · 슈엔증권`;
   if (route.name === "heatmap") return "히트맵 · 슈엔증권";
@@ -71,8 +71,8 @@ export default function App() {
   const previous = useRef(route);
 
   useEffect(() => {
-    if (route.name === "etf" && window.location.pathname.startsWith("/derivatives")) {
-      navigate(`${ETF_PATH(route.ticker)}${window.location.search}`, { replace: true });
+    if (route.name === "etf" && (!route.ticker || window.location.pathname.startsWith("/derivatives"))) {
+      navigate(`${route.ticker ? ETF_PATH(route.ticker) : MARKET_PATH(null)}${window.location.search}`, { replace: true });
     }
   }, [route]);
 
@@ -80,7 +80,7 @@ export default function App() {
     if (PRIVATE_ROUTES.has(route.name) && auth.ready && !auth.user) openLoginPrompt(`/${route.name}`);
   }, [route, auth.ready, auth.user]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.title = titleFor(route);
     /* 최초 렌더에서는 포커스를 옮기지 않는다. 이동할 때만 본문으로 보낸다. */
     if (previous.current === route) return;
@@ -88,12 +88,10 @@ export default function App() {
     previous.current = route;
     /* 뉴스 목록에서 기사를 고를 때는 목록 스크롤과 포커스를 그대로 둔다. */
     if (withinNews) return;
-    window.requestAnimationFrame(() => {
-      if (document.documentElement.dataset.appShell !== "mobile") {
-        main.current?.focus({ preventScroll: true });
-      }
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    });
+    if (document.documentElement.dataset.appShell !== "mobile") {
+      main.current?.focus({ preventScroll: true });
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [route]);
 
   return (
@@ -109,7 +107,7 @@ export default function App() {
         {terminal && <TradeTerminal ticker={route.name === "trade" || route.name === "market" ? route.ticker : null} />}
         {route.name === "market" && !terminal && <MarketBoard />}
         {route.name === "heatmap" && <HeatmapBoard />}
-        {route.name === "etf" && <DerivativesPage key={`etf:${route.ticker ?? "list"}`} tab="etf" etfTicker={route.ticker} />}
+        {route.name === "etf" && (route.ticker ? <DerivativesPage key={`etf:${route.ticker}`} tab="etf" etfTicker={route.ticker} /> : <MarketBoard />)}
         {route.name === "derivatives" && <DerivativesPage key={route.tab} tab={route.tab} />}
         {route.name === "news" && <NxNewsPage id={route.id} />}
         {route.name === "ranking" && <NxRankingPage />}

@@ -6,6 +6,37 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StockMarketProfileTest {
+    @Test void newlyListedBotsCanTradeAcrossTenPercentWithoutAnInvisibleStaticWall() {
+        for(String code:java.util.List.of("LT","MH")) {
+            long reference=code.equals("LT")?7270:6620;
+            long last=code.equals("LT")?7990:7280;
+            long next=last+10;
+            var accounts=new java.util.HashMap<Long,BatchOrderBook.Account>();
+            accounts.put(1L,new BatchOrderBook.Account(1,100000,false,true));
+            accounts.put(2L,new BatchOrderBook.Account(2,0,false,true));
+            var stocks=new java.util.HashMap<Long,BatchOrderBook.Stock>();
+            stocks.put(1L,new BatchOrderBook.Stock(1,code,last,reference,reference,last,true));
+            var holdings=new java.util.HashMap<BatchOrderBook.PositionKey,BatchOrderBook.Holding>();
+            holdings.put(new BatchOrderBook.PositionKey(2,1),new BatchOrderBook.Holding(1,1,last,0));
+            var book=new BatchOrderBook(accounts,stocks,holdings,java.util.List.of(),0,1000);
+            book.submit(2,1,"SELL","LIMIT",1,next,1000,10000);
+            book.submit(1,1,"BUY","LIMIT",1,next,1000,10000);
+            assertEquals(1,book.fills.size(),code+" must execute an otherwise valid funded order");
+            assertEquals(next,stocks.get(1L).last);
+            assertEquals(100000,accounts.get(1L).cash+accounts.get(2L).cash);
+            assertTrue(PriceLimitPolicy.botBand(code,reference).contains(next));
+        }
+    }
+
+    @Test void newListingsUseTheSameSmallCapClassificationAsTheirDefaultProfile() {
+        for(String code:java.util.List.of("LT","MH","NEW_LISTING")) {
+            assertTrue(StockMarketProfile.isSpeculative(code));
+            assertEquals(StockMarketProfile.SMALL_CAP_ACTIVE_USERS,StockMarketProfile.of(code).activeUsers());
+            assertEquals(Double.POSITIVE_INFINITY,PriceLimitPolicy.staticViRate(code));
+            assertEquals(.20,PriceLimitPolicy.dynamicViRate(code));
+        }
+    }
+
     @Test
     void virtualMarketCapsDifferentiateStocksAndTheirLiquidity() {
         var small = StockMarketProfile.of("TR");

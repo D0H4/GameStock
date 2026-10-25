@@ -408,6 +408,13 @@ class AdminOperationsIntegrationTest {
         tx(()->content.save(admin,null,new AdminContentService.Content("EVENT","지난 이벤트","종료 본문",null,true,java.time.Instant.now().minusSeconds(100),java.time.Instant.now().minusSeconds(10),"종료")));
         assertEquals(3,content.content(false,null,0,50).size());assertEquals(1,content.content(true,null,0,50).size());
     }
+    @Test void noticeKeepsImageAndButtonsButRejectsUnsafeLinks(){
+        var saved=tx(()->content.save(admin,null,new AdminContentService.Content("NOTICE","새 시즌","본문",null,true,null,null,"게시","/notice/season.png","지금 보기","/market"," 다음에 ")));
+        assertEquals("/notice/season.png",saved.get("image_url"));assertEquals("지금 보기",saved.get("action_label"));assertEquals("/market",saved.get("action_url"));assertEquals("다음에",saved.get("dismiss_label"));
+        assertThrows(IllegalArgumentException.class,()->tx(()->content.save(admin,null,new AdminContentService.Content("NOTICE","제목","본문",null,true,null,null,"게시",null,"열기","javascript:alert(1)",null))));
+        assertThrows(IllegalArgumentException.class,()->tx(()->content.save(admin,null,new AdminContentService.Content("NOTICE","제목","본문",null,true,null,null,"게시","//evil.example/a.png",null,null,null))));
+        assertThrows(IllegalArgumentException.class,()->tx(()->content.save(admin,null,new AdminContentService.Content("NOTICE","제목","본문",null,true,null,null,"게시",null,"열기",null,null))));
+    }
     @Test void reportsAreDeduplicatedAndResolutionIsAudited(){
         long id=((Number)tx(()->content.report(buyer,new AdminContentService.Report(seller,"반복 거래 의심"))).get("id")).longValue();
         assertThrows(IllegalArgumentException.class,()->tx(()->content.report(buyer,new AdminContentService.Report(seller,"중복 신고"))));

@@ -8,6 +8,7 @@ import { affordableQuantity } from "../../market/orderSizing";
 import { totals } from "../../market/selectors";
 import type { OrderResult } from "../../market/types";
 import { nextTickPrice, previousTickPrice, roundToTick, tickSize } from "../../market/universe";
+import { AnimatedNav } from "../AnimatedNav";
 
 /*
  * 새 화면의 주문서. 주문 규칙(호가 단위, 수량 한도, 주문 가능 금액, 거래 제한)은
@@ -196,21 +197,21 @@ export function NxOrderTicket({ code, selectedLimitPrice, selectedLimitPriceRevi
         event.preventDefault();
         if (valid && affordable && !blocked && !submitting && (orderType !== "LIMIT" || validLimitPrice)) void submit();
       }}>
-      <div className="nx-ticket-sides" role="group" aria-label="주문 방향">
+      <AnimatedNav as="div" fill activeKey={side} className="nx-ticket-sides" role="group" aria-label="주문 방향">
         {(["buy", "sell"] as const).map((option) => (
           <button key={option} type="button" className={`nx-ticket-side is-${option}${side === option ? " is-active" : ""}`} aria-pressed={side === option} onClick={() => changeSide(option)}>
             {option === "buy" ? "매수" : "매도"}
           </button>
         ))}
-      </div>
+      </AnimatedNav>
 
       <div className="nx-ticket-row">
-        <div className="nx-seg" role="group" aria-label="주문 유형">
+        <AnimatedNav as="div" fill activeKey={orderType} className="nx-seg" role="group" aria-label="주문 유형">
           <button type="button" className={orderType === "LIMIT" ? "is-active" : undefined} aria-pressed={orderType === "LIMIT"}
             disabled={Boolean(restriction && !restriction.limitOrdersAllowed)} onClick={() => changeOrderType("LIMIT")}>지정가</button>
           <button type="button" className={orderType === "MARKET" ? "is-active" : undefined} aria-pressed={orderType === "MARKET"}
             disabled={Boolean(restriction && !restriction.marketOrdersAllowed)} onClick={() => changeOrderType("MARKET")}>시장가</button>
-        </div>
+        </AnimatedNav>
         {onShowOrders && <button type="button" className="nx-link-button" onClick={onShowOrders}>미체결 보기</button>}
       </div>
 

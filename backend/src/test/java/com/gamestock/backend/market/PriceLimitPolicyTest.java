@@ -18,8 +18,10 @@ class PriceLimitPolicyTest {
         }
         assertEquals(7000,PriceLimitPolicy.dailyBand("GI",10000).lowerPrice());
         assertEquals(13000,PriceLimitPolicy.dailyBand("GI",10000).upperPrice());
-        assertEquals(10600,PriceLimitPolicy.quoteBand("GI",10000,0).upperPrice());
-        assertEquals(11600,PriceLimitPolicy.quoteBand("GI",10000,.1).upperPrice());
+        assertEquals(12000,PriceLimitPolicy.quoteBand("GI",10000,0).upperPrice());
+        assertEquals(12000,PriceLimitPolicy.quoteBand("GI",10000,.1).upperPrice());
+        assertTrue(PriceLimitPolicy.quoteBand("BA",14790,0).contains(16000),
+                "A funded seller inside the bot band must not be discarded by a hidden 6% cap");
     }
 
     @Test

@@ -110,7 +110,7 @@ export function LoginScreen({ visible, onClose }) {
               </Pressable>
             ) : null}
             <View style={styles.heading}>
-              <Image source={require('../../assets/brand/sn-mark.png')} style={styles.mark} accessibilityIgnoresInvertColors />
+              <Image source={require('../../assets/brand/shuen-mark.png')} style={styles.mark} accessibilityIgnoresInvertColors />
               <Txt variant="title" accessibilityRole="header" numberOfLines={1} style={styles.shrink}>{TITLES[method]}</Txt>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="로그인 닫기" onPress={onClose} hitSlop={8} style={styles.barButton}>
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   heading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingLeft: SPACE.md },
   shrink: { flexShrink: 1 },
   body: { paddingHorizontal: SPACE.xl, paddingTop: SPACE.sm },
-  mark: { width: 28, height: 28, borderRadius: 8 },
+  mark: { width: 28, height: 28 },
   description: { marginBottom: SPACE.lg },
   stack: { gap: SPACE.sm },
   button: { minHeight: 52, borderRadius: RADIUS, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.lg },

@@ -122,7 +122,8 @@ html[data-nx][data-nx-theme="light"] {
 html[data-nx][data-nx-theme="light"] .nx-seg,
 html[data-nx][data-nx-theme="light"] .nx-ticket-sides,
 html[data-nx][data-nx-theme="light"] .nx-ticket-submit:disabled { box-shadow: inset 0 0 0 1px var(--nx-line); }
-html[data-nx][data-nx-theme="light"] .nx-seg button.is-active { background: var(--nx-tint); font-weight: 500; }
+html[data-nx][data-nx-theme="light"] .nx-seg :is(button, a).is-active { font-weight: 500; }
+html[data-nx][data-nx-theme="light"] .nx-seg > .nx-nav-indicator { background: var(--nx-tint); }
 html[data-nx][data-nx-theme="light"] .nx-news.is-empty { border: 1px solid var(--nx-line); }
 
 html[data-nx] {
@@ -161,8 +162,10 @@ html[data-nx] :focus-visible {
 /* 화면을 옮길 때 본문으로 보내는 초점은 낭독기용이다. 누를 수 있는 것이 아니라 본문 전체에 링을 두르지 않는다. */
 html[data-nx] main[tabindex="-1"]:focus-visible { outline: none; }
 
-/* 공지 창은 열릴 때 확인 버튼에 바로 초점이 가므로 링 대신 밝기로만 표시한다(protection.css). */
-html[data-nx] .circuit-notice-confirm:focus-visible { outline: none; }
+/* 공지 창은 열릴 때 버튼에 바로 초점이 가므로 링 대신 밝기로만 표시한다(protection.css). */
+html[data-nx] .circuit-notice-confirm:focus-visible,
+html[data-nx] .site-notice-button:focus-visible,
+html[data-nx] .site-notice-close:focus-visible { outline: none; }
 
 /* 숫자는 전부 같은 폭으로. 경기천년제목은 숫자 폭이 제각각이라 호가 열이 흔들린다. */
 html[data-nx] .nx-num,
@@ -190,9 +193,9 @@ html[data-nx] .price {
   align-items: center;
   gap: 28px;
   height: 56px;
-  padding: 0 20px;
+  /* 바탕은 끝까지 깔고, 안의 메뉴는 본문(최대 1240px, 안쪽 32px)과 같은 폭에 모은다. 본문과는 괘선 없이 이어진다. */
+  padding: 0 max(32px, calc((100% - 1240px) / 2 + 32px));
   background: var(--nx-stage);
-  border-bottom: 1px solid var(--nx-line);
 }
 
 .nx-brand {
@@ -204,7 +207,8 @@ html[data-nx] .price {
   text-decoration: none;
 }
 
-.nx-brand .brand-mark { border-radius: 8px; }
+/* 넓은 화면은 글자가 든 로고, 좁은 화면은 마크만 둔다. */
+.nx-brand .brand-mark { display: none; }
 
 .nx-nav { display: flex; gap: 4px; }
 
@@ -216,27 +220,11 @@ html[data-nx] .price {
   color: var(--ink-muted);
   font-size: 15px;
   text-decoration: none;
-  box-shadow: inset 0 -2px transparent;
 }
 
 .nx-nav-link:hover { color: var(--ink); }
-.nx-nav-link.is-active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
-
-/* 상단 바 지수. 남는 폭을 차지해 프로필 버튼을 오른쪽 끝으로 민다. */
-.nx-index {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 20px;
-  min-width: 0;
-  height: 100%;
-  color: var(--ink);
-}
-
-.nx-index-item { display: flex; flex: none; align-items: baseline; gap: 10px; margin: 0; }
-.nx-index-label { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
-.nx-index-value { font-size: 16px; font-weight: 600; white-space: nowrap; }
-.nx-index-item > .nx-num:last-child { white-space: nowrap; }
+/* 밑줄 탭은 본문의 상품 전환이 쓴다. 상단 메뉴는 굵은 잉크색 글자로만 현재 화면을 보인다. */
+.nx-nav-link.is-active { color: var(--ink); font-weight: 700; }
 
 .nx-icon-button {
   display: inline-grid;
@@ -253,10 +241,17 @@ html[data-nx] .price {
 .nx-icon-button:hover { color: var(--ink); background: var(--nx-tint); }
 .nx-icon-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 
+/* 밝기 버튼이 남는 폭을 밀어 오른쪽 끝에 서고, 계정 자리는 4px 띄워 바로 옆에 붙는다. */
+.nx-top .nx-icon-button { margin-left: auto; }
+.nx-top .profile-menu { margin-left: -24px; }
+/* 로그인은 밝기 버튼과 같은 40px 상자에 글자를 세로 가운데 둔다. 글자 끝은 본문 오른쪽 끝에 맞춘다. */
+.nx-top .profile-login { display: inline-flex; align-items: center; height: 40px; margin-right: -12px; padding: 0 12px; border: 0; border-radius: var(--nx-radius); }
+.nx-top .profile-login:hover { background: var(--nx-tint); }
+
 html[data-nx] .nx-num.is-up,
-html[data-nx] .nx-combo .is-up { color: var(--up-deep); }
+html[data-nx] .nx-tape-streak .is-up { color: var(--up-deep); }
 html[data-nx] .nx-num.is-down,
-html[data-nx] .nx-combo .is-down { color: var(--down-deep); }
+html[data-nx] .nx-tape-streak .is-down { color: var(--down-deep); }
 
 /* 터미널 격자: 목록 | 시세·차트 위 잔고 | 호가 위 주문. 가운데와 오른쪽은 각자 세로로 쌓는다. */
 .nx-terminal {
@@ -515,63 +510,20 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 .nx-main { grid-area: main; display: flex; flex-direction: column; gap: var(--nx-gap); min-width: 0; }
 .nx-rail { grid-area: side; display: flex; flex-direction: column; gap: var(--nx-gap); min-width: 0; }
 
-/* 호가와 체결 레인 */
+/* 호가: 매도 5단계, 현재가 줄, 매수 5단계. 그 아래에 최근 체결 테이프. */
 .nx-book { display: flex; flex-direction: column; }
 
 .nx-ladder {
   --row: 38px;
   position: relative;
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: repeat(5, var(--row)) 52px repeat(5, var(--row));
 }
 
-.nx-lanes {
-  position: relative;
-  grid-column: 1;
-  grid-row: 1 / 6;
-  margin-right: 10px;
-  border-radius: 6px 6px 0 0;
-  background:
-    linear-gradient(var(--nx-line), var(--nx-line)) 50% 0 / 1px 100% no-repeat,
-    var(--nx-lane);
-  overflow: hidden;
-}
-
-.nx-lane-label {
-  position: absolute;
-  top: 6px;
-  width: 50%;
-  color: var(--ink-muted);
-  font-size: 10px;
-  text-align: center;
-}
-
-.nx-lane-label.is-buy { left: 0; }
-.nx-lane-label.is-sell { right: 0; }
-
-/*
- * 노트를 담는 판. 새 체결 묶음이 오면 판 전체가 판정선 아래에서 한 번에 올라온다(TradeTerminal의 Highway).
- * 노트마다 따로 움직이지 않으므로 같은 줄 노트끼리 겹칠 수 없다.
- */
-.nx-print-stack {
-  position: absolute;
-  inset: 0;
-}
-
-.nx-print {
-  position: absolute;
-  width: calc(50% - 12px);
-  border-radius: 3px;
-}
-
-.nx-print.is-buy { left: 6px; background: var(--up); }
-.nx-print.is-sell { right: 6px; background: var(--down); }
-
 .nx-book-row {
-  grid-column: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   align-items: center;
   border-bottom: 1px solid var(--nx-panel);
 }
@@ -591,45 +543,82 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 .nx-book-row.is-bid .nx-book-price { color: var(--up-deep); }
 .nx-book-price:hover { background: var(--nx-tint); }
 
-/* 잔량 칸은 줄 높이를 꽉 채우고, 막대는 그 안에서 위아래 2px씩 띄워 현재가 줄·이웃 줄과 겹치지 않게 한다. */
-.nx-book-qty { position: relative; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 13px; }
-.nx-book-bar { position: absolute; top: 2px; right: 0; bottom: 2px; z-index: 0; border-radius: 3px; }
+/*
+ * 잔량 칸은 줄 높이를 꽉 채우고, 막대는 그 안에서 위아래 2px씩 띄워 현재가 줄·이웃 줄과 겹치지 않게 한다.
+ * 막대 폭은 잔량이 바뀔 때 미끄러지듯 늘고 준다.
+ */
+.nx-book-qty { position: relative; isolation: isolate; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 13px; }
+.nx-book-bar { position: absolute; top: 2px; right: 0; bottom: 2px; z-index: -1; border-radius: 3px; transition: width 280ms cubic-bezier(0.22, 1, 0.36, 1); }
 .nx-book-row.is-ask .nx-book-bar { background: var(--down-wash); }
 .nx-book-row.is-bid .nx-book-bar { background: var(--up-wash); }
-.nx-book-qty { isolation: isolate; }
-.nx-book-bar { z-index: -1; }
 .nx-book-unit { margin-left: 2px; color: var(--ink-muted); font-size: 11px; }
 .nx-book-empty { grid-column: 1 / -1; color: var(--ink-muted); text-align: center; }
+/* 잔량이 바뀐 숫자만 한 번 반짝인다. 늘면 그 쪽 색으로 밝게, 줄면 잠깐 흐려졌다 돌아온다. */
+.nx-book-count { border-radius: 3px; }
+.nx-book-row.is-ask .nx-book-count.is-more { animation: nx-qty-more-ask 520ms ease-out; }
+.nx-book-row.is-bid .nx-book-count.is-more { animation: nx-qty-more-bid 520ms ease-out; }
+.nx-book-count.is-less { animation: nx-qty-less 420ms ease-out; }
+@keyframes nx-qty-more-ask { from { color: var(--down-deep); text-shadow: 0 0 10px var(--down); } to { color: var(--ink); text-shadow: none; } }
+@keyframes nx-qty-more-bid { from { color: var(--up-deep); text-shadow: 0 0 10px var(--up); } to { color: var(--ink); text-shadow: none; } }
+@keyframes nx-qty-less { from { opacity: 0.35; } to { opacity: 1; } }
 
-/* 판정선: 현재가 줄이 레인까지 가로지른다. */
+/* 판정선: 현재가 줄. 체결 묶음이 오면 그 방향 색이 왼쪽에서 오른쪽으로 한 번 쓸고 지나간다. */
 .nx-judge {
-  grid-column: 1 / -1;
+  position: relative;
   grid-row: 6;
   display: flex;
   align-items: center;
   gap: 12px;
-  /* 호가 패널 좌우 끝까지 칠해 현재가 줄이 레인을 가로지르게 한다. 글자 자리는 레인 폭(112px)+10px 그대로. */
-  margin: 0 calc(-1 * var(--nx-pad));
-  padding-left: calc(122px + var(--nx-pad));
+  padding: 0 12px 0 8px;
+  overflow: hidden;
+  isolation: isolate;
   background: var(--brand-wash);
 }
 
 .nx-judge-price { font-size: 22px; font-weight: 700; }
 .nx-judge .delta { font-size: 13px; }
 
-.nx-combo {
-  grid-column: 1;
-  grid-row: 7 / 12;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-right: 10px;
-  padding: 12px 8px;
-  color: var(--ink-muted);
-  font-size: 12px;
+.nx-judge-sweep { position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; animation: nx-judge-sweep 640ms cubic-bezier(0.22, 1, 0.36, 1); }
+.nx-judge-sweep.is-buy { background: linear-gradient(90deg, transparent, var(--up-wash) 35%, color-mix(in srgb, var(--up) 28%, transparent) 60%, transparent); }
+.nx-judge-sweep.is-sell { background: linear-gradient(90deg, transparent, var(--down-wash) 35%, color-mix(in srgb, var(--down) 28%, transparent) 60%, transparent); }
+@keyframes nx-judge-sweep {
+  from { opacity: 1; transform: translateX(-100%); }
+  70% { opacity: 1; }
+  to { opacity: 0; transform: translateX(100%); }
 }
 
-.nx-combo strong { font-size: 34px; font-weight: 800; line-height: 1; }
+/* 이번 묶음의 체결 수량 꼬리표. 튀어나왔다가 1.6초 뒤 사라진다. */
+.nx-judge-hit {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  animation: nx-judge-hit 1600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nx-judge-hit.is-buy { background: var(--up-wash); color: var(--up-deep); }
+.nx-judge-hit.is-sell { background: var(--down-wash); color: var(--down-deep); }
+@keyframes nx-judge-hit {
+  from { opacity: 0; transform: translateY(6px) scale(0.92); }
+  14% { opacity: 1; transform: none; }
+  70% { opacity: 1; }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+
+/* 체결 테이프: 연속 체결 수 + 최근 체결 띠. 칸 폭(72px)·간격(6px)은 TradeTerminal의 TAPE_CHIP·TAPE_GAP과 같다. */
+.nx-tape { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+.nx-tape-streak { display: flex; flex: none; align-items: baseline; gap: 6px; min-width: 88px; margin: 0; color: var(--ink-muted); font-size: 12px; white-space: nowrap; }
+.nx-tape-streak strong { font-size: 22px; font-weight: 800; line-height: 1; }
+.nx-tape-track { flex: 1; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 80%, transparent); mask-image: linear-gradient(90deg, #000 80%, transparent); }
+.nx-tape-strip { display: flex; gap: 6px; width: max-content; }
+.nx-tape-chip { display: inline-flex; flex: none; align-items: baseline; justify-content: center; gap: 1px; box-sizing: border-box; width: 72px; height: 30px; padding-top: 7px; border-radius: 4px; font-size: 13px; font-weight: 600; }
+.nx-tape-chip small { color: var(--ink-muted); font-size: 10px; font-weight: 500; }
+.nx-tape-chip.is-buy { background: var(--up-wash); color: var(--up-deep); }
+.nx-tape-chip.is-sell { background: var(--down-wash); color: var(--down-deep); }
+.nx-tape-chip.is-fresh { animation: nx-tape-in 520ms ease-out; }
+@keyframes nx-tape-in { from { box-shadow: inset 0 0 0 1.5px currentColor; } to { box-shadow: inset 0 0 0 1.5px transparent; } }
 
 /* 아래 줄: 잔고·주문 */
 .nx-account { grid-area: account; flex: 1; }
@@ -660,11 +649,9 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 @media (max-width: 1080px) {
   html[data-nx] { --nx-gap: 14px; --nx-pad: 20px; }
   .nx-top { gap: 12px; padding: 0 12px; }
-  .nx-brand span { display: none; }
-  .nx-index { display: none; }
-  /* 지수가 빠진 자리를 밝기 버튼이 밀어내고, 로그인 버튼은 그 바로 오른쪽에 붙는다. */
-  .nx-top .nx-icon-button { margin-left: auto; }
-  .nx-top .profile-menu { margin-left: 0; }
+  .nx-brand .brand-logo { display: none; }
+  .nx-brand .brand-mark { display: block; }
+  .nx-top .profile-menu { margin-left: -8px; }
   .nx-terminal {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "watch" "center" "side" "account";
@@ -695,6 +682,4 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   .nx-opinion-value { min-width: 44px; min-height: 44px; margin: -12px -11px; padding: 0 11px; }
   .nx-nav-link { padding: 0 8px; font-size: 14px; }
   .nx-watch-toggle { padding: 0 10px; }
-  .nx-ladder { grid-template-columns: 84px minmax(0, 1fr); }
-  .nx-judge { padding-left: calc(94px + var(--nx-pad)); }
 }

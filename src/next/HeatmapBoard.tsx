@@ -1,7 +1,9 @@
+import { GameIcon } from "../components/GameIcon";
 import { Link } from "../components/Link";
 import { useNarrow, useWidth } from "../lib/useWidth";
 import { rate, won } from "../market/format";
 import { sessionRate } from "../market/selectors";
+import type { Listing, Quote } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
 import { useSteadySnapshot } from "../market/useSteadySnapshot";
 import { MARKET_PATH } from "../router";
@@ -59,42 +61,76 @@ function squarify(areas: number[], frame: Box): Box[] {
   return boxes;
 }
 
-/** 칸 면적은 시가총액, 색 농도는 등락 크기. 화려함이 곧 정보가 되는 자리. */
+/** 장르 이름 줄의 높이. 구역마다 칸 위에 한 줄씩 둔다. */
+const THEME_HEAD = 26;
+/** 칸 사이 이음새는 1px, 장르 구역 사이는 한 겹 더 띄운다. CSS의 .nx-heat 바깥 확장(-2px)·이름 줄 오른쪽 끝과 맞물린다. */
+const GROUP_GAP = 1;
+/** 같은 갈래인 세부 장르는 한 구역에 모은다. 한 종목뿐인 구역이 늘어나면 이름 줄만 많아진다. */
+const THEME_OF: Record<string, string> = { "전략 RPG": "RPG" };
+
+type Item = { code: string; quote: Quote; listing: Listing; weight: number };
+
+/** 칸 면적은 시가총액, 색 농도는 등락 크기. 증시 맵처럼 장르(테마)별 구역으로 먼저 나누고 그 안을 다시 나눈다. */
 function Heatmap() {
   const snapshot = useSteadySnapshot();
   const [frame, width] = useWidth<HTMLDivElement>();
   const height = useNarrow() ? 640 : 560;
-  const items = snapshot.codes
+  const listed = snapshot.codes
     .map((code) => ({ code, quote: snapshot.quotes[code], listing: LISTING_BY_CODE[code] }))
-    .filter((item) => item.quote && item.listing)
-    .sort((a, b) => (b.quote.marketCap ?? 0) - (a.quote.marketCap ?? 0));
-  const total = items.reduce((sum, item) => sum + (item.quote.marketCap ?? 0), 0) || 1;
+    .filter((item) => item.quote && item.listing);
+  const total = listed.reduce((sum, item) => sum + (item.quote.marketCap ?? 0), 0) || 1;
   const minShare = width > 0 ? Math.max(MIN_SHARE, (MIN_TILE * MIN_TILE) / (width * height)) : MIN_SHARE;
-  const weights = items.map((item) => Math.max(minShare, (item.quote.marketCap ?? 0) / total));
-  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
-  const boxes = width > 0 ? squarify(weights.map((weight) => (weight / weightSum) * width * height), { x: 0, y: 0, w: width, h: height }) : [];
+
+  const themes = new Map<string, Item[]>();
+  for (const item of listed) {
+    const theme = THEME_OF[item.listing.genre] ?? item.listing.genre;
+    const weight = Math.max(minShare, (item.quote.marketCap ?? 0) / total);
+    themes.set(theme, [...(themes.get(theme) ?? []), { ...item, weight }]);
+  }
+  const groups = [...themes].map(([theme, items]) => ({
+    theme,
+    items: items.sort((a, b) => b.weight - a.weight),
+    weight: items.reduce((sum, item) => sum + item.weight, 0),
+  })).sort((a, b) => b.weight - a.weight);
+  const weightSum = groups.reduce((sum, group) => sum + group.weight, 0);
+  /* 오른쪽·아래 끝 구역의 이음새가 지도 밖으로 밀려 나가 잘리도록 그만큼 크게 잡는다. */
+  const outer = { x: 0, y: 0, w: width + GROUP_GAP + 1, h: height + GROUP_GAP + 1 };
+  const groupBoxes = width > 0 ? squarify(groups.map((group) => (group.weight / weightSum) * outer.w * outer.h), outer) : [];
 
   return (
     <div className="nx-heat-frame" ref={frame} style={{ height }}>
-      {items.length === 0 && <p className="nx-heat-status" role="status">시세를 불러오고 있어요.</p>}
-      <ul className="nx-heat" aria-label="종목별 등락 지도. 칸 크기는 시가총액">
-        {boxes.length > 0 && items.map(({ code, quote, listing }, index) => {
-          const box = boxes[index];
-          const ratio = sessionRate(quote);
-          // 칸에 찍히는 소수 둘째 자리 값으로 나눠야 "0.00%" 칸이 색을 띠지 않는다.
-          const percent = Number((ratio * 100).toFixed(2));
-          const size = Math.abs(percent);
-          const level = size === 0 ? 0 : size < 1 ? 1 : size < 3 ? 2 : size < 5 ? 3 : 4;
-          const tone = percent > 0 ? "up" : percent < 0 ? "down" : "flat";
+      {listed.length === 0 && <p className="nx-heat-status" role="status">시세를 불러오고 있어요.</p>}
+      <ul className="nx-heat" aria-label="장르별 종목 등락 지도. 칸 크기는 시가총액">
+        {groupBoxes.length > 0 && groups.map((group, groupIndex) => {
+          const area = groupBoxes[groupIndex];
+          const inner = { x: 0, y: THEME_HEAD, w: area.w - GROUP_GAP, h: Math.max(0, area.h - GROUP_GAP - THEME_HEAD) };
+          const boxes = squarify(group.items.map((item) => (item.weight / group.weight) * inner.w * inner.h), inner);
           return (
-            <li key={code} style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
-              <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}`}
-                aria-label={`${listing.name} ${rate(ratio)} ${won(quote.price)}${quote.restriction ? ` ${quote.restriction.kind === "CIRCUIT_BREAKER" ? "서킷브레이커" : "VI"}` : ""}`}>
-                <span className="nx-heat-name">{listing.name}</span>
-                <span className="nx-heat-rate nx-num">{rate(ratio)}</span>
-                <span className="nx-heat-price nx-num">{won(quote.price)}</span>
-                {quote.restriction && <span className="nx-heat-guard">{quote.restriction.kind === "CIRCUIT_BREAKER" ? "서킷브레이커" : "VI"}</span>}
-              </Link>
+            <li key={group.theme} className="nx-heat-group" style={{ left: area.x, top: area.y, width: area.w, height: area.h }}>
+              <h2 className="nx-heat-theme">{group.theme}</h2>
+              <ul aria-label={group.theme}>
+                {group.items.map(({ code, quote, listing }, index) => {
+                  const box = boxes[index];
+                  const ratio = sessionRate(quote);
+                  // 칸에 찍히는 소수 둘째 자리 값으로 나눠야 "0.00%" 칸이 색을 띠지 않는다.
+                  const percent = Number((ratio * 100).toFixed(2));
+                  const size = Math.abs(percent);
+                  const level = size === 0 ? 0 : size < 1 ? 1 : size < 3 ? 2 : size < 5 ? 3 : 4;
+                  const tone = percent > 0 ? "up" : percent < 0 ? "down" : "flat";
+                  return (
+                    <li key={code} className="nx-heat-cell" style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
+                      <Link to={MARKET_PATH(code)} className={`nx-heat-tile is-${tone} is-l${level}`}
+                        aria-label={`${listing.name} ${rate(ratio)} ${won(quote.price)}${quote.restriction ? ` ${quote.restriction.kind === "CIRCUIT_BREAKER" ? "서킷브레이커" : "VI"}` : ""}`}>
+                        <GameIcon code={code} className="nx-heat-logo" />
+                        <span className="nx-heat-name">{listing.name}</span>
+                        <span className="nx-heat-rate nx-num">{rate(ratio)}</span>
+                        <span className="nx-heat-price nx-num">{won(quote.price)}</span>
+                        {quote.restriction && <span className="nx-heat-guard">{quote.restriction.kind === "CIRCUIT_BREAKER" ? "서킷브레이커" : "VI"}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             </li>
           );
         })}
@@ -106,14 +142,8 @@ function Heatmap() {
 export function HeatmapBoard() {
   return (
     <div className="nx-screen nx-heatmap-screen">
-      <header className="nx-screen-head">
-        <div>
-          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
-          <h1 className="vh">히트맵</h1>
-          <p className="nx-screen-sub">칸 크기는 시가총액, 색이 짙을수록 많이 움직였어요. 5초마다 새로 그려요.</p>
-        </div>
-      </header>
-      <section className="nx-panel nx-heatmap-panel" aria-label="시장 지도">
+      <section className="nx-panel nx-heatmap-panel" aria-labelledby="nx-heatmap-title">
+        <h1 id="nx-heatmap-title" className="nx-panel-title">히트맵</h1>
         <Heatmap />
       </section>
     </div>

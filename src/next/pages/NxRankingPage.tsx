@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuthUser } from "../../lib/auth";
-import { DEFAULT_PROFILE_AVATAR } from "../../lib/profileAvatars";
+import { RankingAvatar } from "../../components/RankingAvatar";
 import { titleInkStyle } from "../../lib/titles";
 import {
   formatCountdown, formatWeekDay, RANKING_CACHE_KEY, RANKING_TAB_KEY, readRankingCache, readTab, readWeeklyCache,
   usePolledRanking, WEEKLY_RANKING_CACHE_KEY,
   type RankingEntry, type RankingTab, type WeeklyRanking,
 } from "../../pages/RankingPage";
+import { AnimatedNav } from "../AnimatedNav";
 
 type Row = Omit<RankingEntry, "changePercent">;
 
@@ -14,25 +15,18 @@ const formatChange = (percent: number) => `${percent >= 0 ? "+" : ""}${percent.t
 const tone = (percent: number) => (percent > 0 ? "is-up" : percent < 0 ? "is-down" : "");
 const MEDALS: Record<number, string> = { 1: "1위 금메달", 2: "2위 은메달", 3: "3위 동메달" };
 
-function Avatar({ src }: { src?: string | null }) {
-  return (
-    <img className="nx-avatar" src={src || DEFAULT_PROFILE_AVATAR} alt="" loading="lazy"
-      onError={(event) => {
-        if (event.currentTarget.src.endsWith(DEFAULT_PROFILE_AVATAR)) return;
-        event.currentTarget.src = DEFAULT_PROFILE_AVATAR;
-      }} />
-  );
-}
-
 function RankRow({ entry, percent, mine = false }: { entry: Row; percent: number; mine?: boolean }) {
   return (
     <tr className={`${mine ? "is-mine" : ""}${entry.rank <= 3 ? " is-top" : ""}`} aria-current={mine ? "true" : undefined}>
-      <th scope="row" className="nx-rank-cell">
-        <span className={`nx-rank${entry.rank <= 3 ? ` is-medal is-${entry.rank}` : ""}`} aria-label={MEDALS[entry.rank]}>{entry.rank}</span>
+      <th scope="row" className="nx-rank-cell" aria-label={MEDALS[entry.rank]}>
+        {MEDALS[entry.rank] ? (
+          <RankingAvatar rank={entry.rank} src={entry.profileImageUrl} />
+        ) : (
+          <span className="nx-rank">{entry.rank}</span>
+        )}
       </th>
       <td className="nx-player-cell">
         <span className="nx-player">
-          <Avatar src={entry.profileImageUrl} />
           <span className="nx-player-text">
             {entry.equippedTitle && (
               <span className={`nx-player-title has-title-ink${entry.equippedTitleWeekly ? " is-weekly" : ""}`} style={titleInkStyle(entry.equippedTitle)} title={entry.equippedTitle}>
@@ -138,18 +132,12 @@ export function NxRankingPage() {
 
   return (
     <div className="nx-screen nx-ranking-screen">
-      <header className="nx-screen-head">
-        <div>
-          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
-          <h1 className="vh">랭킹</h1>
-          <p className="nx-screen-sub">실제 이용자끼리만 순위를 매겨요.</p>
-        </div>
-      </header>
-      <section className="nx-panel nx-ranking-panel">
-        <div className="nx-tabs nx-ranking-tabs" role="tablist" aria-label="랭킹 종류">
+      <section className="nx-panel nx-ranking-panel" aria-labelledby="nx-ranking-title">
+        <h1 id="nx-ranking-title" className="nx-panel-title">랭킹</h1>
+        <AnimatedNav as="div" fill activeKey={tab} className="nx-seg nx-ranking-tabs" role="tablist" aria-label="랭킹 종류">
           <button type="button" role="tab" id="nx-rank-total" aria-selected={tab === "total"} aria-controls="nx-rank-panel" className={tab === "total" ? "is-active" : undefined} onClick={() => select("total")}>전체 자산</button>
           <button type="button" role="tab" id="nx-rank-weekly" aria-selected={tab === "weekly"} aria-controls="nx-rank-panel" className={tab === "weekly" ? "is-active" : undefined} onClick={() => select("weekly")}>이번 주 수익률</button>
-        </div>
+        </AnimatedNav>
         <div id="nx-rank-panel" role="tabpanel" aria-labelledby={tab === "total" ? "nx-rank-total" : "nx-rank-weekly"}>
           {tab === "total" ? <TotalBoard /> : <WeeklyBoard />}
         </div>

@@ -1,10 +1,17 @@
 import { Link } from "../components/Link";
+import { AnimatedNav } from "./AnimatedNav";
 
-export function MarketTabs({ active }: { active: "stocks" | "etf" }) {
+export function MarketTabs({ active }: { active: "stocks" | "etf" | "futures" | "options" }) {
+  const selected = active === "etf" ? "stocks" : active;
+  const tabs = [
+    { id: "stocks", label: "주식", to: "/market" },
+    { id: "futures", label: "선물", to: "/derivatives/futures" },
+    { id: "options", label: "옵션", to: "/derivatives/options" },
+  ];
   return (
-    <nav className="nx-market-tabs" aria-label="주식 상품">
-      <Link to="/market" className={active === "stocks" ? "is-active" : undefined} aria-current={active === "stocks" ? "page" : undefined}>종목</Link>
-      <Link to="/market/etf" className={active === "etf" ? "is-active" : undefined} aria-current={active === "etf" ? "page" : undefined}>ETF</Link>
-    </nav>
+    <AnimatedNav animationId="products" activeKey={selected} className="nx-product-tabs" aria-label="거래 상품">
+      {tabs.map(tab => <Link key={tab.id} to={tab.to} className={selected === tab.id ? "is-active" : undefined}
+        aria-current={selected === tab.id ? "page" : undefined}><span className="nx-bold-reserve" data-label={tab.label}>{tab.label}</span></Link>)}
+    </AnimatedNav>
   );
 }

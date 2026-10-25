@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { Delta } from "../components/Delta";
 import { Link } from "../components/Link";
 import { EtfBoard } from "../next/EtfBoard";
+import { MarketTabs } from "../next/MarketTabs";
 import { requireSignIn } from "../lib/auth";
 import { useMarketApi } from "../market/MarketProvider";
 import { closeDerivative, openDerivative, useDerivativeMarket } from "../market/derivatives";
@@ -10,13 +10,8 @@ import { productAccount } from "../market/derivativeAccount";
 import { indexValue, kstDateTime, serverTimestamp, signedWon, won } from "../market/format";
 import { ETF_PATH, type DerivativesTab } from "../router";
 import { EtfPanel } from "./derivatives/EtfPanel";
-import { FuturesPanel } from "./derivatives/FuturesPanel";
+import { FuturesTerminal } from "./derivatives/FuturesTerminal";
 import { OptionsPanel } from "./derivatives/OptionsPanel";
-
-const TABS: { id: DerivativesTab; label: string; hint: string }[] = [
-  { id: "futures", label: "선물", hint: "지수 레버리지" },
-  { id: "options", label: "옵션", hint: "10분·1시간·일요일 만기" },
-];
 
 const ACTION_LABEL: Record<string, string> = {
   OPEN: "신규",
@@ -61,6 +56,17 @@ export function DerivativesPage({ tab, etfTicker = null }: { tab: DerivativesTab
 
   if (isEtf && !etfTicker) return <EtfBoard quotes={snapshot?.etfs ?? null} loading={loading} error={error} />;
 
+  // 선물은 주식 거래 화면과 같은 판(시세·차트 + 오른쪽 주문서)을 쓴다. 계좌 요약과 체결 내역도 그 안에 있다.
+  if (tab === "futures") return (
+    <div className="nx-trade-page nx-futures-page">
+      <MarketTabs active="futures" />
+      {snapshot
+        ? <FuturesTerminal snapshot={snapshot} account={account} signedIn={Boolean(user)} busy={busy} notice={notice}
+            stale={Boolean(error)} onOpen={open} onClose={close} />
+        : <p className="nx-empty" role="status">{loading ? "선물 시장을 불러오는 중이에요." : "선물 시세를 불러오지 못했어요. 잠시 후 다시 확인해 주세요."}</p>}
+    </div>
+  );
+
   if (isEtf && snapshot && !selectedEtf) return <div className="nx-market">
     <section className="nx-empty-state">
       <h1 className="nx-page-title">ETF를 찾을 수 없어요.</h1>
@@ -71,6 +77,7 @@ export function DerivativesPage({ tab, etfTicker = null }: { tab: DerivativesTab
 
   return (
     <div className={`page-stack derivatives-page nx-product-page${isEtf ? " nx-etf-page" : ""}`}>
+      <MarketTabs active={isEtf ? "stocks" : tab} />
       {!isEtf && <header className="derivatives-head">
         <div>
           {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
@@ -79,35 +86,20 @@ export function DerivativesPage({ tab, etfTicker = null }: { tab: DerivativesTab
             게임주 지수 선물과 옵션을 거래하세요. 모의 시장 · 24시간
           </p>
         </div>
-        {snapshot && <div className="derivatives-head-index">
-          <span>게임주 지수</span>
-          <strong className="num">{indexValue(snapshot.indexValue)}</strong>
-          <Delta change={snapshot.indexValue - snapshot.indexPrevClose} ratio={snapshot.indexChangePercent / 100} showAmount={false} />
-        </div>}
       </header>}
 
       {isEtf && <div className="nx-trade-toolbar">
-        <Link to={ETF_PATH()} className="nx-back-link"><span aria-hidden="true">←</span> ETF 목록</Link>
+        <Link to="/market" className="nx-back-link"><span aria-hidden="true">←</span> 주식 목록</Link>
       </div>}
-
-      {!isEtf && <nav className="derivatives-tabs" aria-label="파생상품 종류">
-        {TABS.map((item) => (
-          <Link key={item.id} to={`/derivatives/${item.id}`}
-            className={`derivatives-tab${tab === item.id ? " is-active" : ""}`}
-            aria-current={tab === item.id ? "page" : undefined}>
-            <strong>{item.label}</strong>
-            <span>{item.hint}</span>
-          </Link>
-        ))}
-      </nav>}
 
       {!snapshot ? <p className="empty" role="status">{loading ? `${label} 시장을 불러오는 중…` : `${label} 시세를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.`}</p> : <>
 
-      {!isEtf && (user && account ? (
-        <dl className="derivative-account" aria-label={`${label} 계좌 요약`}>
-          <div><dt>사용 가능 현금</dt><dd className="num">{won(account.cash)}</dd></div>
-          <div><dt>{label} 평가액</dt><dd className="num">{won(positionValue)}</dd></div>
-          <div><dt>{label} 평가손익</dt><dd className={`num ${unrealizedPnl > 0 ? "is-up" : unrealizedPnl < 0 ? "is-down" : ""}`}>{signedWon(unrealizedPnl)}</dd></div>
+      {/* 로그인한 사람은 계좌를 받는 동안에도 같은 자리를 "—"로 채운다. 로그인 안내가 잠깐 비치지 않게. */}
+      {!isEtf && (user ? (
+        <dl className="derivative-account" aria-label={`${label} 계좌 요약`} aria-busy={!account}>
+          <div><dt>사용 가능 현금</dt><dd className="num">{account ? won(account.cash) : "—"}</dd></div>
+          <div><dt>{label} 평가액</dt><dd className="num">{account ? won(positionValue) : "—"}</dd></div>
+          <div><dt>{label} 평가손익</dt><dd className={`num ${account && unrealizedPnl > 0 ? "is-up" : account && unrealizedPnl < 0 ? "is-down" : ""}`}>{account ? signedWon(unrealizedPnl) : "—"}</dd></div>
         </dl>
       ) : (
         <div className="derivative-signin">
@@ -125,9 +117,6 @@ export function DerivativesPage({ tab, etfTicker = null }: { tab: DerivativesTab
 
       {tab === "etf" && selectedEtf && (
         <EtfPanel selected={selectedEtf} account={account} busy={busy} onOpen={open} onClose={close} notice={notice} />
-      )}
-      {tab === "futures" && (
-        <FuturesPanel snapshot={snapshot} account={account} busy={busy} onOpen={open} onClose={close} />
       )}
       {tab === "options" && (
         <OptionsPanel snapshot={snapshot} account={account} busy={busy} onOpen={open} onClose={close} />

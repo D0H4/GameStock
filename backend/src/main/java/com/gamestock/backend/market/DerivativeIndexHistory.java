@@ -20,10 +20,13 @@ final class DerivativeIndexHistory {
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS derivative_index_observations (
                   observed_at TIMESTAMP(3) PRIMARY KEY, index_value DOUBLE NOT NULL,
-                  invalidated BOOLEAN NOT NULL DEFAULT FALSE)
+                  invalidated BOOLEAN NOT NULL DEFAULT FALSE, settleable BOOLEAN NOT NULL DEFAULT TRUE)
                 """);
         if (jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='derivative_index_observations' AND column_name='invalidated'", Integer.class) == 0)
             jdbc.execute("ALTER TABLE derivative_index_observations ADD COLUMN invalidated BOOLEAN NOT NULL DEFAULT FALSE");
+        // Rows written before this column existed all passed the freshness rule.
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='derivative_index_observations' AND column_name='settleable'", Integer.class) == 0)
+            jdbc.execute("ALTER TABLE derivative_index_observations ADD COLUMN settleable BOOLEAN NOT NULL DEFAULT TRUE");
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS derivative_expiry_fixings (
                   expiry_at TIMESTAMP(3) PRIMARY KEY, index_value DOUBLE NOT NULL,
@@ -41,9 +44,16 @@ final class DerivativeIndexHistory {
                 """);
     }
 
-    void observe(double index, Instant at) {
+    void observe(double index, Instant at) { observe(index, at, true); }
+
+    /**
+     * Charts draw every sample. Only settleable samples (every constituent passed the freshness rule)
+     * feed expiry fixings, retention and volatility, so a thin tape still cannot set a settlement price.
+     */
+    void observe(double index, Instant at, boolean settleable) {
         // Same timestamp is immutable across readers/instances. No public GET writes samples.
-        jdbc.update("INSERT IGNORE INTO derivative_index_observations(observed_at,index_value) VALUES(?,?)", Timestamp.from(at), index);
+        jdbc.update("INSERT IGNORE INTO derivative_index_observations(observed_at,index_value,settleable) VALUES(?,?,?)",
+                Timestamp.from(at), index, settleable);
     }
 
     /** Invalidate potential descendants of a cancelled execution, including held last-good quotes. */
@@ -66,7 +76,7 @@ final class DerivativeIndexHistory {
                 SELECT UNIX_TIMESTAMP(o.observed_at) AS second,o.index_value
                 FROM derivative_index_observations o JOIN (
                   SELECT MAX(observed_at) AS at FROM derivative_index_observations
-                  WHERE observed_at>=? AND observed_at<=? AND invalidated=FALSE
+                  WHERE observed_at>=? AND observed_at<=? AND invalidated=FALSE AND settleable=TRUE
                   GROUP BY FLOOR(UNIX_TIMESTAMP(observed_at)/3)
                   ORDER BY at DESC LIMIT 900
                 ) buckets ON buckets.at=o.observed_at ORDER BY o.observed_at
@@ -89,7 +99,7 @@ final class DerivativeIndexHistory {
         jdbc.update("""
                 INSERT IGNORE INTO derivative_expiry_fixings(expiry_at,index_value,observed_at)
                 SELECT ?,index_value,observed_at FROM derivative_index_observations
-                WHERE observed_at<=? AND observed_at>=? AND invalidated=FALSE ORDER BY observed_at DESC LIMIT 1 FOR SHARE
+                WHERE observed_at<=? AND observed_at>=? AND invalidated=FALSE AND settleable=TRUE ORDER BY observed_at DESC LIMIT 1 FOR SHARE
                 """, at, at, Timestamp.from(expiry.minusSeconds(DerivativePriceOracle.MAX_AGE_SECONDS)));
         var fixed = jdbc.queryForList("SELECT index_value FROM derivative_expiry_fixings WHERE expiry_at=? FOR SHARE", Double.class, at);
         if (fixed.isEmpty()) throw new IllegalStateException("만기 이전 지수 기록이 없어 정산을 보류합니다: " + expiry);
@@ -100,7 +110,7 @@ final class DerivativeIndexHistory {
         Instant cutoff=now.minusSeconds(30L*86400);
         var pending=jdbc.queryForList("SELECT MIN(expiry_at) FROM derivative_positions WHERE status='OPEN' AND expiry_at IS NOT NULL",Timestamp.class);
         if(!pending.isEmpty() && pending.get(0)!=null && pending.get(0).toInstant().isBefore(cutoff))cutoff=pending.get(0).toInstant();
-        Timestamp keep=jdbc.queryForObject("SELECT MAX(observed_at) FROM derivative_index_observations WHERE observed_at<=? AND invalidated=FALSE",Timestamp.class,Timestamp.from(cutoff));
+        Timestamp keep=jdbc.queryForObject("SELECT MAX(observed_at) FROM derivative_index_observations WHERE observed_at<=? AND invalidated=FALSE AND settleable=TRUE",Timestamp.class,Timestamp.from(cutoff));
         jdbc.update("DELETE FROM derivative_index_observations WHERE observed_at<? ORDER BY observed_at LIMIT 5000",keep==null?Timestamp.from(cutoff):keep);
         jdbc.update("""
                 DELETE FROM derivative_expiry_fixings WHERE expiry_at<?

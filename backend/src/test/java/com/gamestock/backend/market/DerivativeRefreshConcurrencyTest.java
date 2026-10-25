@@ -85,14 +85,14 @@ class DerivativeRefreshConcurrencyTest {
             });
             resume.countDown();pending.get(5,TimeUnit.SECONDS);
             assertNull(jdbc.queryForObject("SELECT observed_at FROM derivative_reference_prices WHERE stock_id=?",Timestamp.class,stock));
-            assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations",Integer.class));
+            assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE invalidated=FALSE AND settleable=TRUE",Integer.class));
             assertEquals(900,jdbc.queryForObject("SELECT mark_price FROM derivative_positions WHERE id=?",Double.class,position));
             assertThrows(IllegalArgumentException.class,()->service.close(1,position,1));
 
             // A subsequent valid tape must recover normally, including the position mark.
             DerivativeTapeFixture.seed(jdbc,NOW.plusSeconds(3));
             service.setClock(Clock.fixed(NOW.plusSeconds(3),ZoneOffset.UTC));service.refreshMarks();
-            assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE invalidated=FALSE",Integer.class));
+            assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE invalidated=FALSE AND settleable=TRUE",Integer.class));
             assertEquals(1000,jdbc.queryForObject("SELECT mark_price FROM derivative_positions WHERE id=?",Double.class,position));
         } finally {resume.countDown();worker.shutdownNow();assertTrue(worker.awaitTermination(5,TimeUnit.SECONDS));}
     }

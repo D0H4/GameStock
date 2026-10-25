@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "../../lib/profile";
 import { checkTitles, equipTitle, titleInkStyle, type TitleStatus, type UserTitle } from "../../lib/titles";
+import { AnimatedNav } from "../AnimatedNav";
 
 const CATEGORY_ORDER = ["자산", "수익률", "보유", "거래", "활동", "수집", "주간", "특별"];
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
@@ -103,7 +104,7 @@ export function NxTitlesPage() {
           {notice && <p className="nx-msg is-error" role="alert">{notice}</p>}
 
           <section className="nx-panel nx-titles-board">
-            <div className="nx-tabs" role="group" aria-label="칭호 분류">
+            <AnimatedNav as="div" activeKey={category} className="nx-tabs" role="group" aria-label="칭호 분류">
               <button type="button" className={category === "all" ? "is-active" : undefined} aria-pressed={category === "all"} onClick={() => setCategory("all")}>
                 전체 <span className="nx-tab-count nx-num">{status.ownedCount}/{status.totalCount}</span>
               </button>
@@ -115,7 +116,7 @@ export function NxTitlesPage() {
                   </button>
                 );
               })}
-            </div>
+            </AnimatedNav>
             <ul className="nx-title-grid">
               {visible.map((title) => <TitleCard key={title.id} title={title} pending={pending} onToggle={toggle} />)}
             </ul>

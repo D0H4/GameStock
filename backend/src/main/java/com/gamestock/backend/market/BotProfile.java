@@ -28,13 +28,20 @@ public record BotProfile(String username, String nickname, Strategy strategy,
     public static List<BotProfile> activePopulation(long seed,int count) {
         if(count<20||count>10000)throw new IllegalArgumentException("Active population must be between 20 and 10000");
         List<BotProfile> result=new ArrayList<>(defaults(seed));Random random=new Random(seed^101);
-        // Seventeen slots spread every family across the fifteen symbols instead of
-        // adding thousands of identical fast-flow accounts and only three value investors.
+        // Shuffle each balanced strategy block independently. A fixed 17-slot cycle
+        // aliases with round-robin assignment when 17 (or a multiple) stocks are listed,
+        // leaving each symbol with essentially one strategy and no opposing flow.
         Strategy[] flow={Strategy.CONSERVATIVE_VALUE,Strategy.VWAP_FADE,Strategy.SCALPER,Strategy.NOISE_FLOW,
                 Strategy.FAST_MOMENTUM,Strategy.DEEP_VALUE,Strategy.BOOK_IMBALANCE,Strategy.ZSCORE,
                 Strategy.NEWS_REACTOR,Strategy.SWING_TREND,Strategy.AGGRESSIVE_VALUE,Strategy.NOISE_RANDOM,
                 Strategy.MICRO_TREND,Strategy.RSI_FADE,Strategy.CATALYST_VALUE,Strategy.TREND_FOLLOW,Strategy.LIQUIDITY_TAKER};
-        for(int i=20;i<count;i++)result.add(create(String.format("trader_bot_%02d",i+1),flow[(i-20)%flow.length],random).microLots());
+        var deck=new ArrayList<>(Arrays.asList(flow));
+        Random assignment=new Random(seed^0x6A09E667F3BCC909L);
+        for(int i=20;i<count;i++) {
+            int slot=(i-20)%flow.length;
+            if(slot==0)Collections.shuffle(deck,assignment);
+            result.add(create(String.format("trader_bot_%02d",i+1),deck.get(slot),random).microLots());
+        }
         return List.copyOf(result);
     }
     private BotProfile microLots() {

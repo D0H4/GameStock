@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gamestock.backend.auth.AuthService;
 
 import java.nio.file.Files;
+import java.sql.Timestamp;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
@@ -232,6 +233,67 @@ class DerivativeServiceIntegrationTest {
         assertTrue(cash >= 0, "강제청산 뒤 현금이 음수가 되면 안 된다");
     }
 
+    @Test void optionFlowBucketsOpensAndClosesWithTheLastIndexButSkipsExpiriesAndFutures() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        marketAt(now);
+        String trade="INSERT INTO derivative_trades(user_id,position_id,action,kind,symbol,side,quantity,price,cash_flow,fee,created_at) VALUES (?,0,?,?,?,?,?,1,?,?,?)";
+        jdbc.update(trade,user,"OPEN","OPTION","10M-C1000","CALL",2,-3009,9,Timestamp.from(now.minusSeconds(100)));
+        jdbc.update(trade,user,"OPEN","OPTION","10M-P1000","PUT",1,-1003,3,Timestamp.from(now.minusSeconds(90)));
+        jdbc.update(trade,user,"CLOSE","OPTION","10M-C1000","CALL",1,1495,5,Timestamp.from(now.minusSeconds(400)));
+        jdbc.update(trade,user,"EXPIRE","OPTION","10M-C1000","CALL",1,800,0,Timestamp.from(now.minusSeconds(50)));
+        jdbc.update(trade,user,"OPEN","FUTURE","FUTIDX","LONG",1,-200000,40,Timestamp.from(now.minusSeconds(80)));
+        jdbc.update(trade,user,"OPEN","OPTION","10M-C1000","CALL",9,-9999,9,Timestamp.from(now.minusSeconds(7200)));
+        jdbc.update("INSERT INTO derivative_index_observations(observed_at,index_value) VALUES (?,999.0),(?,1001.5)",
+                Timestamp.from(now.minusSeconds(120)),Timestamp.from(now.minusSeconds(60)));
+
+        OptionFlow flow=derivatives.optionFlow("1h","5m");
+        assertEquals(300,flow.intervalSeconds());
+        assertEquals(12,flow.buckets().size());
+        assertEquals(now.plusSeconds(300).getEpochSecond(),flow.to());
+        assertEquals(3,flow.callVolume());
+        assertEquals(1,flow.putVolume());
+        assertEquals(4500,flow.callPremium());
+        assertEquals(1000,flow.putPremium());
+        assertEquals((3000-1500)-1000,flow.netPremium());
+        OptionFlowBucket late=flow.buckets().stream().filter(b->b.at()==now.minusSeconds(300).getEpochSecond()).findFirst().orElseThrow();
+        assertEquals(1001.5,late.index(),1e-9);
+        assertEquals(2,late.callVolume());
+        assertEquals(2000,late.netPremium());
+        OptionFlowBucket early=flow.buckets().stream().filter(b->b.at()==now.minusSeconds(600).getEpochSecond()).findFirst().orElseThrow();
+        assertNull(early.index());
+        assertEquals(-1500,early.netPremium());
+        assertThrows(IllegalArgumentException.class,()->derivatives.optionFlow("1w","1m"));
+        assertThrows(IllegalArgumentException.class,()->derivatives.optionFlow("2d","5m"));
+    }
+
+    @Test void futureChartBucketsIndexObservationsIntoCandlesAndSkipsInvalidatedSamples() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        marketAt(now);
+        jdbc.update("DELETE FROM derivative_index_observations");
+        String observe="INSERT INTO derivative_index_observations(observed_at,index_value,invalidated) VALUES (?,?,?)";
+        jdbc.update(observe,Timestamp.from(now.minusSeconds(170)),1000.0,false);
+        jdbc.update(observe,Timestamp.from(now.minusSeconds(150)),1004.5,false);
+        jdbc.update(observe,Timestamp.from(now.minusSeconds(140)),990.0,true);
+        jdbc.update(observe,Timestamp.from(now.minusSeconds(130)),998.25,false);
+        jdbc.update(observe,Timestamp.from(now.minusSeconds(30)),1002.0,false);
+        jdbc.update("INSERT INTO derivative_index_observations(observed_at,index_value,settleable) VALUES (?,1003.0,FALSE)",
+                Timestamp.from(now.minusSeconds(10)));
+        jdbc.update(observe,Timestamp.from(now.minusSeconds(7200)),900.0,false);
+
+        List<IndexCandle> candles=derivatives.futureChart("1h");
+        assertEquals(2,candles.size());
+        IndexCandle first=candles.get(0);
+        assertEquals(now.minusSeconds(180).toString(),first.recordedAt());
+        assertEquals(1000.0,first.openPrice(),1e-9);
+        assertEquals(1004.5,first.highPrice(),1e-9);
+        assertEquals(998.25,first.lowPrice(),1e-9);
+        assertEquals(998.25,first.closePrice(),1e-9);
+        assertEquals(3,first.volume());
+        assertEquals(now.minusSeconds(60).toString(),candles.get(1).recordedAt());
+        assertEquals(1003.0,candles.get(1).closePrice(),1e-9,"chart-only samples are still drawn");
+        assertThrows(IllegalArgumentException.class,()->derivatives.futureChart("1y"));
+    }
+
     @Test void missingPreExpiryHistoryDefersSettlementInsteadOfUsingTheCurrentPrice() {
         var history=new DerivativeIndexHistory(jdbc);
         Instant expiry=Instant.parse("2030-01-01T11:00:00Z");
@@ -345,7 +407,7 @@ class DerivativeServiceIntegrationTest {
         assertTrue(jdbc.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,user)<initial);
     }
 
-    @Test void staleReferencesCannotOpenCloseOrLiquidatePositionsAndDoNotCreateObservations() {
+    @Test void staleReferencesCannotOpenCloseOrLiquidatePositionsAndOnlyCreateChartObservations() {
         var opened=derivatives.open(user,new OrderRequest("FUTURE","LONG",1,"FUTIDX",10,null,null,null));
         long position=opened.account().positions().get(0).id();
         derivatives.setClock(Clock.fixed(Instant.parse("2030-01-01T10:05:00Z"),ZoneOffset.UTC));
@@ -354,7 +416,16 @@ class DerivativeServiceIntegrationTest {
         assertThrows(IllegalArgumentException.class,()->derivatives.close(user,position,1));
         derivatives.refreshMarks();
         assertEquals("OPEN",jdbc.queryForObject("SELECT status FROM derivative_positions WHERE id=?",String.class,position));
-        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE settleable=TRUE",Integer.class));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE settleable=FALSE",Integer.class));
+    }
+
+    @Test void chartOnlySamplesNeverBecomeExpiryFixings() {
+        var history=new DerivativeIndexHistory(jdbc);
+        Instant expiry=Instant.parse("2030-04-01T10:00:00Z");
+        history.observe(1000,expiry.minusSeconds(30));
+        history.observe(1200,expiry.minusSeconds(3),false);
+        assertEquals(1000,history.fixing(expiry));
     }
 
     @Test void splittingOrdersOrUsingCheapOptionsCannotBypassTheAccountExposureLimit() {

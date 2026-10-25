@@ -110,11 +110,11 @@ final class LiquidityRecoveryPolicy {
         for(String side:List.of(preferred,preferred.equals("BUY")?"SELL":"BUY")) {
             String quoteSide=side.equals("BUY")?"SELL":"BUY";
             Order quote=book.resting(stock.id,quoteSide).stream()
-                    .filter(order->order.user==lp&&!order.market()&&order.remaining>1
+                    .filter(order->order.user==lp&&!order.market()&&order.remaining>0
                             &&botBand(stock.code,stock.reference).contains(order.price))
                     .findFirst().orElse(null);
             if(quote==null)continue;
-            int quantity=Math.min(STALLED_FLOW_QUANTITY,quote.remaining-1);
+            int quantity=Math.min(STALLED_FLOW_QUANTITY,quote.remaining);
             if(quantity<=0)continue;
             for(long participant:participants) {
                 Account account=book.accounts.get(participant);

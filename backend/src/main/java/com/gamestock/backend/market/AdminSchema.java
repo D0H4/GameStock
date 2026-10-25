@@ -56,6 +56,11 @@ final class AdminSchema {
               updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
               FOREIGN KEY(stock_id) REFERENCES stocks(id), INDEX ix_admin_content_public(published,kind,id))
             """);
+        // 공지 창의 머리 그림과 두 버튼. 비우면 그림 없이, 확인 버튼 하나로 보인다.
+        addColumn(db,"admin_content","image_url","VARCHAR(500) NULL");
+        addColumn(db,"admin_content","action_label","VARCHAR(40) NULL");
+        addColumn(db,"admin_content","action_url","VARCHAR(500) NULL");
+        addColumn(db,"admin_content","dismiss_label","VARCHAR(40) NULL");
         db.execute("""
             CREATE TABLE IF NOT EXISTS admin_mission_config (
               mission_id VARCHAR(40) PRIMARY KEY, enabled BOOLEAN NOT NULL,
@@ -104,10 +109,11 @@ final class AdminSchema {
         // 코드에 고정돼 있던 첫 프로모션 코드. 관리자 화면에서 끄거나 고칠 수 있다.
         db.update("INSERT IGNORE INTO promo_codes(code,title_ids,memo) VALUES('syuen','special_syuangel,special_misilis_holder,special_syuaga','처음부터 있던 특별 칭호 코드')");
     }
-    private static void addRuntimeColumn(JdbcTemplate db,String column,String definition){
-        Integer count=db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='admin_runtime' AND column_name=?",Integer.class,column);
-        if(count!=null&&count==0)db.execute("ALTER TABLE admin_runtime ADD COLUMN "+column+" "+definition);
+    private static void addColumn(JdbcTemplate db,String table,String column,String definition){
+        Integer count=db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?",Integer.class,table,column);
+        if(count!=null&&count==0)db.execute("ALTER TABLE "+table+" ADD COLUMN "+column+" "+definition);
     }
+    private static void addRuntimeColumn(JdbcTemplate db,String column,String definition){addColumn(db,"admin_runtime",column,definition);}
     static void ensureRuntime(JdbcTemplate db) {
         db.execute("""
             CREATE TABLE IF NOT EXISTS admin_runtime (

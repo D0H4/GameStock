@@ -6,6 +6,7 @@ import { OrderDock } from "../../next/trade/OrderDock";
 import { MARKET_PATH } from "../../router";
 import { won, rate, indexValue } from "../../market/format";
 import type { DerivativeAccount, DerivativeOrderRequest, EtfQuote } from "../../market/derivatives";
+import { AnimatedNav } from "../../next/AnimatedNav";
 
 interface Props {
   selected: EtfQuote;
@@ -90,12 +91,12 @@ export function EtfPanel({ selected, account, busy, onOpen, onClose, notice }: P
               onOpen({ kind: "ETF", side, symbol: selected.code, quantity });
             }}
           >
-            <div className="terminal-tabs derivative-side-tabs" role="group" aria-label="매수·매도">
+            <AnimatedNav as="div" fill activeKey={side} className="terminal-tabs derivative-side-tabs" role="group" aria-label="매수·매도">
               <button type="button" className={`terminal-tab is-buy${side === "BUY" ? " is-active" : ""}`}
                 aria-pressed={side === "BUY"} onClick={() => setSide("BUY")}>매수</button>
               <button type="button" className={`terminal-tab is-sell${side === "SELL" ? " is-active" : ""}`}
                 aria-pressed={side === "SELL"} onClick={() => setSide("SELL")}>매도</button>
-            </div>
+            </AnimatedNav>
             <label className="derivative-field">
               <span>수량</span>
               <input type="number" inputMode="numeric" min={1} max={100} step={1} value={quantityInput}
