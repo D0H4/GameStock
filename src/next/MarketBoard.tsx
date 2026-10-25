@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GameIcon } from "../components/GameIcon";
 import { Link } from "../components/Link";
 import { PriceCell } from "../components/PriceCell";
@@ -7,18 +7,20 @@ import { useHeldOrder, useHoldWhilePointing } from "../lib/useHeldOrder";
 import { bucketPrices, type PricePoint } from "../market/dayHistory";
 import { rate, shares, won } from "../market/format";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
-import { sessionRate, sortCodes, type SortDirection, type SortKey } from "../market/selectors";
+import { sessionRate, type SortDirection } from "../market/selectors";
+import { useDerivativeMarket } from "../market/derivatives";
 import { LISTING_BY_CODE } from "../market/universe";
-import { MARKET_PATH } from "../router";
+import { ETF_PATH, MARKET_PATH } from "../router";
 import { MarketTabs } from "./MarketTabs";
+import { EtfTrend } from "./EtfBoard";
 
-type View = "all" | "up" | "down" | "watch";
+type View = "all" | "up" | "down";
+type SortKey = "name" | "price" | "rate" | "volume" | "open";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "all", label: "전체" },
   { id: "up", label: "상승" },
   { id: "down", label: "하락" },
-  { id: "watch", label: "관심" },
 ];
 
 const COLUMNS: { key: SortKey; label: string; numeric: boolean; className?: string }[] = [
@@ -31,10 +33,11 @@ const COLUMNS: { key: SortKey; label: string; numeric: boolean; className?: stri
 
 /** 종목별 10분 칸 가격. 키가 없으면 아직 불러오는 중, null이면 불러오지 못한 것. */
 type DayHistories = Record<string, number[] | null>;
+let lastDayHistories: DayHistories = {};
 
 /* 종목별 오늘 가격 기록을 10분 칸으로 받아 둔다. 시세가 바뀔 때마다가 아니라 1분마다, 종목 구성이 바뀔 때 다시 받는다. */
 function useDayHistories(codes: string[]): DayHistories {
-  const [histories, setHistories] = useState<DayHistories>({});
+  const [histories, setHistories] = useState<DayHistories>(() => lastDayHistories);
   const key = codes.join(",");
 
   useEffect(() => {
@@ -45,10 +48,12 @@ function useDayHistories(codes: string[]): DayHistories {
       if (!active) return;
       const now = Date.now();
       // 다시 받다가 실패한 종목은 앞서 받아 둔 그래프를 그대로 둔다.
-      setHistories((previous) => Object.fromEntries(list.map((code, index) => {
+      const next = Object.fromEntries(list.map((code, index) => {
         const row = rows[index];
-        return [code, row ? bucketPrices(row, now) : previous[code] ?? null];
-      })));
+        return [code, row ? bucketPrices(row, now) : lastDayHistories[code] ?? null];
+      }));
+      lastDayHistories = next;
+      setHistories(next);
     };
     void load();
     const timer = window.setInterval(() => void load(), 60_000);
@@ -88,25 +93,46 @@ function DayChart({ points, price, prevClose, low, high }: { points: number[] | 
 export function MarketBoard() {
   const snapshot = useMarket();
   const api = useMarketApi();
+  const etfMarket = useDerivativeMarket(false);
   const [view, setView] = useState<View>("all");
+  const [watchOnly, setWatchOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "volume", direction: "desc" });
   const histories = useDayHistories(snapshot.codes);
+  const etfs = new Map((etfMarket.snapshot?.etfs ?? []).map(quote => [quote.code, quote]));
 
+  const needle = query.trim().toLowerCase();
   const matches = (code: string): boolean => {
-    const quote = snapshot.quotes[code];
     const listing = LISTING_BY_CODE[code];
-    if (!quote || !listing) return false;
-    if (view === "up" && sessionRate(quote) <= 0) return false;
-    if (view === "down" && sessionRate(quote) >= 0) return false;
-    if (view === "watch" && !snapshot.watch.includes(code)) return false;
-    const needle = query.trim().toLowerCase();
+    if (!snapshot.quotes[code] || !listing) return false;
+    if (watchOnly && !snapshot.watch.includes(code)) return false;
     return !needle || [listing.name, listing.code, listing.publisher].some((field) => field.toLowerCase().includes(needle));
   };
 
   /* 가리키는 동안에는 줄 순서를 붙잡아 둔다. 누르려던 줄이 시세 갱신으로 도망가지 않게. */
   const [hold, holdHandlers] = useHoldWhilePointing();
-  const codes = useHeldOrder(sortCodes(snapshot, sort.key, sort.direction).filter(matches), hold);
+  const stockRows = snapshot.codes.filter(matches).map(code => ({ code, name: LISTING_BY_CODE[code].name,
+    price: snapshot.quotes[code].price, rate: sessionRate(snapshot.quotes[code]),
+    volume: snapshot.quotes[code].volume as number | null, open: snapshot.quotes[code].open as number | null }));
+  const etfRows = [...etfs.values()].filter(quote => !watchOnly
+    && (!needle || [quote.name, quote.code, quote.theme, "ETF"].some(value => value.toLowerCase().includes(needle))))
+    .map(quote => ({ code: quote.code, name: quote.name, price: quote.price, rate: quote.changePercent / 100,
+      volume: null, open: null }));
+  // 등락 칸의 숫자는 검색·관심 조건을 먼저 건 뒤에 센다. 눌렀을 때 나올 줄 수와 같다.
+  const candidates = [...stockRows, ...etfRows];
+  const counts: Record<View, number> = { all: candidates.length,
+    up: candidates.filter(row => row.rate > 0).length, down: candidates.filter(row => row.rate < 0).length };
+  const rows = candidates.filter(row => view === "all" || (view === "up" ? row.rate > 0 : row.rate < 0)).sort((a, b) => {
+    const left = a[sort.key], right = b[sort.key];
+    if (left === null || right === null) return left === right ? a.code.localeCompare(b.code) : left === null ? 1 : -1;
+    const order = typeof left === "string" && typeof right === "string" ? left.localeCompare(right, "ko") : Number(left) - Number(right);
+    return order * (sort.direction === "asc" ? 1 : -1) || a.code.localeCompare(b.code);
+  });
+  const controls = `${view}:${watchOnly}:${query}:${sort.key}:${sort.direction}`;
+  const previousControls = useRef(controls);
+  const holdOrder = hold && previousControls.current === controls;
+  previousControls.current = controls;
+  const codes = useHeldOrder(rows.map(row => row.code), holdOrder).filter(code => etfs.has(code) || Boolean(snapshot.quotes[code]));
 
   const changeSort = (key: SortKey) =>
     setSort((current) => current.key === key
@@ -116,28 +142,33 @@ export function MarketBoard() {
   return (
     <div className="nx-market">
       <MarketTabs active="stocks" />
-      <header className="nx-page-head">
-        {/* 주식·ETF 탭이 바로 위에 있어 제목은 화면 낭독기용으로만 둔다. */}
+      <header className="nx-page-head nx-market-toolbar">
         <h1 className="vh">주식</h1>
-        <div className="nx-filters" role="group" aria-label="종목 필터">
+        <div className="nx-text-tabs" role="group" aria-label="종목 필터">
           {VIEWS.map((item) => (
-            <button key={item.id} type="button" className={`nx-chip${view === item.id ? " is-active" : ""}`} aria-pressed={view === item.id} onClick={() => setView(item.id)}>
-              {item.label}
+            <button key={item.id} type="button" className={view === item.id ? "is-active" : undefined} aria-pressed={view === item.id} onClick={() => setView(item.id)}>
+              <span className="nx-bold-reserve" data-label={item.label}>{item.label}</span><span className="nx-text-tab-count nx-num">{counts[item.id]}</span>
             </button>
           ))}
+          <button type="button" className={`nx-market-watch-toggle${watchOnly ? " is-active" : ""}`} aria-pressed={watchOnly} onClick={() => setWatchOnly(value => !value)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" /></svg><span className="nx-bold-reserve" data-label="관심">관심</span>
+            {snapshot.watch.length > 0 && <span className="nx-text-tab-count nx-num">{snapshot.watch.length}</span>}
+          </button>
         </div>
         <label className="nx-search">
           <span className="vh">종목 검색</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></svg>
-          <input type="search" value={query} placeholder="게임 이름, 코드, 퍼블리셔" onChange={(event) => setQuery(event.target.value)} />
+          <input type="search" value={query} placeholder="종목명, 코드, 테마" onChange={(event) => setQuery(event.target.value)} />
         </label>
       </header>
+      {!etfMarket.snapshot && <p className="nx-market-status" role="status">{etfMarket.loading ? "ETF 시세를 불러오는 중…" : "ETF 시세를 불러오지 못했습니다."}</p>}
+      {etfMarket.snapshot && etfMarket.error && <p className="nx-market-status" role="status">ETF 시세 갱신이 지연되어 이전 시세를 표시합니다.</p>}
 
       <section className="nx-panel nx-market-table" {...holdHandlers}>
         {codes.length === 0 ? (
           <div className="nx-empty-state">
             <p>조건에 맞는 종목이 없어요.</p>
-            <button type="button" className="nx-text-button" onClick={() => { setView("all"); setQuery(""); }}>필터 초기화</button>
+            <button type="button" className="nx-text-button" onClick={() => { setView("all"); setWatchOnly(false); setQuery(""); }}>필터 초기화</button>
           </div>
         ) : (
           <table className="nx-table">
@@ -161,6 +192,21 @@ export function MarketBoard() {
             </thead>
             <tbody>
               {codes.map((code) => {
+                const etf = etfs.get(code);
+                if (etf) return <tr key={code}>
+                  <td className="nx-col-watch"><span className="vh">ETF 관심 등록 미지원</span></td>
+                  <th scope="row"><Link to={ETF_PATH(code)} className="nx-name-link">
+                    <span className="nx-etf-mark" aria-hidden="true">ETF</span>
+                    <span><span className="nx-name-text">{etf.name}</span><span className="nx-name-sub">{code} · {etf.theme}</span></span>
+                  </Link></th>
+                  <td className="is-num"><PriceCell className="nx-num" value={etf.price} /></td>
+                  <td className={`is-num nx-num ${etf.changePercent > 0 ? "is-up" : etf.changePercent < 0 ? "is-down" : ""}`}>
+                    <span className="nx-rate-chart"><EtfTrend quote={etf} /></span>{rate(etf.changePercent / 100)}
+                  </td>
+                  <td className="is-num nx-num" aria-label="거래량 제공 안 됨">—</td>
+                  <td className="is-num nx-num nx-col-open" aria-label="시가 제공 안 됨">—</td>
+                  <td className="nx-col-range"><EtfTrend quote={etf} /></td>
+                </tr>;
                 const quote = snapshot.quotes[code];
                 const listing = LISTING_BY_CODE[code];
                 const ratio = sessionRate(quote);

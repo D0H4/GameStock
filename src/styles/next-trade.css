@@ -18,8 +18,10 @@
   cursor: pointer;
 }
 .nx-ticket-side:hover { color: var(--ink); }
-.nx-ticket-side.is-buy.is-active { background: var(--up-fill); color: #fff; }
-.nx-ticket-side.is-sell.is-active { background: var(--down-fill); color: #fff; }
+.nx-ticket-side.is-active { color: #fff; }
+.nx-ticket-sides > .nx-nav-indicator { border-radius: 6px; }
+.nx-ticket-sides:has(> .is-buy.is-active) > .nx-nav-indicator { background: var(--up-fill); }
+.nx-ticket-sides:has(> .is-sell.is-active) > .nx-nav-indicator { background: var(--down-fill); }
 
 .nx-ticket-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nx-ticket-guard { margin: 0; padding: 14px 16px; border-radius: 8px; background: var(--amber-wash); color: var(--amber-deep); font-size: 13px; line-height: 1.5; }

@@ -58,7 +58,7 @@
 /* ───────── 세그먼트·탭 ───────── */
 
 .nx-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--nx-raised); }
-.nx-seg button {
+.nx-seg :is(button, a) {
   min-height: 38px;
   padding: 0 14px;
   border: 0;
@@ -69,8 +69,12 @@
   font-size: 13px;
   cursor: pointer;
 }
-.nx-seg button:hover:not(:disabled) { color: var(--ink); }
-.nx-seg button.is-active { background: var(--nx-panel); color: var(--ink); }
+.nx-seg :is(button, a):hover:not(:disabled) { color: var(--ink); }
+.nx-seg :is(button, a).is-active { color: var(--ink); }
+/* 고른 칸의 바탕은 칸 사이를 미끄러지는 막대(AnimatedNav)가 칠한다. */
+.nx-seg > .nx-nav-indicator { border-radius: 6px; background: var(--nx-panel); }
+.nx-seg a { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.nx-seg.nx-seg--large :is(button, a) { min-height: 44px; padding-inline: 20px; font-size: 16px; }
 .nx-seg button:disabled { color: var(--ink-faint); cursor: not-allowed; }
 
 .nx-tabs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
@@ -88,12 +92,12 @@
   font-size: 14px;
   text-decoration: none;
   white-space: nowrap;
-  box-shadow: inset 0 -2px transparent;
   cursor: pointer;
 }
 .nx-tabs button:hover,
 .nx-tabs a:hover { color: var(--ink); }
-.nx-tabs .is-active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
+.nx-tabs .is-active { color: var(--ink); }
+.nx-tabs > .nx-nav-indicator { bottom: 0; height: 2px; }
 .nx-tab-count { padding: 0 6px; border-radius: 4px; background: var(--nx-raised); color: var(--ink); font-size: 11px; line-height: 18px; }
 
 .nx-check { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--ink-muted); font-size: 13px; cursor: pointer; }

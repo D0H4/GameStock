@@ -47,7 +47,7 @@ Android와 iOS 모두 대상이다. 하나의 Expo(React Native) 앱이 같은 �
 ## Brand Commitments
 
 - 서비스 이름은 **슈엔증권**이다. 앱 이름도 슈엔증권으로 통일한다(`mobile/app.json`의 "씹덕주식"은 바꿀 대상). 저장소·백엔드 이름은 GameStock.
-- 브랜드 에셋: `public/brand/`의 SN 앱 아이콘(`sn-app-icon-*.png`), 마크(`mark-*.png`, `shuen-mark.png`), `mobile/assets/app-icon.png`.
+- 브랜드 에셋: `public/brand/`의 파비콘·앱 아이콘(`shuen-icon-*.png`), 마크(`shuen-mark.png`, `mark-*.png`), 로고(`shuen-logo-light.png`, `shuen-logo-dark.png`), `mobile/assets/app-icon.png`.
 - 앱에서도 유지: 상승 적색·하락 청색(한국 관행), SN 앱 아이콘 마크, 웹의 핑크 브랜드색(#FD5886 계열), 게임 아이콘과 캐릭터 일러스트.
 - 앱 디자인은 국내 증권앱 표준 구성을 따른다(2026-10-21 결정). 완성도 기준은 토스증권과 카카오페이증권이며, 나란히 놓였을 때 밀리지 않아야 한다.
 - 피할 것: 웹 화면을 그대로 줄여 놓은 듯한 앱.

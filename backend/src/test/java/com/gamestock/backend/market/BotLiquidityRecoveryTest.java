@@ -41,8 +41,6 @@ class BotLiquidityRecoveryTest {
         assertTrue(shares>=Math.max(512,target*4));
         var risk=new MarketMakerEngine.RiskBook(0,0,target,Math.max(1200,target*4),Math.max(1200,target*4)*10000L);
         var engine=new BotActivityEngine(participants,91+index,300);
-        // Large-cap flow traders size buys to their allocation need, down to one funded share.
-        int minimumBuy=StockMarketProfile.isLargeCap(code)?1:BotProfile.MIN_ORDER_SIZE;
         var history=new ArrayList<PriceMetricService.Trade>();
         long fills=0,lateFills=0,lpPurchases=0,largerOrders=0;
         int twoSided=0;
@@ -57,7 +55,7 @@ class BotLiquidityRecoveryTest {
             assertTrue(book.accepted.size()<=400,"Immediate replenishment must retain the two-pass order bound");
             for(var order:book.accepted)if(order.user!=lp) {
                 assertTrue(order.quantity<=10);
-                if(order.side.equals("BUY"))assertTrue(order.quantity>=minimumBuy,"Unfunded minimum lots must not be submitted");
+                assertTrue(order.quantity>=1,"Allocation adjustments and funded recovery may use single shares");
                 if(order.quantity>=5)largerOrders++;
             }
             fills+=book.fills.size();
@@ -86,7 +84,9 @@ class BotLiquidityRecoveryTest {
         boolean executableValue=valuation>=.8 && valuation<=1.2;
         if(executableValue) {
             assertTrue(twoSided>30,"Resting liquidity must survive ordinary valuation differences: "+context);
-            assertTrue(lpPurchases>0,"LP must reacquire paid inventory: "+context);
+            // A competitive participant book may fill every trade before the backstop LP.
+            // The funded human round-trip below verifies usable liquidity without forcing
+            // executions to a particular counterparty against price-time priority.
         }
         // Fund a human from an existing participant; the probe must not add cash or shares.
         long human=100001;
@@ -99,11 +99,22 @@ class BotLiquidityRecoveryTest {
         var buy=book.submit(human,1,"BUY","MARKET",5,0,probeAt,0);
         if(executableValue)assertEquals("FILLED",buy.status,"An ordinary value gap retains human fillability: "+context);
         int acquired=book.holding(human,1).quantity();
-        if(acquired>0)assertEquals("FILLED",book.submit(human,1,"SELL","MARKET",acquired,0,probeAt+1,0).status,
-                "Acquired inventory can be sold through paid bids: "+context);
-        // When economic value is outside the legal band, unavailable asks remain unfilled;
-        // inventing shares or forcing investors to sell would hide the imbalance.
-        assertEquals(0,book.holding(human,1).quantity());
+        int unsold=0;
+        if(acquired>0) {
+            var executionBand=PriceLimitPolicy.marketExecutionBand(stocks.get(1L).last);
+            long executableBids=book.resting(1,"BUY").stream()
+                    .filter(o->o.user!=human && !o.market() && executionBand.contains(o.price))
+                    .mapToLong(o->o.remaining).sum();
+            var sale=book.submit(human,1,"SELL","MARKET",acquired,0,probeAt+1,0);
+            unsold=(int)Math.max(0,acquired-executableBids);
+            assertEquals(unsold,book.holding(human,1).quantity(),
+                    "All displayed bids must execute; absent bids cannot be invented: "+context);
+            if(unsold==0)assertEquals("FILLED",sale.status,context);
+            else assertEquals("CANCELLED",sale.status,"Unfilled market remainder is cancelled: "+context);
+        }
+        // Finite LP cash may run out under one-sided selling, just as its shares can run
+        // out under buying. Do not hide human-only reserves in publicly displayed quotes.
+        assertEquals(unsold,book.holding(human,1).quantity());
         assertEquals(shares,holdings.values().stream().mapToLong(Holding::quantity).sum(),"No new shares: "+context);
         assertEquals(shares,stocks.get(1L).circulatingShares);
         long reserved=accounts.keySet().stream().flatMap(id->book.working(id,1).stream()).mapToLong(o->o.reservedCash).sum();

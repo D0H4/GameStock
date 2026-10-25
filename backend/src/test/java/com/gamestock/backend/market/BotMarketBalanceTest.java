@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Real funded matching, calendar rollovers and the production population; never assign a price path. */
 class BotMarketBalanceTest {
-    record Result(List<Long> closes,long fills,long maxOpen,long longestQuiet,int distinct,long fees,long shares) {}
+    record Result(List<Long> closes,long fills,long maxOpen,long longestQuiet,int distinct,long fees,long shares,long low) {}
 
     @Test void repeatedCalendarSessionsStayLiquidWithoutWalkingDownDailyFloors() {
         for(String code:System.getProperty("bot.balance.symbols","TR,ES,AK,GI").split(",")) {
@@ -38,14 +38,22 @@ class BotMarketBalanceTest {
     }
 
     @Test void adverseValuationCanStillProduceFallingExecutedPrices() {
-        Result result=run("ES",91,-1,1000);
+        Result result=run("ES",91,-1,1000,true);
+        Result neutral=run("ES",91,0,1000,true);
         System.out.println("OVERNIGHT_BEAR "+result);
-        assertTrue(result.closes().stream().anyMatch(close->close<10000),"Paid prices must eventually reflect adverse value; the model does not jump to it on startup");
+        assertTrue(result.low()<10000,"Adverse value must permit actual downward executions");
+        assertTrue(result.closes().stream().mapToLong(Long::longValue).average().orElseThrow()
+                <neutral.closes().stream().mapToLong(Long::longValue).average().orElseThrow(),
+                "Adverse value must lower session closes relative to the same seeded neutral market");
         assertTrue(result.fills()>600);
         assertTrue(result.distinct()>8);
     }
 
     private Result run(String code,long seed,int direction,int cadence) {
+        return run(code,seed,direction,cadence,false);
+    }
+
+    private Result run(String code,long seed,int direction,int cadence,boolean establishedHoldings) {
         boolean bullish=direction>0;
         var profiles=BotProfile.activePopulation(seed,6020);
         long lp=100000;
@@ -60,6 +68,17 @@ class BotMarketBalanceTest {
         var holdings=new HashMap<PositionKey,Holding>();
         holdings.put(new PositionKey(lp,1),new Holding(target,target,10000,0));
         var stocks=new HashMap<Long,Stock>();stocks.put(1L,new Stock(1,code,10000,10000,10000,10000,true));
+        // A negative-value comparison needs holders able to sell: shorting is prohibited.
+        // Give both paired scenarios identical paid initial inventory, rather than relying
+        // on a particular strategy ordering to buy overpriced shares before it can sell.
+        if(establishedHoldings) {
+            for(var participant:participants) {
+                accounts.get(participant.id()).cash-=10000;
+                accounts.get(lp).cash+=10000;
+                holdings.put(new PositionKey(participant.id(),1),new Holding(1,1,10000,0));
+            }
+            stocks.get(1L).circulatingShares=target+participants.size();
+        }
         long start=ZonedDateTime.of(2026,10,18,23,55,0,0,ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli();
         var book=new BatchOrderBook(accounts,stocks,holdings,List.of(),0,start);
         book.lpCashBudgets.put(1L,6_666_666L);
@@ -128,6 +147,7 @@ class BotMarketBalanceTest {
         long shares=holdings.values().stream().mapToLong(Holding::quantity).sum();
         assertTrue(shares<=Math.max(512,target*4));
         assertEquals(shares,stocks.get(1L).circulatingShares);
-        return new Result(closes,fills,maxOpen,longestQuiet,prices.size(),fees,shares);
+        return new Result(closes,fills,maxOpen,longestQuiet,prices.size(),fees,shares,
+                prices.stream().mapToLong(Long::longValue).min().orElseThrow());
     }
 }

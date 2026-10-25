@@ -74,8 +74,15 @@ export function HomeScreen({ market, onOpen }) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.inkSoft} colors={[theme.ink]} progressBackgroundColor={theme.raised} progressViewOffset={insets.top} />}
     >
       <View style={styles.header}>
-        <Image source={require('../../assets/brand/sn-mark.png')} style={styles.mark} accessibilityIgnoresInvertColors />
-        <Txt variant="headline" accessibilityRole="header">슈엔증권</Txt>
+        {/* 로고 글자색이 테마마다 달라 두 장 중 하나를 고른다. */}
+        <Image
+          source={theme.scheme === 'dark' ? require('../../assets/brand/shuen-logo-dark.png') : require('../../assets/brand/shuen-logo-light.png')}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityRole="header"
+          accessibilityLabel="슈엔증권"
+          accessibilityIgnoresInvertColors
+        />
       </View>
 
       {error && stocks.length === 0 ? (
@@ -249,7 +256,7 @@ const styles = StyleSheet.create({
   statusCover: { position: 'absolute', top: 0, left: 0, right: 0 },
   shrink: { flexShrink: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, marginBottom: SPACE.sm },
-  mark: { width: 30, height: 30, borderRadius: 8 },
+  logo: { width: 87, height: 22 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, borderWidth: 1, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },

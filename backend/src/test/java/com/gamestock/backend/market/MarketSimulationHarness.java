@@ -27,6 +27,7 @@ final class MarketSimulationHarness {
         /** Hidden fundamental as a multiple of the listing reference. */
         Map<String,Double> fundamental=Map.of();
         long sessionMillis=600_000,seed=20261022L;
+        long observationMillis=100;
         Set<String> symbols=Set.of(CODES);
         java.util.function.BiConsumer<Long,Fill> onFill=(time,fill) -> {};
         java.util.function.BiConsumer<Long,Map<Long,MarketConsensusValue.Checkpoint>> onConsensus;
@@ -77,15 +78,16 @@ final class MarketSimulationHarness {
         Map<String,Deque<long[]>> window=new HashMap<>();
         for(String code:CODES){stats.put(code,new long[]{0,0,0,Long.MAX_VALUE,0,0,0,0});distinct.put(code,new HashSet<>());window.put(code,new ArrayDeque<>());}
         int cadence=100;long warmup=60_000;
+        Map<Long,BotActivityEngine.Observation> observations=new HashMap<>();
         for(long elapsed=0;elapsed<setup.sessionMillis;elapsed+=cadence) {
             long now=start+elapsed;
             book.beginBatch(now);
             regimes.advance(now,genres);
-            Map<Long,BotActivityEngine.Observation> observations=new HashMap<>();
             for(Stock symbol:stocks.values()) {
                 book.restoreLiquidityInventory(lp,symbol.id,targets.get(symbol.id),symbol.last);
                 var trades=history.computeIfAbsent(symbol.id,k->new ArrayList<>());
                 trades.removeIf(t->t.time()<now-600_000);
+                if(elapsed%setup.observationMillis!=0)continue;
                 double[] depth=book.depth(symbol.id);
                 var metrics=PriceMetricService.calculate(trades,symbol.last,depth[0],depth[1],(long)depth[2],(long)depth[3],now);
                 var environment=StockMarketProfile.applyTo(symbol.code,regimes.environment(symbol.code,"RPG").combine(patterns.environment(symbol.code,now)));

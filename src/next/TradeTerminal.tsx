@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BrandMark } from "../components/BrandMark";
+import { BrandLogo, BrandMark } from "../components/BrandMark";
 import { Delta } from "../components/Delta";
 import { GameIcon } from "../components/GameIcon";
 import { Link } from "../components/Link";
@@ -8,7 +8,7 @@ import { ProfileMenu } from "../components/ProfileMenu";
 import { RestrictionBadge } from "../components/RestrictionBadge";
 import { SeriesChart } from "../components/SeriesChart";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
-import { indexValue, rate, shares, since, won } from "../market/format";
+import { rate, shares, since, won } from "../market/format";
 import { marketOpinion, newsEffect, sessionRate, strengthRatio, type OpinionTone } from "../market/selectors";
 import type { Quote, TradePrint } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
@@ -17,12 +17,13 @@ import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
 import { OrderDock } from "./trade/OrderDock";
+import { MarketTabs } from "./MarketTabs";
+import { AnimatedNav } from "./AnimatedNav";
 
 const NAV = [
   { label: "홈", to: "/", match: "home" },
-  { label: "주식", to: "/market", match: "market" },
+  { label: "거래", to: "/market", match: "market" },
   { label: "히트맵", to: HEATMAP_PATH, match: "heatmap" },
-  { label: "파생", to: "/derivatives", match: "derivatives" },
   { label: "뉴스", to: "/news", match: "news" },
   { label: "랭킹", to: "/ranking", match: "ranking" },
   { label: "API", to: API_DOCS_PATH, match: "apiDocs" },
@@ -44,28 +45,8 @@ export function useNxRoot(): void {
   }, [theme]);
 }
 
-/** 본문에 게임주 지수를 크게 띄우는 화면. 상단 바에는 같은 숫자를 다시 두지 않는다. */
-const INDEX_IN_BODY = new Set<Route["name"]>(["home", "login", "derivatives"]);
-
-/** 상단 바 지수 자리. 숫자가 빠져도 자리는 남아 밝기·로그인 버튼을 오른쪽 끝으로 민다. */
-function TopIndex({ route }: { route: Route }) {
-  const snapshot = useMarket();
-  if (INDEX_IN_BODY.has(route.name)) return <div className="nx-index" />;
-  const { value, prevClose } = snapshot.index;
-  const change = value - prevClose;
-  return (
-    <div className="nx-index">
-      <p className="nx-index-item">
-        <span className="nx-index-label">게임주 지수</span>
-        <span className="nx-num nx-index-value">{indexValue(value)}</span>
-        <span className={`nx-num ${change > 0 ? "is-up" : change < 0 ? "is-down" : ""}`}>{rate(prevClose > 0 ? change / prevClose : 0)}</span>
-      </p>
-    </div>
-  );
-}
-
 function navActive(route: Route, match: (typeof NAV)[number]["match"]): boolean {
-  return route.name === match || (match === "market" && (route.name === "trade" || route.name === "etf"));
+  return route.name === match || (match === "market" && (route.name === "trade" || route.name === "etf" || route.name === "derivatives"));
 }
 
 export function NxTopbar({ route }: { route: Route }) {
@@ -74,7 +55,7 @@ export function NxTopbar({ route }: { route: Route }) {
     <header className="nx-top">
       <Link className="nx-brand" to="/" aria-label="슈엔증권 홈">
         <BrandMark size={26} />
-        <span>슈엔증권</span>
+        <BrandLogo />
       </Link>
       <nav className="nx-nav" aria-label="주요 화면">
         {NAV.map((item) => {
@@ -86,7 +67,6 @@ export function NxTopbar({ route }: { route: Route }) {
           );
         })}
       </nav>
-      <TopIndex route={route} />
       <button type="button" className="nx-icon-button" onClick={toggleNxTheme} aria-label={theme === "dark" ? "밝은 화면으로 바꾸기" : "어두운 화면으로 바꾸기"}>
         {theme === "dark" ? (
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" /></svg>
@@ -105,7 +85,7 @@ export function NxTopbar({ route }: { route: Route }) {
  */
 export function NxTabbar({ route }: { route: Route }) {
   return (
-    <nav className="nx-tabbar" aria-label="주요 화면">
+    <AnimatedNav animationId="main-bottom" activeKey={NAV.find(item => navActive(route, item.match))?.match ?? ""} className="nx-tabbar" aria-label="주요 화면" inset={.28}>
       {NAV.map((item) => {
         const active = navActive(route, item.match);
         return (
@@ -114,7 +94,7 @@ export function NxTabbar({ route }: { route: Route }) {
           </Link>
         );
       })}
-    </nav>
+    </AnimatedNav>
   );
 }
 
@@ -236,12 +216,15 @@ function StockNews({ code, quote }: { code: string; quote: Quote }) {
   );
 }
 
-const NOTE_LIMIT = 9;
-/** 레인 높이(호가 5줄)에서 위쪽 레인 이름 자리를 뺀 만큼만 노트를 쌓는다. */
-const LANE_HEIGHT = 5 * 34;
-const LANE_ROOM = LANE_HEIGHT - 26;
+/** 체결 테이프에 남기는 최근 체결 수. 칸 폭이 고정이라 넘치는 것은 오른쪽 끝에서 잘린다. */
+const TAPE_LIMIT = 12;
+/** 테이프 칸 폭과 간격(px). CSS의 .nx-tape-chip 폭·.nx-tape-strip 간격과 같아야 밀려나는 거리가 맞는다. */
+const TAPE_CHIP = 72;
+const TAPE_GAP = 6;
+const SLIDE_MS = 320;
+const SLIDE_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
 
-/** 같은 방향으로 이어진 최근 체결 수. 리듬게임의 콤보처럼 흐름의 쏠림을 센다. */
+/** 같은 방향으로 이어진 최근 체결 수. 흐름이 한쪽으로 쏠리는 정도를 센다. */
 function combo(prints: TradePrint[]): { side: "buy" | "sell"; count: number } | null {
   const first = prints[0];
   if (!first) return null;
@@ -253,33 +236,11 @@ function combo(prints: TradePrint[]): { side: "buy" | "sell"; count: number } | 
   return { side: first.side, count };
 }
 
-type Arrival = { code: string; signature: string; fresh: Set<string>; rise: number };
-
-const RISE_MS = 260;
-const RISE_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
-
 /**
- * 호가 사다리 왼쪽의 체결 레인. 새 체결은 판정선(현재가 줄) 아래에서 한 묶음으로 올라오고
- * 앞선 체결은 같은 거리만큼 위로 밀려 올라가며 옅어진다. 긴 노트는 큰 체결이다.
+ * 같은 시각·가격·수량의 체결이 연달아 올 수 있다. 뒤(오래된 쪽)부터 번호를 매겨
+ * 새 체결이 앞에 붙어도 기존 체결의 키는 그대로 두고, 새 체결만 새 키를 받게 한다.
  */
-function Highway({ quote }: { quote: Quote }) {
-  const arrival = useRef<Arrival | null>(null);
-  const stack = useRef<HTMLDivElement>(null);
-  const prints = quote.prints.slice(0, NOTE_LIMIT);
-  const maxQty = Math.max(1, ...prints.map((print) => print.qty));
-  let offset = 0;
-  const notes: Array<{ print: TradePrint; index: number; height: number; bottom: number }> = [];
-  for (const [index, print] of prints.entries()) {
-    const height = 6 + Math.round(Math.sqrt(print.qty / maxQty) * 22);
-    if (offset + height > LANE_ROOM) break;
-    notes.push({ print, index, height, bottom: offset });
-    offset += height + 4;
-  }
-  const buys = prints.filter((print) => print.side === "buy").length;
-  /*
-   * 같은 시각·가격·수량의 체결이 연달아 올 수 있다. 뒤(오래된 쪽)부터 번호를 매겨
-   * 새 체결이 앞에 붙어도 기존 노트의 키는 그대로 두고, 새 노트만 떨어지게 한다.
-   */
+function printKeys(prints: TradePrint[]): string[] {
   const seen = new Map<string, number>();
   const keys = new Array<string>(prints.length);
   for (let index = prints.length - 1; index >= 0; index -= 1) {
@@ -289,57 +250,64 @@ function Highway({ quote }: { quote: Quote }) {
     seen.set(base, count + 1);
     keys[index] = `${base}#${count}`;
   }
-  /*
-   * 체결은 몇 초마다 여러 건이 한꺼번에 온다. 새로 온 노트 전체를 앞선 노트가 밀려나는
-   * 거리(rise)만큼 아래에서 같이 올려야 같은 줄 노트끼리 서로를 가로지르지 않는다.
-   * 체결 목록이 그대로인 다시 그리기에서는 앞서 정한 묶음을 유지해 진행 중인 움직임을 끊지 않는다.
-   */
+  return keys;
+}
+
+type Arrival = { code: string; signature: string; fresh: string[] };
+
+/**
+ * 직전 렌더와 비교해 이번에 새로 들어온 체결 키를 고른다. 체결 목록이 그대로인 다시 그리기에서는
+ * 앞서 고른 묶음을 유지해 진행 중인 움직임을 끊지 않는다. 종목을 바꾼 첫 렌더는 새 체결이 없다.
+ */
+function useArrival(code: string, keys: string[]): Arrival {
+  const arrival = useRef<Arrival | null>(null);
   const signature = keys.join(",");
   const previous = arrival.current;
-  if (!previous || previous.code !== quote.code) {
-    arrival.current = { code: quote.code, signature, fresh: new Set(), rise: 0 };
+  if (!previous || previous.code !== code) {
+    arrival.current = { code, signature, fresh: [] };
   } else if (previous.signature !== signature) {
     const known = new Set(previous.signature.split(","));
-    const fresh = new Set(keys.filter((key) => !known.has(key)));
-    const firstKept = notes.find(({ index }) => !fresh.has(keys[index]));
-    arrival.current = { code: quote.code, signature, fresh, rise: firstKept ? firstKept.bottom : offset };
+    arrival.current = { code, signature, fresh: keys.filter((key) => !known.has(key)) };
   }
-  const current = arrival.current!;
-  const { fresh, rise } = current;
-  /*
-   * 노트를 하나씩 따로 움직이면 새 노트와 밀려나는 노트의 움직임이 한 프레임만 어긋나도
-   * 같은 줄에서 서로 겹친다. 노트는 최종 자리에 바로 두고, 노트를 담은 판 전체를
-   * rise만큼 아래에서 한 번에 올린다. 판 안에서 노트끼리의 간격은 움직이는 동안에도 그대로다.
-   * 앞 묶음이 아직 올라오는 중이면 남은 거리를 이어받아 튀지 않게 한다.
-   * 숨은 탭에서는 애니메이션 시간이 멈춰 남은 거리가 계속 쌓이므로 레인 높이에서 자른다.
-   */
+  return arrival.current!;
+}
+
+/**
+ * 호가 아래의 체결 테이프. 새 체결 묶음은 왼쪽 끝에 붙고, 앞선 체결은 그만큼 오른쪽으로 밀려나며 옅어진다.
+ * 칸마다 따로 움직이지 않고 띠 전체를 한 번에 밀어 칸끼리 겹치지 않게 한다.
+ */
+function PrintTape({ quote, keys, arrival }: { quote: Quote; keys: string[]; arrival: Arrival }) {
+  const strip = useRef<HTMLDivElement>(null);
+  const prints = quote.prints.slice(0, TAPE_LIMIT);
+  const streak = combo(quote.prints);
+  const fresh = new Set(arrival.fresh);
+  const shift = arrival.fresh.length * (TAPE_CHIP + TAPE_GAP);
+
   useLayoutEffect(() => {
-    const element = stack.current;
+    const element = strip.current;
     if (!element) return;
-    if (rise <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      for (const running of element.getAnimations()) running.cancel();
-      return;
-    }
-    const transform = getComputedStyle(element).transform;
-    const carried = transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
     for (const running of element.getAnimations()) running.cancel();
-    element.animate(
-      [{ transform: `translateY(${Math.min(rise + carried, LANE_HEIGHT)}px)` }, { transform: "translateY(0)" }],
-      { duration: RISE_MS, easing: RISE_EASING },
-    );
-  }, [current, rise]);
+    if (shift <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    element.animate([{ transform: `translateX(${-shift}px)` }, { transform: "translateX(0)" }], { duration: SLIDE_MS, easing: SLIDE_EASING });
+  }, [arrival, shift]);
+
   return (
-    <div className="nx-lanes" aria-label={`최근 체결 ${prints.length}건 중 매수 ${buys}건, 매도 ${prints.length - buys}건`} role="img">
-      <span className="nx-lane-label is-buy" aria-hidden="true">매수</span>
-      <span className="nx-lane-label is-sell" aria-hidden="true">매도</span>
-      <div className="nx-print-stack" ref={stack} aria-hidden="true">
-        {notes.map(({ print, index, height, bottom }) => (
-          <span
-            key={keys[index]}
-            className={`nx-print is-${print.side}${index === 0 && fresh.has(keys[index]) ? " is-hit" : ""}`}
-            style={{ height, bottom, opacity: Math.max(0.25, 1 - index * 0.09) }}
-          />
-        ))}
+    <div className="nx-tape">
+      <p className="nx-tape-streak" aria-live="off">
+        {streak && streak.count > 1 ? <>
+          <strong className={`nx-num is-${streak.side === "buy" ? "up" : "down"}`}>{streak.count}</strong>
+          <span>연속 {streak.side === "buy" ? "매수" : "매도"}</span>
+        </> : <span>{prints[0] ? `${prints[0].side === "buy" ? "매수" : "매도"} 체결` : "체결 대기"}</span>}
+      </p>
+      <div className="nx-tape-track" role="img" aria-label={`최근 체결 ${prints.length}건`}>
+        <div className="nx-tape-strip" ref={strip} aria-hidden="true">
+          {prints.map((print, index) => (
+            <span key={keys[index]} className={`nx-tape-chip nx-num is-${print.side}${fresh.has(keys[index]) ? " is-fresh" : ""}`}
+              style={{ opacity: Math.max(0.35, 1 - index * 0.07) }}>
+              {print.qty.toLocaleString("ko-KR")}<small>주</small>
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -349,23 +317,44 @@ function Book({ quote, onPriceSelect }: { quote: Quote; onPriceSelect: (price: n
   const asks = [...quote.asks].sort((a, b) => a.price - b.price).slice(0, 5).reverse();
   const bids = [...quote.bids].sort((a, b) => b.price - a.price).slice(0, 5);
   const depth = Math.max(1, ...asks.map((level) => level.qty), ...bids.map((level) => level.qty));
-  const streak = combo(quote.prints);
-  const last = quote.prints[0];
   const strength = strengthRatio(quote);
+  const keys = printKeys(quote.prints.slice(0, TAPE_LIMIT));
+  const arrival = useArrival(quote.code, keys);
+  /* 이번 묶음의 체결. 현재가 줄을 그 방향 색으로 한 번 쓸고, 묶음 수량을 잠깐 띄운다. */
+  const hits = quote.prints.slice(0, TAPE_LIMIT).filter((_, index) => arrival.fresh.includes(keys[index]));
+  const hitSide = hits[0]?.side;
+  const hitQty = hits.filter((print) => print.side === hitSide).reduce((sum, print) => sum + print.qty, 0);
 
-  const row = (side: "ask" | "bid", level: { price: number; qty: number } | undefined, gridRow: number) => (
-    <div className={`nx-book-row is-${side}`} style={{ gridRow }} key={`${side}-${gridRow}`} role="row">
-      {level ? <>
-        <button type="button" className="nx-book-price nx-num" onClick={() => onPriceSelect(level.price)} aria-label={`${side === "ask" ? "매도" : "매수"} 호가 ${won(level.price)}을 주문 가격으로`}>
-          {won(level.price).replace("₩", "")}
-        </button>
-        <span className="nx-book-qty nx-num" role="cell">
-          <span className="nx-book-bar" style={{ width: `${(level.qty / depth) * 100}%` }} aria-hidden="true" />
-          {level.qty.toLocaleString("ko-KR")}<span className="nx-book-unit">주</span>
-        </span>
-      </> : <span className="nx-book-empty" aria-hidden="true">-</span>}
-    </div>
-  );
+  /*
+   * 가격별 잔량과 마지막 변화 방향. 잔량이 늘거나 줄면 그 숫자만 한 번 반짝인다(숫자 칸의 key가 바뀌어 다시 붙는다).
+   * 잔량이 그대로인 다시 그리기에서도 방향 클래스를 유지해야 진행 중인 반짝임이 끊기지 않는다.
+   */
+  const lastQty = useRef(new Map<string, { qty: number; change: string }>());
+  const changeOf = (side: "ask" | "bid", level: { price: number; qty: number }) => {
+    const id = `${side}:${level.price}`;
+    const before = lastQty.current.get(id);
+    const change = !before ? "" : before.qty === level.qty ? before.change : level.qty > before.qty ? " is-more" : " is-less";
+    lastQty.current.set(id, { qty: level.qty, change });
+    return change;
+  };
+
+  const row = (side: "ask" | "bid", level: { price: number; qty: number } | undefined, gridRow: number) => {
+    const change = level ? changeOf(side, level) : "";
+    return (
+      <div className={`nx-book-row is-${side}`} style={{ gridRow }} key={`${side}-${gridRow}`} role="row">
+        {level ? <>
+          <button type="button" className="nx-book-price nx-num" onClick={() => onPriceSelect(level.price)} aria-label={`${side === "ask" ? "매도" : "매수"} 호가 ${won(level.price)}을 주문 가격으로`}>
+            {won(level.price).replace("₩", "")}
+          </button>
+          <span className="nx-book-qty nx-num" role="cell">
+            <span className="nx-book-bar" style={{ width: `${(level.qty / depth) * 100}%` }} aria-hidden="true" />
+            <span key={`${level.price}:${level.qty}`} className={`nx-book-count${change}`}>{level.qty.toLocaleString("ko-KR")}</span>
+            <span className="nx-book-unit">주</span>
+          </span>
+        </> : <span className="nx-book-empty" aria-hidden="true">-</span>}
+      </div>
+    );
+  };
 
   return (
     <section className="nx-panel nx-book" aria-labelledby="nx-book-title">
@@ -374,22 +363,20 @@ function Book({ quote, onPriceSelect }: { quote: Quote; onPriceSelect: (price: n
         <span className="nx-muted" title={`최근 체결 ${quote.prints.length}건 기준`}>체결 강도 <span className="nx-num">{strength === null ? "-" : `${Math.round(strength * 100)}%`}</span></span>
       </header>
       <div className="nx-ladder" role="table" aria-label="매도 5단계, 현재가, 매수 5단계">
-        <Highway quote={quote} />
         {Array.from({ length: 5 }, (_, index) => row("ask", asks[index - (5 - asks.length)], index + 1))}
         <div className="nx-judge" role="row" aria-label={`현재가 ${won(quote.price)}`}>
+          {hitSide && <span key={`sweep-${arrival.signature}`} className={`nx-judge-sweep is-${hitSide}`} aria-hidden="true" />}
           <PriceCell className="nx-num nx-judge-price" value={quote.price} />
           <Delta change={quote.price - quote.prevClose} ratio={sessionRate(quote)} showAmount={false} />
-        </div>
-        <div className="nx-combo" aria-live="off">
-          {streak && streak.count > 1 ? (
-            <>
-              <strong className={`nx-num is-${streak.side === "buy" ? "up" : "down"}`}>{streak.count}</strong>
-              <span>연속 {streak.side === "buy" ? "매수" : "매도"}</span>
-            </>
-          ) : <span>{last ? `${last.side === "buy" ? "매수" : "매도"} 체결` : "체결 대기"}</span>}
+          {hitSide && (
+            <span key={`hit-${arrival.signature}`} className={`nx-judge-hit nx-num is-${hitSide}`} aria-hidden="true">
+              {hitSide === "buy" ? "매수" : "매도"} {hitQty.toLocaleString("ko-KR")}주
+            </span>
+          )}
         </div>
         {Array.from({ length: 5 }, (_, index) => row("bid", bids[index], index + 7))}
       </div>
+      <PrintTape quote={quote} keys={keys} arrival={arrival} />
     </section>
   );
 }
@@ -438,6 +425,7 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
 
   return (
     <div className="nx-trade-page">
+      <MarketTabs active="stocks" />
       <div className="nx-trade-toolbar">
         <Link to="/market" className="nx-back-link"><span aria-hidden="true">←</span> 주식 목록</Link>
         <StockSelector current={code} />

@@ -29,7 +29,7 @@ html[data-app-shell="web"] body {
     padding-bottom: var(--nx-tabbar);
   }
 
-  /* ───────── 상단 바: 로고 · 지수 · 밝기 · 계정 (문서 순서 그대로) ───────── */
+  /* ───────── 상단 바: 로고 · 밝기 · 계정 (문서 순서 그대로) ───────── */
 
   html[data-app-shell="web"][data-nx] .nx-top {
     gap: 0;
@@ -52,21 +52,12 @@ html[data-app-shell="web"] body {
     flex: none;
     width: 44px;
     height: 44px;
-    margin: 0 4px 0 0;
+    margin: 0 4px 0 auto;
     border-color: transparent;
   }
 
-  html[data-app-shell="web"][data-nx] .nx-top .nx-index {
-    display: flex;
-    gap: 0;
-  }
-
-  /* 상단 바에는 지수 한 줄만 둔다. */
-  html[data-app-shell="web"][data-nx] .nx-top .nx-index-item { gap: 6px; font-size: 13px; }
-  html[data-app-shell="web"][data-nx] .nx-top .nx-index-label { font-size: 12px; }
-  html[data-app-shell="web"][data-nx] .nx-top .nx-index-value { font-size: 14px; }
-
-  html[data-app-shell="web"][data-nx] .nx-top .profile-menu { flex: none; }
+  html[data-app-shell="web"][data-nx] .nx-top .profile-menu { flex: none; margin-left: 0; }
+  html[data-app-shell="web"][data-nx] .nx-top .profile-login { height: 44px; margin-right: 0; }
 
   /* ───────── 아래 탭바 ───────── */
 
@@ -143,14 +134,12 @@ html[data-app-shell="web"] body {
 
   html[data-app-shell="web"][data-nx] .nx-hero-value { font-size: 38px; }
 
-  html[data-app-shell="web"][data-nx] .nx-home > .nx-panel { padding: 20px 16px; }
-
   /* ───────── 시장: 엄지로 누르는 칩·정렬·관심 버튼은 44px ───────── */
 
-  html[data-app-shell="web"][data-nx] .nx-chip { min-height: 44px; }
+  html[data-app-shell="web"][data-nx] .nx-chip:not(.nx-chip--small) { min-height: 44px; }
   /* 세그먼트는 바깥 여백을 걷고 단추 자체를 44px로 키운다. 줄의 다른 부품과 높이가 같다. */
-  html[data-app-shell="web"][data-nx] .nx-seg { padding: 0; }
-  html[data-app-shell="web"][data-nx] .nx-seg button { min-height: 44px; }
+  html[data-app-shell="web"][data-nx] .nx-seg:not(.nx-seg--large) { padding: 0; }
+  html[data-app-shell="web"][data-nx] .nx-seg :is(button, a) { min-height: 44px; }
   html[data-app-shell="web"][data-nx] .market-chart-toolbar button { min-height: 44px; }
   html[data-app-shell="web"][data-nx] .nx-docs-toc a { display: flex; align-items: center; min-height: 44px; padding-block: 0; }
   html[data-app-shell="web"][data-nx] .nx-sort { min-width: 44px; min-height: 44px; }
@@ -179,8 +168,7 @@ html[data-app-shell="web"] body {
 
   /* ───────── 랭킹: 투자자 칸이 남는 폭을 모두 쓴다 ───────── */
 
-  html[data-app-shell="web"][data-nx] .nx-ranking-panel { padding: 0 16px 20px; }
-  html[data-app-shell="web"][data-nx] .nx-ranking-tabs { margin: 0 -16px 12px; }
+  html[data-app-shell="web"][data-nx] .nx-ranking-tabs { margin-bottom: 12px; }
   html[data-app-shell="web"][data-nx] .nx-rank-table .nx-rank-cell { width: 40px; padding: 0 4px; }
   html[data-app-shell="web"][data-nx] .nx-rank-table td.nx-player-cell { width: 100%; max-width: 0; padding: 0 6px; }
   html[data-app-shell="web"][data-nx] .nx-rank-table tbody td:not(.nx-player-cell) { padding: 0 6px; }

@@ -52,7 +52,9 @@ public final class StockMarketProfile {
 
     public static boolean isSpeculative(String code) {
         String normalized = code == null ? "" : code.toUpperCase(Locale.ROOT);
-        return ACTIVE_USERS.containsKey(normalized) && !isLargeCap(normalized);
+        // Newly listed symbols already use the small-cap defaults in of(). Apply the
+        // same classification to strategy and protection rules, not just sizing.
+        return !normalized.isBlank() && !isLargeCap(normalized);
     }
 
     /** Ordinary large-cap fluctuations are a soft daily target, not a forced price path. */

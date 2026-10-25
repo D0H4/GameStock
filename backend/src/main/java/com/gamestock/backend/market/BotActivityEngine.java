@@ -13,7 +13,9 @@ final class BotActivityEngine {
     private static final long SMALL_CAP_QUOTE_REFRESH_MS=1_200L;
     private static final double FLOOR_ZONE=.15,FLOOR_INVENTORY_ASK_PREMIUM=.012;
     record Observation(PriceMetricService.Metrics metrics,MarketEnvironment environment,double fundamental,double news,double scale) { }
-    record Participant(long id,BotProfile profile,long stock) { }
+    record Participant(long id,BotProfile profile,long stock,int watchedSymbols) {
+        Participant(long id,BotProfile profile,long stock){this(id,profile,stock,1);}
+    }
     record Activity(long stock,String code,int fills,int orders,boolean continuous) { }
     private record ParticipantKey(long user,long stock) { }
     private static final class ExecutionMemory {
@@ -26,9 +28,10 @@ final class BotActivityEngine {
     private final List<Participant> participants;
     private final Map<Long,List<Participant>> bySymbol=new LinkedHashMap<>();
     private final Map<Long,List<Participant>> pacedBySymbol=new HashMap<>();
-    private final Map<Long,Long> due=new HashMap<>(),acquired=new HashMap<>();
+    private final Map<ParticipantKey,Long> due=new HashMap<>(),acquired=new HashMap<>();
     private final Map<Long,Integer> cursors=new HashMap<>();
     private final Map<Long,Double> credits=new HashMap<>();
+    private final Map<Long,List<Long>> participantIdsBySymbol=new HashMap<>();
     private final BotStrategyEngine strategies;
     private final BotOrderPolicy policy=new BotOrderPolicy();
     private final Random random;
@@ -47,6 +50,7 @@ final class BotActivityEngine {
         this.consensus=new MarketConsensusValue(seed^113);
         for(Participant p:participants){
             bySymbol.computeIfAbsent(p.stock(),k->new ArrayList<>()).add(p);
+            participantIdsBySymbol.computeIfAbsent(p.stock(),k->new ArrayList<>()).add(p.id());
             executionMemory.put(new ParticipantKey(p.id(),p.stock()),new ExecutionMemory());
         }
         for(var group:bySymbol.values())Collections.shuffle(group,random);
@@ -108,7 +112,7 @@ final class BotActivityEngine {
                     StockMarketProfile.isLargeCap(symbol.code)?commonValue:
                             observed.metrics().referenceVwap()*.9+observed.fundamental()*.1,observed.news(),observed.scale());
             var group=pacedBySymbol.computeIfAbsent(stock,key->entry.getValue().stream()
-                    .map(p->new Participant(p.id(),p.profile().forMarket(symbol.code),p.stock())).toList());
+                    .map(p->new Participant(p.id(),p.profile().forMarket(symbol.code),p.stock(),p.watchedSymbols())).toList());
             int startFills=book.fills.size(),startOrders=book.accepted.size();
             int recent=recentFills.getOrDefault(stock,0);
             var risk=risks.get(stock);
@@ -119,12 +123,15 @@ final class BotActivityEngine {
                 if(recovery.absorbWall(book,symbol,risk,lp,maker.fairValue(observation.metrics(),observation.fundamental()),now))
                     nextQuote.remove(stock);
             }
+            int recoveryFills=book.fills.size()-startFills;
+            recent+=recoveryFills;
             var marketMetrics=withBook(observation.metrics(),symbol.last,book.depth(stock));
             refreshLiquidity(book,symbol,observation,risk,lp,now,true);
-            // LP recovery and refresh fills stay out of `recent`; only the participant restart trade counts.
-            int lpFills=book.fills.size()-startFills;
-            if(stalled && lpFills==0 && recent==0 && (traderShare>=1 || traderShare>0 && random.nextDouble()<traderShare)
-                    && recovery.submitStalledFlow(book,symbol,group.stream().map(Participant::id).toList(),lp,now)) {
+            int postRefreshFills=book.fills.size()-startFills;
+            recent+=postRefreshFills-recoveryFills;
+            recoveryFills=postRefreshFills;
+            if(stalled && recoveryFills==0 && recent==0 && traderShare>0
+                    && recovery.submitStalledFlow(book,symbol,participantIdsBySymbol.getOrDefault(stock,List.of()),lp,now)) {
                 recent+=book.fills.size()-startFills;
                 rememberNewFills(book,now);
             }
@@ -159,24 +166,25 @@ final class BotActivityEngine {
             int cursor=cursors.getOrDefault(stock,0),examined=0;
             while(traderShare>0 && examined<group.size()*2 && book.fills.size()-startFills<budget && book.accepted.size()-startOrders<orderBudget && symbol.continuous) {
                 Participant participant=group.get(cursor++%group.size());examined++;
-                if(due.getOrDefault(participant.id(),0L)>now)continue;
+                ParticipantKey participantKey=new ParticipantKey(participant.id(),stock);
+                if(due.getOrDefault(participantKey,0L)>now)continue;
                 BotProfile p=participant.profile();
-                due.put(participant.id(),now+Math.max(10,(long)(p.decisionInterval()*StockMarketProfile.decisionIntervalWeight(symbol.code)*(.65+random.nextDouble()*.7)))+p.reactionLatency());
+                due.put(participantKey,now+Math.max(10,(long)(p.decisionInterval()*StockMarketProfile.decisionIntervalWeight(symbol.code)*(.65+random.nextDouble()*.7)))+p.reactionLatency());
                 // A skipped trader waits a normal decision interval, so the ramp thins activity instead of queueing it.
                 if(traderShare<1 && random.nextDouble()>=traderShare)continue;
                 Account account=book.accounts.get(participant.id());
                 if(account==null)continue;
                 Holding held=book.holding(participant.id(),stock);
-                if(held.quantity()==0)acquired.remove(participant.id());
-                else acquired.putIfAbsent(participant.id(),now);
+                if(held.quantity()==0)acquired.remove(participantKey);
+                else acquired.putIfAbsent(participantKey,now);
                 List<Order> working=book.working(participant.id(),stock);
                 long refundable=working.stream().mapToLong(o->o.reservedCash).sum();
                 double[] depth=book.depth(stock);
                 if(book.accepted.size()-startOrders+liquidityRepairReserve(book,symbol,risk,lp,book.nearbyDepth(stock))>=orderBudget)break;
                 PriceMetricService.Metrics m=withBook(observation.metrics(),symbol.last,depth);
                 long equity=account.cash+refundable+Math.round(held.quantity()*m.markPrice());
-                double targetQuantity=strategies.targetQuantity(p,symbol.code,now,equity,1,m.markPrice());
-                var position=new BotStrategyEngine.Position(held.quantity(),account.cash+refundable,held.average(),now-acquired.getOrDefault(participant.id(),now),targetQuantity);
+                double targetQuantity=strategies.targetQuantity(p,symbol.code,now,equity,participant.watchedSymbols(),m.markPrice());
+                var position=new BotStrategyEngine.Position(held.quantity(),account.cash+refundable,held.average(),now-acquired.getOrDefault(participantKey,now),targetQuantity);
                 double anchor=BotStrategyEngine.valuationObservation(p,m,observed.fundamental(),commonValue,symbol.code);
                 double researchNoise=.012*(StockMarketProfile.isLargeCap(symbol.code)?StockMarketProfile.of(symbol.code).movementWeight():1);
                 double estimate=strategies.estimate(p,symbol.code,anchor*(1+random.nextGaussian()*researchNoise));

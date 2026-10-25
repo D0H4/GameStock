@@ -129,6 +129,37 @@ export interface DerivativeOrderRequest {
   expiryEpoch?: number;
 }
 
+export interface OptionFlowBucket {
+  /** 봉 시작(epoch 초). */
+  at: number;
+  /** 봉 안 마지막 지수 관측. 기록이 없으면 null. */
+  index: number | null;
+  callVolume: number;
+  putVolume: number;
+  callPremium: number;
+  putPremium: number;
+  /** (콜 매수 − 콜 청산) − (풋 매수 − 풋 청산). 양수면 상승 쪽 돈이 많다. */
+  netPremium: number;
+}
+
+export interface OptionFlow {
+  range: OptionFlowRange;
+  intervalSeconds: number;
+  from: number;
+  to: number;
+  callVolume: number;
+  putVolume: number;
+  callPremium: number;
+  putPremium: number;
+  netPremium: number;
+  buckets: OptionFlowBucket[];
+}
+
+export type OptionFlowRange = "1h" | "6h" | "1d" | "1w";
+
+/** 기간마다 봉 간격을 하나로 정한다. 서버 상한(봉 400개) 안쪽이다. */
+export const OPTION_FLOW_INTERVAL: Record<OptionFlowRange, "1m" | "5m" | "1h"> = { "1h": "1m", "6h": "5m", "1d": "5m", "1w": "1h" };
+
 export interface DerivativeOrderResult {
   message: string;
   account: DerivativeAccount;
@@ -140,10 +171,16 @@ const POLL_MS = 2000;
  * ETF·파생 시세는 2초마다 새로 받는다. 주식 스냅샷과 별도 엔드포인트라
  * 기존 시장 갱신 주기와 독립적으로 움직인다.
  */
-export function useDerivativeMarket() {
+// Public quotes survive route remounts. The account survives them only for the same signed-in user,
+// so switching product tabs does not flash the sign-in notice before the account reloads.
+let lastSnapshot: DerivativeSnapshot | null = null;
+let lastAccount: { uid: string; account: DerivativeAccount } | null = null;
+const cachedAccount = (user: User | null) => user && lastAccount?.uid === user.uid ? lastAccount.account : null;
+
+export function useDerivativeMarket(includeAccount = true) {
   const auth = useAuthUser();
-  const [snapshot, setSnapshot] = useState<DerivativeSnapshot | null>(null);
-  const [account, setAccount] = useState<DerivativeAccount | null>(null);
+  const [snapshot, setSnapshot] = useState<DerivativeSnapshot | null>(() => lastSnapshot);
+  const [account, setAccount] = useState<DerivativeAccount | null>(() => includeAccount ? cachedAccount(auth.user) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -151,9 +188,10 @@ export function useDerivativeMarket() {
     try {
       const [nextSnapshot, nextAccount] = await Promise.all([
         apiFetch<DerivativeSnapshot>("/api/derivatives", { auth: false }),
-        user ? apiFetch<DerivativeAccount>("/api/derivatives/account") : Promise.resolve(null),
+        user && includeAccount ? apiFetch<DerivativeAccount>("/api/derivatives/account") : Promise.resolve(null),
       ]);
       if (!active()) return;
+      lastSnapshot = nextSnapshot;
       setSnapshot(nextSnapshot);
       setAccount(nextAccount);
       setError(null);
@@ -163,12 +201,12 @@ export function useDerivativeMarket() {
     } finally {
       if (active()) setLoading(false);
     }
-  }, []);
+  }, [includeAccount]);
 
   useEffect(() => {
     let cancelled = false;
     const active = () => !cancelled;
-    setAccount(null);
+    setAccount(includeAccount ? cachedAccount(auth.user) : null);
     setLoading(true);
     void load(auth.user, active);
     const timer = window.setInterval(() => void load(auth.user, active), POLL_MS);
@@ -176,7 +214,12 @@ export function useDerivativeMarket() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [auth.user, load]);
+  }, [auth.user, includeAccount, load]);
+
+  useEffect(() => {
+    if (!auth.user) lastAccount = null;
+    else if (account) lastAccount = { uid: auth.user.uid, account };
+  }, [auth.user, account]);
 
   const refresh = useCallback(async () => {
     if (!auth.user) return;
@@ -199,6 +242,37 @@ export function closeDerivative(positionId: number, quantity: number): Promise<D
     method: "POST",
     body: JSON.stringify({ quantity }),
   });
+}
+
+const FLOW_POLL_MS = 15_000;
+
+/** 옵션 거래 흐름. 서버가 5초씩 묶어 주므로 15초마다 다시 받는다. 기간을 바꾸면 이전 값을 지우지 않고 새 값으로 바꿔 끼운다. */
+export function useOptionFlow(range: OptionFlowRange) {
+  const [flow, setFlow] = useState<OptionFlow | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const next = await apiFetch<OptionFlow>(`/api/derivatives/options/flow?range=${range}&interval=${OPTION_FLOW_INTERVAL[range]}`, { auth: false });
+        if (!active) return;
+        setFlow(next);
+        setError(false);
+      } catch {
+        if (active) setError(true);
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), FLOW_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [range]);
+
+  // 새 기간을 받는 동안에는 이전 그래프를 흐리게 남겨 둔다.
+  return { flow, pending: flow !== null && flow.range !== range, error };
 }
 
 /** 만기까지 남은 시간을 mm:ss 또는 n일 hh:mm로 표시한다. */

@@ -6,6 +6,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BatchOrderBookTest {
+    @Test void fourDisplayedSingleShareAsksAreFourExecutableShares() {
+        var b=book(1_000_000);
+        b.stocks.put(1L,new Stock(1,"BA",15630,14790,14790,15630,true));
+        b.accounts.put(1L,new Account(1,1_000_000,false,true));
+        b.accounts.put(2L,new Account(2,0,true,true));
+        b.holdings.put(new PositionKey(2,1),new Holding(4,4,15630,0));
+        for(long price=15640;price<=15670;price+=10)b.submit(2,1,"SELL","LIMIT",1,price,1000,10000);
+        var buy=b.submit(1,1,"BUY","LIMIT",4,15670,1001,10000);
+        assertEquals("FILLED",buy.status);
+        assertEquals(java.util.List.of(15640L,15650L,15660L,15670L),b.fills.stream().map(Fill::price).toList());
+        assertEquals(4,b.holding(1,1).quantity());
+        assertEquals(0,b.holding(2,1).quantity());
+        assertEquals(1_000_000,b.accounts.get(1L).cash+b.accounts.get(2L).cash);
+    }
+
     @Test void humanReservedLpInventoryDoesNotBlockABoundedTopUpOrLoseItsCostBasis() {
         var b=book(1_000_000);
         var key=new PositionKey(2,1);
@@ -102,6 +117,7 @@ class BatchOrderBookTest {
     }
     @Test void priceChangesRequireFillsAndViStopsBeforeTransfer() {
         var b=book(1000000);
+        b.stocks.put(1L,new Stock(1,"GI",10000,10000,10000,10000,true));
         b.submit(2,1,"SELL","LIMIT",3,10600,1000,5000);
         b.submit(1,1,"BUY","LIMIT",3,10600,1001,5000);
         assertTrue(b.fills.isEmpty());assertTrue(b.prices.isEmpty());assertEquals(10000,b.stocks.get(1L).last);
@@ -109,6 +125,7 @@ class BatchOrderBookTest {
     }
     @Test void automatedOrderOutsideViBandIsCancelledWithoutTriggeringVi() {
         var b=book(1000000);
+        b.stocks.put(1L,new Stock(1,"GI",10000,10000,10000,10000,true));
         b.accounts.put(4L,new Account(4,1000000,false,true));
         b.holdings.put(new PositionKey(2,1),new Holding(100,100,10000,0));
         var bot=b.submit(4,1,"BUY","LIMIT",3,10600,1000,5000);
@@ -148,16 +165,16 @@ class BatchOrderBookTest {
         assertEquals(400000,b.lpCashBudgets.get(2L));
         assertEquals(before,b.lpCashBudgets.values().stream().mapToLong(Long::longValue).sum());
     }
-    @Test void automatedSellerCannotConsumeLpBidBeforeHumanSeller() {
+    @Test void fundedLpBidServesAutomatedAndHumanSellersInArrivalOrder() {
         var b=book(1000000);b.accounts.put(1L,new Account(1,1000000,true));
         b.accounts.put(4L,new Account(4,1000000,false,true));
         b.holdings.put(new PositionKey(4,1),new Holding(100,100,10000,0));
         b.lpCashBudgets.put(1L,50000L);
         b.submit(1,1,"BUY","LIMIT",2,10000,1000,4000);
         var automated=b.submit(4,1,"SELL","MARKET",1,0,1001,0);
-        assertEquals("CANCELLED",automated.status);assertTrue(b.fills.isEmpty());
+        assertEquals("FILLED",automated.status);assertEquals(1,b.fills.size());
         b.submit(2,1,"SELL","MARKET",1,0,1002,0);
-        assertEquals(1,b.fills.size());assertEquals(1,b.holding(1,1).quantity());
+        assertEquals(2,b.fills.size());assertEquals(2,b.holding(1,1).quantity());
     }
     @Test void fundedLiquidityProviderAbsorbsBotSellingWhileKeepingItsHumanReserve() {
         var b=book(5_000_000);b.accounts.put(1L,new Account(1,5_000_000,true));
@@ -170,7 +187,7 @@ class BatchOrderBookTest {
         assertTrue(b.lpCashBudgets.get(1L)>=MarketMakerEngine.emergencyCashRequirement(12000));
         assertEquals(9,b.holding(4,1).quantity());assertEquals(1,b.holding(1,1).quantity());
     }
-    @Test void lpReserveCountsCashAlreadyLockedInItsOwnBidsExactlyOnce() {
+    @Test void allCashAlreadyReservedInAnLpBidRemainsExecutable() {
         long reserve=MarketMakerEngine.emergencyCashRequirement(12000);
         var b=book(reserve+10000);b.accounts.put(1L,new Account(1,reserve+10000,true));
         b.accounts.put(4L,new Account(4,0,false,true));
@@ -182,27 +199,31 @@ class BatchOrderBookTest {
         assertEquals("FILLED",first.status);
         assertEquals(reserve,b.lpCashBudgets.get(1L)+bid.reservedCash);
         var second=b.submit(4,1,"SELL","MARKET",1,0,1002,0);
-        assertEquals("CANCELLED",second.status,"The same reservation cannot fund another purchase below the reserve");
-        assertEquals(1,b.fills.size());
+        assertEquals("FILLED",second.status,"A posted funded bid must remain executable down to its final share");
+        assertEquals(2,b.fills.size());
+        assertEquals(0,bid.remaining);
         b.submit(2,1,"SELL","MARKET",1,0,1003,0);
-        assertEquals(2,b.fills.size(),"The remaining funded bid stays available to a human seller");
+        assertEquals(2,b.fills.size(),"Consumed liquidity cannot fund a second fill");
+        assertTrue(b.accounts.get(1L).cash>=0);
     }
 
-    @Test void botsCannotConsumeTheFinalShareOfAnLpLevelButHumansCanTradeIt() {
+    @Test void botsCanConsumeEveryPublishedShareOfAnLpLevel() {
         var b=book(5_000_000);
         b.accounts.put(1L,new Account(1,5_000_000,true,true));
         b.accounts.put(4L,new Account(4,1_000_000,false,true));
         b.lpCashBudgets.put(1L,5_000_000L);
-        b.holdings.put(new PositionKey(1,1),new Holding(4,4,10000,0));
+        b.holdings.put(new PositionKey(1,1),new Holding(5,5,10000,0));
         b.holdings.put(new PositionKey(4,1),new Holding(4,4,10000,0));
         var ask=b.submit(1,1,"SELL","LIMIT",4,10010,1000,10000);
         b.submit(4,1,"BUY","MARKET",4,0,1001,0);
-        assertEquals(1,ask.remaining,"A multi-share bot order must also leave the human reserve");
-        assertEquals(3,b.fills.get(0).quantity());
+        assertEquals(0,ask.remaining);
+        assertEquals(4,b.fills.get(0).quantity());
+        b.submit(1,1,"SELL","LIMIT",1,10010,1002,10000);
         assertEquals("FILLED",b.submit(3,1,"BUY","MARKET",1,0,1002,0).status);
         var bid=b.submit(1,1,"BUY","LIMIT",4,10000,1003,10000);
         b.submit(4,1,"SELL","MARKET",4,0,1004,0);
-        assertEquals(1,bid.remaining);
+        assertEquals(0,bid.remaining);
+        b.submit(1,1,"BUY","LIMIT",1,10000,1005,10000);
         assertEquals("FILLED",b.submit(2,1,"SELL","MARKET",1,0,1005,0).status);
         assertEquals(0,bid.remaining);
     }

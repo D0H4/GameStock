@@ -28,9 +28,10 @@ final class PriceLimitPolicy {
     }
 
     static PriceBand quoteBand(String code, long referencePrice, double news) {
-        if (!StockMarketProfile.isLargeCap(code)) return botBand(code, referencePrice);
-        // A wider safety envelope surrounds the +/-3% soft target. News expands it.
-        return band(referencePrice, Math.min(.20, .06 + Math.abs(news)));
+        // Research and inventory price each order; an extra yesterday-close +/-6%
+        // envelope silently discarded willing sellers as fundamentals moved away.
+        // Keep the common bot safety band, inside the public daily limit.
+        return botBand(code, referencePrice);
     }
 
     static double dynamicViRate(String code) { return StockMarketProfile.isSpeculative(code) ? .20 : .06; }

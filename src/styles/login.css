@@ -40,15 +40,8 @@
   .login-brand {
     display: flex;
     align-items: center;
-    gap: 8px;
     margin-bottom: 22px;
-    font-size: var(--step-1);
-    font-weight: 700;
-    letter-spacing: var(--tracking);
-    color: var(--ink);
   }
-
-  .login-brand .brand-mark { display: block; border-radius: 8px; }
 
   .login-header { margin-bottom: 24px; }
   .login-header h1 { font-size: var(--step-4); font-weight: 700; letter-spacing: var(--tracking); }

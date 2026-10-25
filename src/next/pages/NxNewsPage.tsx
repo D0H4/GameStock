@@ -3,12 +3,14 @@ import { GameIcon } from "../../components/GameIcon";
 import { Link } from "../../components/Link";
 import { EXCERPT_PARAGRAPHS, hostOf, readDescription, useExcerpt, type Excerpt } from "../../components/NewsDetail";
 import { SeriesChart } from "../../components/SeriesChart";
+import { prefersReducedMotion } from "../../lib/motion";
 import { kstDateTime, rate, recentSince, since, won } from "../../market/format";
 import { useMarket, useMarketApi } from "../../market/MarketProvider";
 import { newsEffect } from "../../market/selectors";
 import { VISIBLE_NEWS_SOURCES, type NewsItem, type NewsSource } from "../../market/types";
 import { LISTING_BY_CODE } from "../../market/universe";
 import { navigate, NEWS_PATH, TRADE_PATH } from "../../router";
+import { AnimatedNav } from "../AnimatedNav";
 
 type SourceFilter = "all" | NewsSource;
 
@@ -127,6 +129,9 @@ function Article({ item }: { item: NewsItem }) {
 export function NxNewsPage({ id }: { id: number | null }) {
   const snapshot = useMarket();
   const list = useRef<HTMLOListElement>(null);
+  const scroller = useRef<HTMLElement>(null);
+  /* 목록 아래에 더 읽을 뉴스가 남아 있는지. 스크롤바를 숨긴 대신 아래 화살표로 알린다. */
+  const [more, setMore] = useState(false);
   const [source, setSource] = useState<SourceFilter>("all");
   const [watchOnly, setWatchOnly] = useState(false);
   const [game, setGame] = useState<string>("all");
@@ -170,6 +175,26 @@ export function NxNewsPage({ id }: { id: number | null }) {
   }, [id, items]);
 
   useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const update = () => setMore(element.scrollHeight - element.scrollTop - element.clientHeight > 4);
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    if (list.current) observer.observe(list.current);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [items.length]);
+
+  const scrollMore = () => {
+    const element = scroller.current;
+    element?.scrollBy({ top: element.clientHeight * 0.8, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  };
+
+  useEffect(() => {
     if (id === null) return;
     list.current?.querySelector(`[data-news-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
   }, [id]);
@@ -177,20 +202,16 @@ export function NxNewsPage({ id }: { id: number | null }) {
   return (
     <div className={`nx-screen nx-news-screen${id !== null ? " has-article" : ""}`}>
       <header className="nx-screen-head">
-        <div>
-          {/* 화면 이름은 상단 메뉴가 이미 보여 준다. 제목은 화면 낭독기용으로만 둔다. */}
-          <h1 className="vh">뉴스</h1>
-          <p className="nx-screen-sub">게임 뉴스가 나온 뒤 그 종목 가격이 얼마나 움직였는지 함께 보여 줘요.</p>
-        </div>
+        <h1 className="nx-panel-title">뉴스</h1>
         <div className="nx-news-filters">
-          <div className="nx-seg" role="group" aria-label="출처">
+          <AnimatedNav as="div" fill activeKey={source} className="nx-seg" role="group" aria-label="출처">
             {(["all", ...VISIBLE_NEWS_SOURCES] as SourceFilter[]).map((value) => (
               <button key={value} type="button" className={source === value ? "is-active" : undefined} aria-pressed={source === value} onClick={() => setSource(value)}>
                 {value === "all" ? "전체" : value}
                 <span className="nx-seg-count nx-num">{counts[value]}</span>
               </button>
             ))}
-          </div>
+          </AnimatedNav>
           <label className="nx-news-game">
             <span className="vh">종목</span>
             <select className="nx-select" value={game} onChange={(event) => setGame(event.target.value)}>
@@ -206,7 +227,7 @@ export function NxNewsPage({ id }: { id: number | null }) {
       </header>
 
       <div className="nx-news-layout">
-        <section className="nx-panel nx-news-list" aria-label="뉴스 목록">
+        <section className="nx-panel nx-news-list" aria-label="뉴스 목록" ref={scroller}>
           {items.length === 0 ? (
             <div className="nx-empty-state">
               <p>{snapshot.news.length === 0 ? "아직 들어온 뉴스가 없어요." : source === "업데이트 노트" ? "이 조건에는 게임사가 직접 올린 공지가 없어요." : "조건에 맞는 뉴스가 없어요."}</p>
@@ -216,6 +237,14 @@ export function NxNewsPage({ id }: { id: number | null }) {
             <ol ref={list}>
               {items.map((item) => <NewsRow key={item.id} item={item} selected={item.id === id} now={now} />)}
             </ol>
+          )}
+          {more && (
+            <div className="nx-news-more">
+              <button type="button" onClick={scrollMore}>
+                <span>아래로 계속</span>
+                <svg viewBox="0 0 44 12" aria-hidden="true"><path d="M2 2l20 8 20-8" /></svg>
+              </button>
+            </div>
           )}
         </section>
 

@@ -1,0 +1,376 @@
+{
+  "seeds": [
+    20261024,
+    7,
+    91
+  ],
+  "total": {
+    "before": {
+      "bars": 2655,
+      "wickBp": 71.21488220048909,
+      "wickRatio": 0.596697163296264,
+      "long": 523,
+      "doji": 443,
+      "flat": 0,
+      "fills": 1686829,
+      "longestQuietMs": 16200
+    },
+    "after": {
+      "bars": 2655,
+      "wickBp": 61.980889076841365,
+      "wickRatio": 0.5757309815051415,
+      "long": 368,
+      "doji": 468,
+      "flat": 0,
+      "fills": 1228916,
+      "longestQuietMs": 20200
+    }
+  },
+  "symbols": [
+    {
+      "code": "UMA",
+      "before": {
+        "bars": 177,
+        "wickBp": 25.774584710274883,
+        "wickRatio": 0.6728342749529191,
+        "long": 37,
+        "doji": 44,
+        "flat": 0,
+        "fills": 14993,
+        "longestQuietMs": 12000
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 23.291539724230816,
+        "wickRatio": 0.6837099811676085,
+        "long": 24,
+        "doji": 49,
+        "flat": 0,
+        "fills": 13934,
+        "longestQuietMs": 20200
+      }
+    },
+    {
+      "code": "BA",
+      "before": {
+        "bars": 177,
+        "wickBp": 25.80489823793097,
+        "wickRatio": 0.6748856604788808,
+        "long": 35,
+        "doji": 44,
+        "flat": 0,
+        "fills": 13163,
+        "longestQuietMs": 15700
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 22.686833486568393,
+        "wickRatio": 0.6798627925746572,
+        "long": 20,
+        "doji": 53,
+        "flat": 0,
+        "fills": 12167,
+        "longestQuietMs": 12800
+      }
+    },
+    {
+      "code": "GOV",
+      "before": {
+        "bars": 177,
+        "wickBp": 26.333252353119885,
+        "wickRatio": 0.684584342211461,
+        "long": 42,
+        "doji": 49,
+        "flat": 0,
+        "fills": 15837,
+        "longestQuietMs": 10700
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 22.018597872796516,
+        "wickRatio": 0.6638418079096046,
+        "long": 29,
+        "doji": 54,
+        "flat": 0,
+        "fills": 13540,
+        "longestQuietMs": 11100
+      }
+    },
+    {
+      "code": "ZZZ",
+      "before": {
+        "bars": 177,
+        "wickBp": 27.020683396298203,
+        "wickRatio": 0.7321092278719397,
+        "long": 38,
+        "doji": 60,
+        "flat": 0,
+        "fills": 18094,
+        "longestQuietMs": 8900
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 21.322947468320248,
+        "wickRatio": 0.7250336292709176,
+        "long": 14,
+        "doji": 68,
+        "flat": 0,
+        "fills": 14761,
+        "longestQuietMs": 9300
+      }
+    },
+    {
+      "code": "GI",
+      "before": {
+        "bars": 177,
+        "wickBp": 23.254871345834278,
+        "wickRatio": 0.6808044121603446,
+        "long": 24,
+        "doji": 50,
+        "flat": 0,
+        "fills": 14348,
+        "longestQuietMs": 9300
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 21.268879885776013,
+        "wickRatio": 0.658676351896691,
+        "long": 18,
+        "doji": 50,
+        "flat": 0,
+        "fills": 13182,
+        "longestQuietMs": 10300
+      }
+    },
+    {
+      "code": "SR",
+      "before": {
+        "bars": 177,
+        "wickBp": 27.127786425615188,
+        "wickRatio": 0.73060263653484,
+        "long": 40,
+        "doji": 60,
+        "flat": 0,
+        "fills": 16695,
+        "longestQuietMs": 16200
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 24.12183589848117,
+        "wickRatio": 0.7283158461124565,
+        "long": 22,
+        "doji": 64,
+        "flat": 0,
+        "fills": 14332,
+        "longestQuietMs": 9100
+      }
+    },
+    {
+      "code": "AK",
+      "before": {
+        "bars": 177,
+        "wickBp": 132.55687042422787,
+        "wickRatio": 0.51317330610534,
+        "long": 38,
+        "doji": 2,
+        "flat": 0,
+        "fills": 224601,
+        "longestQuietMs": 3700
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 116.28955532936969,
+        "wickRatio": 0.46688456854936117,
+        "long": 25,
+        "doji": 5,
+        "flat": 0,
+        "fills": 162080,
+        "longestQuietMs": 2500
+      }
+    },
+    {
+      "code": "WH",
+      "before": {
+        "bars": 177,
+        "wickBp": 22.856339798612957,
+        "wickRatio": 0.6307909604519778,
+        "long": 22,
+        "doji": 33,
+        "flat": 0,
+        "fills": 14416,
+        "longestQuietMs": 11000
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 21.719676615921497,
+        "wickRatio": 0.6505649717514128,
+        "long": 20,
+        "doji": 45,
+        "flat": 0,
+        "fills": 12910,
+        "longestQuietMs": 9000
+      }
+    },
+    {
+      "code": "CRK",
+      "before": {
+        "bars": 177,
+        "wickBp": 129.69482037704532,
+        "wickRatio": 0.4576650126129565,
+        "long": 31,
+        "doji": 6,
+        "flat": 0,
+        "fills": 225208,
+        "longestQuietMs": 3100
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 118.6019416279924,
+        "wickRatio": 0.4598684098235863,
+        "long": 30,
+        "doji": 4,
+        "flat": 0,
+        "fills": 159440,
+        "longestQuietMs": 3200
+      }
+    },
+    {
+      "code": "VR",
+      "before": {
+        "bars": 177,
+        "wickBp": 106.97895446388392,
+        "wickRatio": 0.5105072138692696,
+        "long": 37,
+        "doji": 6,
+        "flat": 0,
+        "fills": 245309,
+        "longestQuietMs": 3800
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 86.79119033664854,
+        "wickRatio": 0.4705449989665647,
+        "long": 34,
+        "doji": 6,
+        "flat": 0,
+        "fills": 160597,
+        "longestQuietMs": 3000
+      }
+    },
+    {
+      "code": "ES",
+      "before": {
+        "bars": 177,
+        "wickBp": 138.07418593820995,
+        "wickRatio": 0.46002817381949873,
+        "long": 36,
+        "doji": 4,
+        "flat": 0,
+        "fills": 208762,
+        "longestQuietMs": 7000
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 127.52973680868294,
+        "wickRatio": 0.4203436201453944,
+        "long": 25,
+        "doji": 3,
+        "flat": 0,
+        "fills": 157437,
+        "longestQuietMs": 4400
+      }
+    },
+    {
+      "code": "KRP",
+      "before": {
+        "bars": 177,
+        "wickBp": 113.543760221769,
+        "wickRatio": 0.5560172059200105,
+        "long": 45,
+        "doji": 8,
+        "flat": 0,
+        "fills": 237609,
+        "longestQuietMs": 2700
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 88.81243651819554,
+        "wickRatio": 0.4970651916312388,
+        "long": 38,
+        "doji": 5,
+        "flat": 0,
+        "fills": 161911,
+        "longestQuietMs": 3200
+      }
+    },
+    {
+      "code": "OW",
+      "before": {
+        "bars": 177,
+        "wickBp": 24.735430474487746,
+        "wickRatio": 0.7192359429647567,
+        "long": 30,
+        "doji": 65,
+        "flat": 0,
+        "fills": 15740,
+        "longestQuietMs": 9400
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 21.85872389211343,
+        "wickRatio": 0.6800645682001614,
+        "long": 15,
+        "doji": 58,
+        "flat": 0,
+        "fills": 13560,
+        "longestQuietMs": 10400
+      }
+    },
+    {
+      "code": "PW",
+      "before": {
+        "bars": 177,
+        "wickBp": 121.59586278983872,
+        "wickRatio": 0.46937926405727926,
+        "long": 41,
+        "doji": 7,
+        "flat": 0,
+        "fills": 221826,
+        "longestQuietMs": 2600
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 102.74517668295944,
+        "wickRatio": 0.428430218945109,
+        "long": 27,
+        "doji": 0,
+        "flat": 0,
+        "fills": 163793,
+        "longestQuietMs": 2800
+      }
+    },
+    {
+      "code": "TR",
+      "before": {
+        "bars": 177,
+        "wickBp": 122.87093205018608,
+        "wickRatio": 0.45783981543246677,
+        "long": 27,
+        "doji": 5,
+        "flat": 0,
+        "fills": 200228,
+        "longestQuietMs": 5400
+      },
+      "after": {
+        "bars": 177,
+        "wickBp": 110.65426400455992,
+        "wickRatio": 0.42275776563234024,
+        "long": 27,
+        "doji": 4,
+        "flat": 0,
+        "fills": 155272,
+        "longestQuietMs": 3600
+      }
+    }
+  ]
+}

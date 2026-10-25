@@ -1,0 +1,339 @@
+/*
+ * 옵션 탭. 토스증권의 만기 → 콜/풋 → 행사가 흐름과 Unusual Whales 수익 계산기(지수 × 시각 손익표)를 합쳤다.
+ * 손익 색은 한국 관행대로 이익 적색, 손실 청색. 틀(무대·괘선)에는 색을 쓰지 않는다.
+ */
+.nx-product-page {
+  --opt-heat-up-1: #3a1c25;
+  --opt-heat-up-2: #521f2a;
+  --opt-heat-up-3: #6e2330;
+  --opt-heat-up-4: #8e2532;
+  --opt-heat-down-1: #1c2645;
+  --opt-heat-down-2: #202f5a;
+  --opt-heat-down-3: #233a70;
+  --opt-heat-down-4: #24427f;
+  --opt-heat-flat: #2a2538;
+}
+html[data-nx-theme="light"] .nx-product-page {
+  --opt-heat-up-1: #fdf0f2;
+  --opt-heat-up-2: #fbdbe0;
+  --opt-heat-up-3: #f6b8c1;
+  --opt-heat-up-4: #ef93a1;
+  --opt-heat-down-1: #eef3fd;
+  --opt-heat-down-2: #dbe5fb;
+  --opt-heat-down-3: #b8cbf5;
+  --opt-heat-down-4: #93aeee;
+  --opt-heat-flat: #f3f1f8;
+}
+
+.opt-panel { gap: 40px; }
+
+/* ───────── 만기 회차 ───────── */
+
+.opt-cycles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--trade-field);
+}
+.opt-cycles > .nx-nav-indicator { border-radius: 7px; background: var(--nx-panel); }
+html[data-nx-theme="light"] .opt-cycles > .nx-nav-indicator { background: #ffffff; box-shadow: 0 1px 3px rgb(27 23 38 / 0.12); }
+.opt-cycle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.opt-cycle:hover { color: var(--ink); }
+.opt-cycle.is-active { color: var(--ink); }
+.opt-cycle-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 15px; white-space: nowrap; }
+.opt-cycle-name em { padding: 1px 6px; border-radius: 4px; background: var(--nx-raised); color: var(--ink-muted); font-size: 11px; font-style: normal; }
+.opt-cycle.is-active .opt-cycle-name em { background: var(--brand-wash); color: var(--brand-wine); }
+.opt-cycle-count { font-size: 18px; font-weight: 600; }
+.opt-cycle-expiry { grid-column: 1 / -1; color: var(--ink-faint); font-size: 12px; }
+.opt-cycle.is-active .opt-cycle-expiry { color: var(--ink-muted); }
+
+/* ───────── 작업 영역: 차트·체인 | 주문 ───────── */
+
+.opt-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 344px; align-items: start; gap: 40px 56px; }
+.opt-main { display: flex; flex-direction: column; gap: 40px; min-width: 0; }
+.opt-aside { position: sticky; top: 24px; min-width: 0; }
+
+.opt-flow { display: flex; flex-direction: column; min-width: 0; border-radius: 12px; background: var(--trade-surface); }
+.opt-flow-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 18px 20px 16px; border-bottom: 1px solid var(--nx-line); }
+.opt-flow-quote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.opt-flow-quote h2 { margin: 0; color: var(--ink-muted); font-size: 15px; font-weight: 500; }
+.opt-flow-quote > strong { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.opt-flow-quote .delta { font-size: 15px; }
+.opt-flow-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.opt-flow .nx-seg { background: var(--trade-field); }
+.opt-flow .nx-seg :is(button, a) { min-height: 34px; padding-inline: 12px; }
+.opt-flow-summary { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 0; padding: 12px 20px; border-bottom: 1px solid var(--nx-line); font-size: 14px; }
+.opt-flow-summary > div { display: flex; align-items: baseline; gap: 6px; }
+.opt-flow-summary dt { color: var(--ink-muted); }
+.opt-flow-summary > div:first-child dt { color: var(--ink); font-weight: 600; }
+.opt-flow-summary > div:first-child dd { color: var(--ink-faint); font-size: 12px; }
+.opt-flow-summary dd { margin: 0; font-weight: 600; }
+.opt-flow-summary[aria-busy="true"] dd { opacity: 0.55; }
+.opt-flow-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 12px 20px 0; list-style: none; color: var(--ink-muted); font-size: 12px; }
+.opt-flow-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.opt-flow-legend b { color: var(--ink); font-weight: 600; }
+.opt-flow-legend li::before { content: ""; width: 3px; height: 12px; border-radius: 1px; }
+.opt-flow-legend .is-put::before { background: var(--down); }
+.opt-flow-legend .is-call::before { background: var(--up); }
+.opt-flow-legend .is-index::before { width: 12px; height: 2px; background: var(--ink); }
+.opt-flow-legend .is-ref::before { width: 12px; height: 0; border-top: 1px dashed var(--nx-guide); background: none; }
+
+.opt-flow-frame { position: relative; width: 100%; margin: 4px 0 0; padding: 0 0 8px; touch-action: pan-y; transition: opacity 160ms var(--trade-ease); }
+.opt-flow-frame.is-pending { opacity: 0.5; }
+.opt-flow-frame svg { display: block; overflow: visible; }
+.opt-flow-empty { position: absolute; top: 50%; left: 50%; margin: 0; padding: 6px 12px; border-radius: 6px; background: var(--trade-field); color: var(--ink-muted); font-size: 12px; transform: translate(-50%, -50%); pointer-events: none; }
+.opt-flow-empty.is-top { top: auto; bottom: 44px; max-width: calc(100% - 32px); transform: translateX(-50%); text-align: center; }
+.opt-flow-grid line { stroke: var(--nx-line); stroke-width: 1; }
+.opt-flow-grid line.is-zero { stroke: var(--nx-guide); }
+.opt-flow-grid text { fill: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.opt-flow-hover { fill: var(--ink); fill-opacity: 0.08; }
+.opt-flow-bars .is-call { fill: var(--up); }
+.opt-flow-bars .is-put { fill: var(--down); }
+.opt-flow-index { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.opt-flow-ref { stroke: var(--nx-guide); stroke-width: 1; stroke-dasharray: 4 4; }
+.opt-flow-ref.is-breakeven { stroke-dasharray: 1 3; stroke-width: 1.5; stroke-linecap: round; }
+.opt-flow-live circle { fill: var(--ink); }
+.opt-flow-live rect { fill: var(--ink); }
+.opt-flow-live text { fill: var(--nx-stage); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.opt-flow-dot { fill: var(--ink); stroke: var(--trade-surface); stroke-width: 3; }
+.opt-flow-tip {
+  position: absolute;
+  top: 12px;
+  z-index: 3;
+  min-width: 220px;
+  margin-left: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--nx-line);
+  border-radius: 8px;
+  background: var(--nx-stage);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  font-size: 12px;
+  pointer-events: none;
+}
+.opt-flow-tip.is-flip { margin-left: 0; transform: translateX(calc(-100% - 14px)); }
+html[data-nx-theme="light"] .opt-flow-tip { background: #ffffff; box-shadow: 0 8px 24px rgb(27 23 38 / 0.14); }
+.opt-flow-tip p { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0 0 6px; color: var(--ink-muted); }
+.opt-flow-tip p:first-child { color: var(--ink); font-weight: 600; }
+.opt-flow-tip b { margin-right: 8px; color: var(--ink); font-weight: 600; }
+.opt-flow-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.opt-flow-swatch.is-call { background: var(--up); }
+.opt-flow-swatch.is-put { background: var(--down); }
+.opt-flow-swatch.is-index { background: var(--ink); }
+.opt-flow-tip dl { display: grid; gap: 4px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--nx-line); }
+.opt-flow-tip dl > div { display: flex; justify-content: space-between; gap: 16px; }
+.opt-flow-tip dt { color: var(--ink-muted); }
+.opt-flow-tip dd { margin: 0; color: var(--ink); font-weight: 600; }
+.opt-flow-foot { margin: 0; padding: 4px 20px 16px; color: var(--ink-faint); font-size: 11px; }
+
+/* ───────── 체인 ───────── */
+
+.opt-chain-card { border: 0; padding-top: 0; gap: 16px; }
+.opt-chain-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.opt-chain-head h2 { font-size: 18px; font-weight: 500; }
+.opt-side-tabs { min-width: min(100%, 320px); }
+/* 막대 기본색(--ink)이 레이어 밖 규칙이라 derivatives.css의 방향색을 덮는다. 여기서 다시 칠한다. */
+.nx-product-page .derivative-side-tabs:has(> .is-buy.is-active) > .nx-nav-indicator { background: var(--up-wash); }
+.nx-product-page .derivative-side-tabs:has(> .is-sell.is-active) > .nx-nav-indicator { background: var(--down-wash); }
+.nx-product-page .opt-side-tabs .terminal-tab { min-height: 40px; padding: 0 14px; font-size: 14px; }
+
+.opt-chain { width: 100%; font-size: 14px; }
+.opt-chain thead th { font-size: 12px; font-weight: 500; }
+.opt-chain tbody th { font-weight: 500; text-align: left; white-space: nowrap; }
+.opt-chain td.num { text-align: right; white-space: nowrap; }
+.opt-chain tbody tr { cursor: pointer; }
+.opt-chain tbody tr > * { padding-block: 6px; }
+.opt-chain tbody tr.is-itm > * { background: var(--nx-lane); }
+html[data-nx-theme="light"] .opt-chain tbody tr.is-itm > * { background: #faf9fc; }
+.opt-chain tbody tr:hover > * { background: var(--nx-tint); }
+.opt-chain.is-call tbody tr.is-selected > * { background: var(--up-wash); }
+.opt-chain.is-put tbody tr.is-selected > * { background: var(--down-wash); }
+.opt-money { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--trade-field); color: var(--ink-muted); font-size: 11px; font-style: normal; }
+.opt-money.is-atm { background: var(--brand-wash); color: var(--brand-wine); }
+.opt-col-delta { color: var(--ink-muted); }
+.opt-quote {
+  display: inline-grid;
+  justify-items: end;
+  gap: 1px;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.opt-quote > span { font-size: 15px; font-weight: 600; }
+.opt-quote small { color: var(--ink-faint); font-size: 11px; }
+.opt-chain.is-call tr.is-selected .opt-quote > span { color: var(--up-deep); }
+.opt-chain.is-put tr.is-selected .opt-quote > span { color: var(--down-deep); }
+
+/* 현재 지수가 행사가 사이 어디쯤인지 표 안에 선으로 긋는다. */
+.opt-chain tbody tr.opt-chain-spot { cursor: default; }
+.opt-chain tbody tr.opt-chain-spot:hover > * { background: transparent; }
+.opt-chain-spot > td { position: relative; height: 18px; padding: 0 !important; }
+.opt-chain-spot > td::before { content: ""; position: absolute; inset: 50% 0 auto; border-top: 1.5px solid var(--ink); }
+.opt-chain-spot span { position: relative; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: var(--nx-stage); font-size: 11px; }
+
+/* ───────── 주문 티켓 ───────── */
+
+.opt-ticket { gap: 20px; }
+.opt-ticket-head { display: flex; align-items: center; gap: 10px; }
+.opt-ticket-head h2 { margin: 0; font-size: 20px; font-weight: 500; }
+.opt-type { display: inline-grid; place-items: center; min-width: 32px; height: 24px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.opt-type.is-call { background: var(--up-wash); color: var(--up-deep); }
+.opt-type.is-put { background: var(--down-wash); color: var(--down-deep); }
+.opt-ticket-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; }
+.opt-ticket-facts > div { display: grid; gap: 4px; padding: 12px 14px; border-radius: 8px; background: var(--trade-field); }
+.opt-ticket-facts dt { color: var(--ink-muted); font-size: 12px; }
+.opt-ticket-facts dd { margin: 0; font-size: 16px; font-weight: 600; }
+.opt-stepper { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 4px; }
+.opt-stepper button { min-height: 44px; border: 0; border-radius: 6px; background: var(--trade-field); color: var(--ink); font: inherit; font-size: 18px; cursor: pointer; }
+.opt-stepper button:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.nx-product-page .opt-stepper input { width: 100%; min-width: 0; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+.opt-stepper input::-webkit-inner-spin-button, .opt-stepper input::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+.opt-ticket .derivative-order-summary { border: 0; padding: 0; gap: 8px; }
+.opt-ticket .derivative-order-summary .is-emphasis { border-top: 1px solid var(--nx-line); padding-top: 12px; }
+.opt-ticket .derivative-order-summary small { margin-left: 4px; color: var(--ink-faint); font-size: 11px; }
+
+/* ───────── 수익 계산기 ───────── */
+
+.opt-calc-wrap { display: flex; flex-direction: column; gap: 12px; }
+.opt-calc-source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: fit-content; max-width: 100%; padding: 8px 14px; border-radius: 8px; background: var(--trade-field); font-size: 14px; }
+.opt-calc-source > span:not(.opt-type):last-of-type { color: var(--ink-muted); font-size: 13px; }
+.opt-calc-source .nx-link-button { min-height: 32px; font-size: 13px; }
+
+.opt-calc { gap: 24px; padding: 24px; border: 0; border-radius: 12px; background: var(--trade-surface); }
+.opt-calc-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px 24px; }
+.opt-calc-head h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.opt-calc-head p { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; }
+.opt-calc-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.opt-calc .nx-seg { background: var(--trade-field); }
+.opt-calc .nx-seg :is(button, a) { min-height: 36px; }
+
+.opt-calc-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px 20px; margin: 0; }
+.opt-calc-stats > div { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.opt-calc-stats dt { color: var(--ink-muted); font-size: 12px; white-space: nowrap; }
+.opt-calc-stats dt small { margin-left: 2px; color: var(--ink-faint); font-size: 11px; }
+.opt-calc-stats dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; font-size: 17px; font-weight: 600; }
+.opt-calc-stats dd small { color: var(--ink-muted); font-size: 12px; font-weight: 500; }
+
+.opt-calc-scroll { position: relative; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.opt-calc-table { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 2px; font-size: 13px; }
+.opt-calc-table thead th { padding: 4px 6px 10px; color: var(--ink-muted); font-weight: 500; text-align: center; vertical-align: bottom; white-space: nowrap; }
+.opt-calc-col-main { display: block; color: var(--ink); font-size: 13px; }
+.opt-calc-col-sub { display: block; margin-top: 2px; color: var(--ink-faint); font-size: 11px; }
+.opt-calc-table thead th.is-expiry .opt-calc-col-main { color: var(--brand-deep); }
+.opt-calc-table .opt-calc-corner { position: sticky; left: 0; z-index: 2; padding-right: 12px; background: var(--trade-surface); text-align: right; }
+.opt-calc-table tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 92px;
+  padding: 6px 12px 6px 4px;
+  background: var(--trade-surface);
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+.opt-calc-table tbody th > span { display: block; font-size: 13px; }
+.opt-calc-table tbody th > small { display: block; color: var(--ink-faint); font-size: 11px; }
+.opt-calc-table td {
+  min-width: 72px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 3px;
+  background: var(--opt-heat-flat);
+  color: var(--ink);
+  text-align: center;
+  white-space: nowrap;
+}
+.opt-calc-table td.is-up.is-l1 { background: var(--opt-heat-up-1); }
+.opt-calc-table td.is-up.is-l2 { background: var(--opt-heat-up-2); }
+.opt-calc-table td.is-up.is-l3 { background: var(--opt-heat-up-3); }
+.opt-calc-table td.is-up.is-l4 { background: var(--opt-heat-up-4); }
+.opt-calc-table td.is-down.is-l1 { background: var(--opt-heat-down-1); }
+.opt-calc-table td.is-down.is-l2 { background: var(--opt-heat-down-2); }
+.opt-calc-table td.is-down.is-l3 { background: var(--opt-heat-down-3); }
+.opt-calc-table td.is-down.is-l4 { background: var(--opt-heat-down-4); }
+/* 현재 지수 줄은 위에 굵은 선을 긋는다(UW의 current 줄). */
+.opt-calc-table tr.is-spot > * { box-shadow: inset 0 2px 0 var(--ink); font-weight: 600; }
+.opt-calc-table tr.is-spot th { box-shadow: none; }
+.opt-calc-spot-tag { display: inline-block !important; margin-bottom: 2px; padding: 0 7px; border-radius: 999px; background: var(--ink); color: var(--nx-stage); font-size: 11px; }
+
+.opt-calc-breakeven { width: 100%; font-size: 14px; }
+.opt-calc-breakeven tbody tr { cursor: default; }
+.opt-calc-breakeven td.num { text-align: right; }
+.opt-calc-time { margin-left: 8px; color: var(--ink-faint); font-size: 12px; }
+
+.opt-payoff { margin: 0; }
+.opt-payoff-frame { position: relative; width: 100%; touch-action: pan-y; }
+.opt-payoff-frame svg { display: block; overflow: visible; }
+.opt-payoff-grid line { stroke: var(--nx-line); stroke-width: 1; }
+.opt-payoff-grid text { fill: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.opt-payoff-area.is-up { fill: var(--up); fill-opacity: 0.16; }
+.opt-payoff-area.is-down { fill: var(--down); fill-opacity: 0.16; }
+.opt-payoff-zero { stroke: var(--nx-guide); stroke-width: 1; }
+.opt-payoff-line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.opt-payoff-line.is-expiry { stroke: var(--ink); stroke-width: 2.2; }
+.opt-payoff-line.is-now { stroke: var(--brand); stroke-width: 1.8; stroke-dasharray: 5 4; }
+.opt-payoff-marker line { stroke: var(--nx-guide); stroke-width: 1; stroke-dasharray: 3 3; }
+.opt-payoff-marker text { fill: var(--ink-muted); font-size: 11px; }
+.opt-payoff-marker.is-spot line { stroke: var(--ink-muted); stroke-dasharray: none; }
+.opt-payoff-inspect line { stroke: var(--ink-faint); stroke-width: 1; }
+.opt-payoff-inspect circle { fill: var(--ink); }
+.opt-payoff-inspect circle.is-now { fill: var(--brand); }
+.opt-payoff figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-height: 24px; margin-top: 12px; color: var(--ink-muted); font-size: 12px; }
+.opt-payoff-key { display: inline-flex; align-items: center; gap: 6px; }
+.opt-payoff-key::before { content: ""; width: 18px; border-top: 2px solid var(--ink); }
+.opt-payoff-key.is-now::before { border-top: 2px dashed var(--brand); }
+.opt-payoff-key b { font-weight: 600; }
+
+.opt-position-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.nx-product-page .opt-position-actions .derivative-close[aria-pressed="true"] { background: var(--brand-wash); color: var(--brand-wine); }
+
+/* ───────── 반응형 ───────── */
+
+@media (max-width: 1150px) {
+  .opt-workspace { grid-template-columns: minmax(0, 1fr) 308px; gap: 36px; }
+  .opt-calc-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 960px) {
+  .opt-workspace { grid-template-columns: minmax(0, 1fr); }
+  .opt-aside { position: static; }
+}
+@media (max-width: 600px) {
+  .opt-panel { gap: 32px; }
+  .opt-cycles { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .opt-cycle { flex: 0 0 auto; min-width: 168px; min-height: 56px; padding: 8px 12px; }
+  .opt-cycle-count { font-size: 16px; }
+  .opt-flow-head, .opt-flow-summary { padding-inline: 14px; }
+  .opt-flow-legend, .opt-flow-foot { padding-inline: 14px; }
+  .opt-flow-controls, .opt-flow-controls .nx-seg { width: 100%; }
+  .opt-flow-controls .nx-seg > button { flex: 1; }
+  .opt-side-tabs { width: 100%; }
+  .opt-col-delta { display: none; }
+  .opt-quote { min-width: 84px; padding-inline: 6px; }
+  .opt-calc { padding: 18px 14px; margin-inline: -4px; }
+  .opt-calc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .opt-calc-stats dd { font-size: 15px; }
+  .opt-calc-table td { min-width: 60px; height: 36px; padding: 0 6px; font-size: 12px; }
+  .opt-calc-table tbody th { min-width: 78px; padding-right: 8px; }
+}

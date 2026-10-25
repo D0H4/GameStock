@@ -13,7 +13,12 @@ public class AdminContentService {
     private final JdbcTemplate db;
     private final AdminSupport support;
     public AdminContentService(JdbcTemplate db,AdminSupport support){this.db=db;this.support=support;}
-    public record Content(String kind,String title,String body,String stockCode,boolean published,Instant startsAt,Instant endsAt,String reason) { }
+    public record Content(String kind,String title,String body,String stockCode,boolean published,Instant startsAt,Instant endsAt,String reason,
+                          String imageUrl,String actionLabel,String actionUrl,String dismissLabel) {
+        public Content(String kind,String title,String body,String stockCode,boolean published,Instant startsAt,Instant endsAt,String reason){
+            this(kind,title,body,stockCode,published,startsAt,endsAt,reason,null,null,null,null);
+        }
+    }
     public record Mission(boolean enabled,long rewardCash,int minimumWatchlist,String reason) { }
     public record Report(long targetUserId,String detail) { }
     public record Resolution(String status,String resolution,String reason) { }
@@ -27,17 +32,19 @@ public class AdminContentService {
         reason(request.reason());if(request.kind()==null||!Set.of("NOTICE","NEWS","EVENT").contains(request.kind()))throw new IllegalArgumentException("종류는 NOTICE, NEWS, EVENT입니다.");
         String title=text(request.title(),150,"제목"),body=text(request.body(),20000,"본문");
         if(request.startsAt()!=null&&request.endsAt()!=null&&!request.endsAt().isAfter(request.startsAt()))throw new IllegalArgumentException("종료 시각은 시작 시각 이후여야 합니다.");
+        String image=link(request.imageUrl(),"그림 주소"),actionLabel=optional(request.actionLabel(),40,"이동 버튼 문구"),actionUrl=link(request.actionUrl(),"이동 주소"),dismissLabel=optional(request.dismissLabel(),40,"닫기 버튼 문구");
+        if((actionLabel==null)!=(actionUrl==null))throw new IllegalArgumentException("이동 버튼은 문구와 주소를 함께 적어 주세요.");
         lock(db);Long stock=null;
         if(request.stockCode()!=null&&!request.stockCode().isBlank()){
             var ids=db.queryForList("SELECT id FROM stocks WHERE stock_code=?",Long.class,request.stockCode());if(ids.isEmpty())throw new IllegalArgumentException("종목을 찾을 수 없습니다.");stock=ids.get(0);
         }
         Object before=Map.of();
         if(id==null){
-            db.update("INSERT INTO admin_content(kind,title,body,stock_id,published,starts_at,ends_at) VALUES(?,?,?,?,?,?,?)",request.kind(),title,body,stock,request.published(),timestamp(request.startsAt()),timestamp(request.endsAt()));
+            db.update("INSERT INTO admin_content(kind,title,body,stock_id,published,starts_at,ends_at,image_url,action_label,action_url,dismiss_label) VALUES(?,?,?,?,?,?,?,?,?,?,?)",request.kind(),title,body,stock,request.published(),timestamp(request.startsAt()),timestamp(request.endsAt()),image,actionLabel,actionUrl,dismissLabel);
             id=db.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
         }else{
             before=existing(id);
-            db.update("UPDATE admin_content SET kind=?,title=?,body=?,stock_id=?,published=?,starts_at=?,ends_at=?,updated_at=CURRENT_TIMESTAMP(3) WHERE id=?",request.kind(),title,body,stock,request.published(),timestamp(request.startsAt()),timestamp(request.endsAt()),id);
+            db.update("UPDATE admin_content SET kind=?,title=?,body=?,stock_id=?,published=?,starts_at=?,ends_at=?,image_url=?,action_label=?,action_url=?,dismiss_label=?,updated_at=CURRENT_TIMESTAMP(3) WHERE id=?",request.kind(),title,body,stock,request.published(),timestamp(request.startsAt()),timestamp(request.endsAt()),image,actionLabel,actionUrl,dismissLabel,id);
         }
         var after=existing(id);support.audit(actor,"CONTENT_SAVE",id,request.reason(),before,after);return after;
     }
@@ -85,4 +92,11 @@ public class AdminContentService {
         db.update("DELETE FROM stock_comments WHERE id=?",id);support.audit(actor,"COMMENT_DELETE",id,why,before,Map.of());
     }
     private Timestamp timestamp(Instant value){return value==null?null:Timestamp.from(value);}
+    private static String optional(String value,int max,String label){return value==null||value.isBlank()?null:text(value,max,label);}
+    /** 사이트 안 경로(/...)나 https 주소만 받는다. javascript: 같은 주소가 버튼·그림에 들어가지 않게 한다. */
+    private static String link(String value,String label){
+        String url=optional(value,500,label);
+        if(url!=null&&!url.matches("(?i)https://\\S+|/(?!/)\\S*"))throw new IllegalArgumentException(label+"는 /로 시작하는 경로나 https:// 주소여야 합니다.");
+        return url;
+    }
 }

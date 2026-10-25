@@ -368,5 +368,6 @@ CREATE TABLE derivative_trades (
   fee BIGINT NOT NULL,
   created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   INDEX ix_derivative_trades_user (user_id, id),
+  INDEX ix_derivative_trades_flow (kind, created_at),
   CONSTRAINT fk_derivative_trade_user FOREIGN KEY (user_id) REFERENCES users(id)
 );

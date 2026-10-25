@@ -317,11 +317,10 @@ public class MarketService {
         Map<String,Long> ids=new HashMap<>();
         jdbc.query("SELECT username,id FROM users WHERE password_hash='TRADER'",rs->{ids.put(rs.getString(1),rs.getLong(2));});
         List<Long> stocks=jdbc.queryForList("SELECT id FROM stocks ORDER BY id",Long.class);
-        List<BotActivityEngine.Participant> participants=new ArrayList<>();
-        for(int i=0;i<traderProfiles.size();i++) {
-            BotProfile profile=traderProfiles.get(i);
-            participants.add(new BotActivityEngine.Participant(ids.get(profile.username()),profile,stocks.get(i%stocks.size())));
-        }
+        Map<Long,Set<Long>> heldStocks=new HashMap<>();
+        jdbc.query("SELECT p.user_id,p.stock_id FROM portfolios p JOIN users u ON u.id=p.user_id WHERE u.password_hash='TRADER' AND p.quantity>0",
+                rs->{heldStocks.computeIfAbsent(rs.getLong(1),key->new HashSet<>()).add(rs.getLong(2));});
+        List<BotActivityEngine.Participant> participants=BotParticipantAssignments.assign(traderProfiles,ids,stocks,heldStocks);
         activityLpId=jdbc.queryForObject("SELECT id FROM users WHERE username=?",Long.class,LP_USERNAME);
         botLanes.clear();
         int count=Math.min(4,stocks.size());
@@ -1084,7 +1083,9 @@ public class MarketService {
             case "6h" -> Duration.ofHours(6);
             case "12h" -> Duration.ofHours(12);
             case "1d" -> Duration.ofDays(1);
+            case "3d" -> Duration.ofDays(3);
             case "1w" -> Duration.ofDays(7);
+            case "2w" -> Duration.ofDays(14);
             case "1m" -> Duration.ofDays(30);
             case "1y" -> Duration.ofDays(365);
             default -> Duration.ofDays(1);
@@ -1097,7 +1098,9 @@ public class MarketService {
             case "6h" -> 300;
             case "12h" -> 600;
             case "1d" -> 1800;
+            case "3d" -> 3600;
             case "1w" -> 7200;
+            case "2w" -> 21600;
             case "1m" -> 86400;
             case "1y" -> 604800;
             default -> 1800;
@@ -1615,7 +1618,7 @@ public class MarketService {
     /**
      * Seed a new LP lot and top up a nearly depleted lot within the finite supply bound.
      *
-     * The last few human-reserved shares must not block an otherwise eligible refill.
+     * A few remaining shares must not block an otherwise eligible refill.
      */
     private void ensureLiquidityInventory(String code, long userId) {
         long id = stockId(code);

@@ -10,11 +10,12 @@
   max-width: 1240px;
   min-height: calc(100vh - 56px);
   margin: 0 auto;
-  padding: 48px 32px 72px;
+  padding: 16px 32px 72px;
 }
 
 .nx-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-bottom: 32px; }
-.nx-page-title { margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; }
+/* 화면 첫 줄 글자 윗선은 어느 화면이든 본문 시작선 + 18px 제목의 윗선과 같다. 큰 제목은 늘어난 위쪽 행간만큼 당긴다. */
+.nx-page-title { margin: -3px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; }
 
 .nx-more { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-muted); font-size: 13px; text-decoration: none; }
 .nx-more:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -31,6 +32,7 @@
   cursor: pointer;
 }
 
+.nx-chip.nx-chip--small { min-height: 36px; padding-inline: 12px; font-size: 13px; }
 .nx-chip:hover { color: var(--ink); }
 .nx-chip.is-active { border-color: var(--ink); background: var(--nx-tint); color: var(--ink); }
 .nx-filters { display: flex; gap: 8px; }
@@ -57,22 +59,33 @@ html[data-nx] .nx-search input:focus-visible { outline: none; }
 
 .nx-empty-state { display: grid; justify-items: center; gap: 8px; padding: 56px 16px; color: var(--ink-muted); }
 
+/*
+ * 감싼 화면의 구획은 상자 없이 무대 위에 놓는다(거래 화면의 종목 정보·관련 뉴스와 같은 방식).
+ * 면·테두리·안쪽 여백을 빼고 18px 잉크색 제목 줄과 데이터 괘선으로만 나누며, 구획 사이는 넓게 띄운다.
+ * 상자 면에 맞추려고 --nx-panel·--paper를 칠하던 표 머리·점 같은 부품은 무대색을 받는다.
+ */
+.nx-content.nx-page { --nx-panel: var(--nx-stage); --paper: var(--nx-stage); --nx-gap: 56px; }
+html[data-nx] main.nx-content.nx-page .nx-panel { --nx-pad: 0px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+html[data-nx] main.nx-content.nx-page .nx-panel.nx-empty-state { padding-block: 56px; }
+.nx-page .nx-panel-title { color: var(--ink); font-size: 18px; }
+.nx-page .nx-panel-head { margin-bottom: 24px; }
+.nx-page .nx-screen-head:has(> .nx-panel-title) { align-items: center; }
+.nx-page .nx-screen-head > .nx-panel-title { margin: 0; }
+/* 뉴스 행은 선택·마우스 올림 바탕 때문에 안쪽 여백(14px)이 있다. 목록을 그만큼 바깥으로 빼서 아이콘을 제목 줄과 같은 선에 맞춘다. */
+.nx-page .nx-news-list { margin-inline: -14px; }
+.nx-page .nx-panel .nx-tabs { margin-inline: 0; padding-inline: 0; }
+
 /* 로그인이 필요한 화면, 없는 주소. 막다른 곳이 아니라 다음 행동 두 개를 준다. */
-.nx-gate { display: grid; justify-items: start; gap: 4px; max-width: 560px; padding: 72px 0; }
+.nx-gate { display: grid; justify-items: start; gap: 4px; max-width: 560px; padding: 0 0 72px; }
 .nx-gate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .nx-gate-actions .nx-btn { min-height: 44px; }
 
 
 /* ───────── 홈 ───────── */
 
-.nx-home { display: flex; flex-direction: column; gap: 32px; }
-
-/* 상자는 테두리 없이 면 색으로만 무대와 구분하고, 사이를 넓게 띄운다. 라이트는 면이 같은 흰색이라 괘선을 남긴다. */
-.nx-home > .nx-panel { border: 0; border-radius: var(--nx-radius); }
-html[data-nx][data-nx-theme="light"] .nx-home > .nx-panel { border: 1px solid var(--nx-line); }
+.nx-home { display: flex; flex-direction: column; gap: var(--nx-gap); }
 
 /* 게임주 지수: 큰 숫자는 머리에, 주인공은 그 아래 하루치 선 그래프. */
-.nx-home-index { padding: 28px var(--nx-pad) 22px; }
 .nx-index-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 40px; margin-bottom: 28px; }
 .nx-index-head .nx-panel-title { margin-bottom: 8px; }
 .nx-index-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; }
@@ -122,8 +135,7 @@ html[data-nx] .nx-home .nx-num.is-down,
 html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 
 /* 종목 순위: 많이 움직인 종목, 시가총액, 급등, 급락을 탭 하나로. */
-.nx-home-board { padding-top: 12px; }
-.nx-board-tabs { margin: 0 -6px 16px; border-bottom: 1px solid var(--nx-line); }
+.nx-board-tabs { margin-bottom: 16px; border-bottom: 1px solid var(--nx-line); }
 .nx-board-empty { margin: 0; padding: 40px 0; color: var(--ink-muted); font-size: 13px; text-align: center; }
 
 /* 넓은 화면에서는 열 개를 다섯 줄씩 두 단으로. 순서는 위에서 아래, 왼쪽 단 다음 오른쪽 단. */
@@ -154,25 +166,49 @@ html[data-nx] .nx-market .nx-num.is-down { color: var(--down-deep); }
 /* ───────── 히트맵 ───────── */
 
 /* 칸 면적은 시가총액, 색 농도는 등락 크기. 칸 자리는 HeatmapBoard.tsx의 트리맵이 px로 정한다.
-   증시 맵처럼 칸 사이에 1px 이음새만 두고, 둥근 모서리는 지도 바깥 테두리에만 준다. */
-.nx-heatmap-panel { padding: 0; overflow: hidden; border-radius: var(--nx-radius); }
-.nx-heat-frame { position: relative; overflow: hidden; }
+   증시 맵처럼 장르 구역마다 위에 이름 줄을 두고, 칸 사이에는 1px 이음새만 둔다. 둥근 모서리는 지도 바깥 테두리에만 준다. */
+.nx-heat-frame { position: relative; overflow: hidden; border-radius: var(--nx-radius); }
 .nx-heat-status { display: grid; place-items: center; height: 100%; margin: 0; color: var(--ink-muted); font-size: 13px; }
-/* 오른쪽·아래 끝 칸의 이음새 1px이 바깥으로 밀려 나가 잘리도록 지도를 1px 크게 잡는다. */
-.nx-heat { position: absolute; inset: 0 -1px -1px 0; margin: 0; padding: 0; list-style: none; }
+/* 오른쪽·아래 끝의 이음새(구역 1px + 칸 1px)가 바깥으로 밀려 나가 잘리도록 지도를 그만큼 크게 잡는다. */
+.nx-heat { position: absolute; inset: 0 -2px -2px 0; margin: 0; padding: 0; list-style: none; }
+.nx-heat ul { margin: 0; padding: 0; list-style: none; }
+/* 장르 구역. 칸은 구역 안에서 이름 줄 아래에 놓이고, 구역끼리는 오른쪽·아래 1px을 더 띄운다(GROUP_GAP). */
+.nx-heat-group { position: absolute; box-sizing: border-box; }
+.nx-heat-theme {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 2px;
+  height: 26px;
+  margin: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  background: var(--nx-raised);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 26px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-nx][data-nx-theme="light"] .nx-heat-theme { background: var(--nx-tint); }
 /* 칸 크기는 트리맵이 px로 정한다. 칸마다 크기 컨테이너로 두어 그 안에 들어가는 만큼만 글자를 보인다. */
-.nx-heat li { position: absolute; display: flex; padding: 0 1px 1px 0; container-type: size; }
+.nx-heat-cell { position: absolute; display: flex; padding: 0 1px 1px 0; container-type: size; }
 
+/* 증시 맵처럼 로고·이름·등락률을 칸 한가운데에 세로로 쌓는다. 글자와 로고는 칸 크기(cqi·cqb)를 따라 커지고 작아진다. */
 .nx-heat-tile {
   position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  gap: min(6px, 2cqb);
   min-width: 0;
-  padding: 12px 14px;
+  padding: 6px;
   overflow: hidden;
   color: #fff;
+  text-align: center;
   text-decoration: none;
   transition: filter 160ms ease-out;
 }
@@ -197,28 +233,50 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
 .nx-heat-tile.is-down.is-l2 { background: #25478c; }
 .nx-heat-tile.is-down.is-l3 { background: #265ab3; }
 .nx-heat-tile.is-down.is-l4 { background: #2970d9; }
+/* 로고는 원으로 깎는다. 칸의 짧은 변을 따라 커지되, 이름·등락률 두 줄이 들어갈 높이는 남긴다. */
+.nx-heat-logo,
+.nx-heat-logo.game-icon {
+  width: clamp(20px, min(26cqi, 28cqb), 120px);
+  height: clamp(20px, min(26cqi, 28cqb), 120px);
+  margin-bottom: min(6px, 2cqb);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+}
 /* 이름은 말줄임 없이 낱말 단위로 줄을 바꾼다. 긴 게임 이름도 끝까지 읽힌다. */
-.nx-heat-name { font-size: 14px; line-height: 1.3; word-break: keep-all; overflow-wrap: anywhere; }
+.nx-heat-name { max-width: 100%; font-size: clamp(11px, min(7cqi, 8cqb), 34px); font-weight: 500; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; }
 /* 등락률은 "+18.51%" 일곱 글자가 칸 폭(cqi)에 들어가는 크기를 넘지 않는다. */
-.nx-heat-rate { font-size: min(22px, 18cqi); font-weight: 700; line-height: 1.2; white-space: nowrap; }
-.nx-heat-price { font-size: 13px; line-height: 1.4; white-space: nowrap; }
-/* 보호 표시는 글자 흐름 맨 위에 두어 이름과 겹치지 않는다. 아래 글자는 칸 바닥에 붙는다. */
-.nx-heat-guard { order: -1; align-self: flex-start; margin-bottom: auto; padding: 0 5px; border-radius: 3px; background: var(--amber); color: #241a00; font-size: 10px; line-height: 16px; }
+.nx-heat-rate { font-size: clamp(12px, min(15cqi, 9cqb), 40px); font-weight: 600; line-height: 1.2; white-space: nowrap; }
+/* 가격은 넓은 칸에서만 보인다(아래 @container). 맵에서는 로고·이름·등락률이 먼저 읽혀야 한다. */
+.nx-heat-price { display: none; font-size: clamp(12px, 5cqb, 15px); line-height: 1.3; white-space: nowrap; opacity: 0.8; }
+/* 보호 표시는 칸 왼쪽 위 모서리에 띄워 가운데 줄 맞춤을 흐트러뜨리지 않는다. */
+.nx-heat-guard { position: absolute; top: 6px; left: 6px; padding: 0 5px; border-radius: 3px; background: var(--amber); color: #241a00; font-size: 10px; line-height: 16px; }
 
-/* 좁거나 낮은 칸: 이름과 등락률만. 가격은 종목 화면에서 본다. */
-@container (max-width: 112px) or (max-height: 104px) {
-  .nx-heat-tile { padding: 8px 10px; }
-  .nx-heat-name { font-size: 12px; }
-  .nx-heat-rate { font-size: min(16px, 18cqi); }
-  .nx-heat-price { display: none; }
+@container (min-width: 200px) and (min-height: 220px) {
+  .nx-heat-price { display: block; }
 }
 
-/* 아주 작은 칸: 글자를 한 단계 더 줄여 두 줄 이름과 등락률이 칸 안에 들어가게 한다. */
-@container (max-width: 80px) or (max-height: 60px) {
-  .nx-heat-tile { padding: 5px 4px; }
-  .nx-heat-name { font-size: 11px; line-height: 1.2; }
-  .nx-heat-rate { font-size: max(10px, min(13px, 18cqi)); }
+/* 좁거나 낮은 칸: 로고와 등락률만. 이름은 로고와 칸을 눌렀을 때 읽는다(aria-label에도 있다). */
+@container (max-width: 120px) or (max-height: 112px) {
+  .nx-heat-name { display: none; }
+  .nx-heat-logo,
+  .nx-heat-logo.game-icon { width: clamp(18px, min(34cqi, 34cqb), 44px); height: clamp(18px, min(34cqi, 34cqb), 44px); }
+  .nx-heat-rate { font-size: clamp(11px, min(17cqi, 15cqb), 20px); }
+  .nx-heat-guard { top: 3px; left: 3px; }
+}
+
+/* 아주 작은 칸: 로고만 남긴다. */
+@container (max-width: 64px) or (max-height: 56px) {
+  .nx-heat-rate,
   .nx-heat-guard { display: none; }
+  .nx-heat-logo,
+  .nx-heat-logo.game-icon { width: clamp(14px, min(52cqi, 52cqb), 32px); height: clamp(14px, min(52cqi, 52cqb), 32px); margin: 0; }
+}
+
+/* 넓고 낮은 칸: 세로로 쌓을 높이가 없으니 로고 옆에 등락률을 둔다. */
+@container (max-height: 56px) and (min-width: 104px) {
+  .nx-heat-tile { flex-direction: row; gap: 6px; }
+  .nx-heat-rate { display: block; font-size: clamp(11px, 30cqb, 16px); }
 }
 
 /* ───────── 시장 목록 ───────── */
@@ -276,9 +334,9 @@ html[data-nx][data-nx-theme="light"] .nx-heat-tile.is-l0 { background: var(--nx-
 .nx-rate-chart { display: none; }
 
 @media (max-width: 1080px) {
-  .nx-content.nx-page { padding: 28px 16px 48px; }
+  .nx-content.nx-page { padding: 12px 16px 48px; }
   .nx-page-head { margin-bottom: 24px; }
-  .nx-home { gap: 20px; }
+  .nx-content.nx-page { --nx-gap: 40px; }
   .nx-table thead th,
   .nx-table tbody th,
   .nx-table td { padding: 0 12px; }

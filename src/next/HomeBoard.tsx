@@ -14,6 +14,7 @@ import type { MarketSnapshot } from "../market/types";
 import { LISTING_BY_CODE } from "../market/universe";
 import { useSteadySnapshot } from "../market/useSteadySnapshot";
 import { MARKET_PATH } from "../router";
+import { AnimatedNav } from "./AnimatedNav";
 
 /*
  * 지수 기록 API가 없어서 서버 지수와 같은 식(종목별 기준가 대비 비율을 시가총액으로 가중 평균 × 1000)을
@@ -194,15 +195,15 @@ function RankBoard() {
 
   return (
     <section className="nx-panel nx-home-board" aria-labelledby="nx-board-title">
-      <h2 id="nx-board-title" className="vh">오늘의 종목 순위</h2>
-      <div className="nx-tabs nx-board-tabs" role="tablist" aria-label="순위 종류" onKeyDown={onKey}>
+      <h2 id="nx-board-title" className="nx-panel-title">오늘의 종목 순위</h2>
+      <AnimatedNav as="div" activeKey={tab} className="nx-tabs nx-board-tabs" role="tablist" aria-label="순위 종류" onKeyDown={onKey}>
         {RANK_TABS.map((item) => (
           <button key={item.id} type="button" role="tab" id={`nx-board-tab-${item.id}`} aria-selected={tab === item.id} aria-controls="nx-board-panel"
             tabIndex={tab === item.id ? 0 : -1} className={tab === item.id ? "is-active" : undefined} onClick={() => setTab(item.id)}>
             {item.label}
           </button>
         ))}
-      </div>
+      </AnimatedNav>
       <div id="nx-board-panel" role="tabpanel" aria-labelledby={`nx-board-tab-${tab}`}>
         {snapshot.codes.length === 0 ? <p className="nx-board-empty" role="status">시세를 불러오고 있어요.</p>
           : codes.length === 0 ? <p className="nx-board-empty">{current.empty}</p> : (

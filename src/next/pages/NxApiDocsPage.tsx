@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiBaseUrl, apiFetch } from "../../lib/api";
 import { openLoginPrompt, useAuthUser } from "../../lib/auth";
 import { firebaseAuth } from "../../lib/firebase";
+import { AnimatedNav } from "../AnimatedNav";
 
 const BASE = apiBaseUrl;
 const SPEC_URL = `${BASE}/api/openapi/openapi.json`;
@@ -183,7 +184,7 @@ function OrderExamples() {
 
   return (
     <div className="nx-docs-examples">
-      <div className="nx-seg" aria-label="상품별 주문 본문">
+      <AnimatedNav as="div" fill activeKey={active} className="nx-seg" role="group" aria-label="상품별 주문 본문">
         {ORDER_EXAMPLES.map((item) => (
           <button
             key={item.id}
@@ -195,7 +196,7 @@ function OrderExamples() {
             {item.label}
           </button>
         ))}
-      </div>
+      </AnimatedNav>
       <CodeBlock title="요청 본문" code={example.body} />
       <p className="nx-docs-note-inline">{example.note}</p>
     </div>
@@ -334,7 +335,7 @@ export function NxApiDocsPage() {
   return (
     <div className="nx-screen nx-docs">
       <header className="nx-docs-hero">
-        <h1 className="nx-page-title">게임주 OpenAPI</h1>
+        <h1 className="nx-panel-title">게임주 OpenAPI</h1>
         <p className="nx-docs-hero-copy">
           외부 프로그램에서 슈엔증권의 모의 주식·ETF·선물·옵션 시세를 읽고, 같은 계좌로 주문할 수 있는 REST API입니다.
           시세는 누구나 조회할 수 있고, 계좌와 주문은 발급받은 API 키로 인증합니다.
@@ -411,7 +412,7 @@ export function NxApiDocsPage() {
             <div className="nx-docs-callout">
               <strong>차트와 파생상품 읽는 법</strong>
               <ul>
-                <li>차트 기간은 <code>1h</code>, <code>6h</code>, <code>12h</code>, <code>1d</code>, <code>1w</code>, <code>1m</code>, <code>1y</code>이고, 봉 간격은 각각 1분·5분·10분·30분·2시간·1일·1주입니다.</li>
+                <li>차트 기간은 <code>1h</code>, <code>6h</code>, <code>12h</code>, <code>1d</code>, <code>3d</code>, <code>1w</code>, <code>2w</code>, <code>1m</code>, <code>1y</code>이고, 봉 간격은 각각 1분·5분·10분·30분·1시간·2시간·6시간·1일·1주입니다.</li>
                 <li>차트의 <code>volume</code>은 거래 주식 수가 아니라 가격 표본·집계 건수입니다.</li>
                 <li>선물 <code>price</code>와 옵션 <code>mark</code>·<code>strike</code>는 지수 포인트입니다. 선물 1포인트는 계약당 1,000원입니다.</li>
                 <li>옵션 <code>premium</code>은 계약당 원화, <code>expiryEpoch</code>는 초 단위 Unix 시각입니다. 회차는 <code>10M</code>·<code>1H</code>·<code>SUN</code>입니다.</li>

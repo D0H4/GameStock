@@ -50,8 +50,8 @@ public class OpenApiController {
     public List<MarketModels.ChartCandle> candles(@PathVariable String symbol,
                                                   @RequestParam(defaultValue = "1d") String range) {
         quotes.stock(symbol);
-        if (!List.of("1h", "6h", "12h", "1d", "1w", "1m", "1y").contains(range))
-            throw new IllegalArgumentException("지원하는 차트 기간은 1h, 6h, 12h, 1d, 1w, 1m, 1y입니다.");
+        if (!List.of("1h", "6h", "12h", "1d", "3d", "1w", "2w", "1m", "1y").contains(range))
+            throw new IllegalArgumentException("지원하는 차트 기간은 1h, 6h, 12h, 1d, 3d, 1w, 2w, 1m, 1y입니다.");
         return market.chartHistory(symbol, range);
     }
 

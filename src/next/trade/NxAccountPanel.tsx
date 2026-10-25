@@ -6,6 +6,7 @@ import { fillTime, won } from "../../market/format";
 import { useMarket } from "../../market/MarketProvider";
 import { LISTING_BY_CODE } from "../../market/universe";
 import { TRADE_PATH } from "../../router";
+import { AnimatedNav } from "../AnimatedNav";
 
 export type NxAccountTab = "holdings" | "fills" | "orders";
 
@@ -102,15 +103,16 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
     : "이 종목에 걸려 있는 미체결 주문이 없어요.";
 
   return (
-    <div className="nx-acct" aria-label="내 잔고와 주문 내역">
+    <div className="nx-acct">
+      <h2 className="nx-acct-title">잔고</h2>
       <div className="nx-acct-bar">
-        <div className="nx-tabs" role="group" aria-label="계좌 내역 선택">
+        <AnimatedNav as="div" activeKey={tab} className="nx-tabs" role="group" aria-label="계좌 내역 선택">
           {TABS.map(([value, label]) => (
             <button key={value} type="button" className={tab === value ? "is-active" : undefined} aria-pressed={tab === value} onClick={() => onTabChange(value)}>
               {label}{user && value === "orders" && visibleOrders.length > 0 && <span className="nx-tab-count nx-num">{visibleOrders.length}</span>}
             </button>
           ))}
-        </div>
+        </AnimatedNav>
       </div>
 
       <div className="nx-acct-scroll" tabIndex={0} role="region" aria-label="계좌 내역 표" aria-busy={tab === "orders" && loading}>

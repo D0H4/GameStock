@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "../lib/api";
+import { useAuthUser } from "../lib/auth";
+import { RankingAvatar } from "../components/RankingAvatar";
+import { titleColor } from "../lib/titles";
 
 export type RankingEntry = {
   rank: number;
@@ -53,7 +56,14 @@ export function readTab(): RankingTab {
   try { return window.localStorage.getItem(RANKING_TAB_KEY) === "weekly" ? "weekly" : "total"; } catch { return "total"; }
 }
 
+const medalByRank: Record<number, { emoji: string; label: string }> = {
+  1: { emoji: "🥇", label: "금메달 1위" },
+  2: { emoji: "🥈", label: "은메달 2위" },
+  3: { emoji: "🥉", label: "동메달 3위" },
+};
 
+const changeTone = (percent: number) => (percent > 0 ? "is-up" : percent < 0 ? "is-down" : "is-flat");
+const formatChange = (percent: number) => `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`;
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 /** "2026-10-12" → "10.12(월)". 날짜만 다루므로 시간대 영향이 없게 UTC로 해석한다. */
@@ -119,8 +129,168 @@ export function usePolledRanking<T>(path: string, cacheKey: string, initial: T |
   return { data, loading, error };
 }
 
+function RankingRow({ entry, percent, mine = false }: { entry: Omit<RankingEntry, "changePercent">; percent: number; mine?: boolean }) {
+  return (
+    <tr className={mine ? "ranking-row-mine" : undefined} aria-current={mine ? "true" : undefined}>
+      <th scope="row" className="ranking-page-rank num" aria-label={medalByRank[entry.rank]?.label}>
+        <span className="ranking-rank-content">
+          {medalByRank[entry.rank] ? (
+            <RankingAvatar rank={entry.rank} src={entry.profileImageUrl} />
+          ) : (
+            <span>{entry.rank}</span>
+          )}
+        </span>
+      </th>
+      <td className="ranking-page-name">
+        <span className="ranking-name-cell">
+          <span className="ranking-name-text">
+            {entry.equippedTitle && (
+              <span className={`ranking-title${entry.equippedTitleWeekly ? " is-weekly" : ""}`} title={entry.equippedTitle} style={{ color: titleColor(entry.equippedTitle) }}>{entry.equippedTitle}</span>
+            )}
+            <span className="ranking-nickname" title={entry.nickname}>{entry.nickname}</span>
+          </span>
+        </span>
+      </td>
+      <td className={`ranking-page-change num ${changeTone(percent)}`}>{formatChange(percent)}</td>
+      <td className="ranking-page-asset num">
+        <span className="ranking-asset-value">{Math.round(entry.totalAsset).toLocaleString("ko-KR")}원</span>
+        {/* 좁은 화면에서는 수익률 칸을 숨기고 총 자산 아래에 붙여 닉네임 칸을 넓힌다. */}
+        <span className={`ranking-asset-change ${changeTone(percent)}`}>{formatChange(percent)}</span>
+      </td>
+    </tr>
+  );
+}
 
+/**
+ * 표 사이 구분 줄. 좁은 화면은 수익률 칸을 숨기므로 colSpan 대신 열마다 칸을 두어
+ * 숨은 열이 표 폭을 흐트러뜨리지 않게 한다. 문구는 닉네임 칸에 둔다.
+ */
+function SeparatorRow({ className, label }: { className: string; label: string }) {
+  return (
+    <tr className={className} aria-hidden="true">
+      <td className="ranking-page-rank" />
+      <td className="ranking-page-name"><span>{label}</span></td>
+      <td className="ranking-page-change" />
+      <td className="ranking-page-asset" />
+    </tr>
+  );
+}
 
+function RankingTable({ label, changeLabel, children }: { label: string; changeLabel: string; children: ReactNode }) {
+  return (
+    <div className="table-scroll">
+      <table className="table integration-ranking" aria-label={label}>
+        <colgroup>
+          <col className="ranking-col-rank" />
+          <col className="ranking-col-name" />
+          <col className="ranking-col-change" />
+          <col className="ranking-col-asset" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col" className="ranking-col-rank">순위</th>
+            <th scope="col" className="ranking-col-name">닉네임</th>
+            <th scope="col" className="ranking-col-change">{changeLabel}</th>
+            <th scope="col" className="ranking-col-asset">총 자산</th>
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
 
+function TotalRanking() {
+  const { data, loading, error } = usePolledRanking<RankingEntry[]>("/api/ranking", RANKING_CACHE_KEY, (() => {
+    const cached = readRankingCache();
+    return cached.length > 0 ? cached : null;
+  })());
+  const ranking = data ?? [];
 
+  if (loading) return <p className="empty is-inline">랭킹을 불러오는 중…</p>;
+  if (error) return <p className="empty is-inline">{error}</p>;
+  if (ranking.length === 0) return <p className="empty is-inline">아직 랭킹에 참여한 사용자가 없습니다.</p>;
 
+  const displayed = [...ranking]
+    .sort((left, right) => right.totalAsset - left.totalAsset)
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+  return (
+    <RankingTable label="전체 자산 랭킹 표" changeLabel="수익률">
+      {displayed.map((entry) => (
+        <RankingRow key={`${entry.rank}-${entry.nickname}`} entry={entry} percent={entry.changePercent} />
+      ))}
+    </RankingTable>
+  );
+}
+
+function WeeklyRankingView() {
+  const { user } = useAuthUser();
+  const { data, loading, error } = usePolledRanking<WeeklyRanking>(
+    "/api/titles/weekly-ranking", WEEKLY_RANKING_CACHE_KEY, readWeeklyCache());
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const tickId = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(tickId);
+  }, []);
+
+  if (loading) return <p className="empty is-inline">주간 랭킹을 불러오는 중…</p>;
+  if (error || !data) return <p className="empty is-inline">{error || "주간 랭킹을 불러오지 못했습니다."}</p>;
+
+  const me = data.me;
+  const meShown = me !== null && data.entries.some((entry) => entry.rank === me.rank);
+  return (
+    <>
+      <p className="ranking-week-info">
+        <span>{formatWeekDay(data.weekStart)} ~ {formatWeekDay(data.weekEnd)}</span>
+        <span className="ranking-week-countdown">주간 정산까지 {formatCountdown(data.awardAt, now)}</span>
+      </p>
+      {data.entries.length === 0 ? (
+        <p className="empty is-inline">이번 주에 거래한 사용자가 아직 없습니다. 첫 거래로 1위에 올라 보세요.</p>
+      ) : (
+        <RankingTable label="이번 주 수익률 랭킹 표" changeLabel="주간 수익률">
+          {data.entries.map((entry) => (
+            <RankingRow key={`${entry.rank}-${entry.nickname}`} entry={entry} percent={entry.weeklyReturnPercent}
+              mine={me !== null && entry.rank === me.rank} />
+          ))}
+          {me && !meShown && (
+            <>
+              <SeparatorRow className="ranking-gap" label="⋯" />
+              <RankingRow entry={me} percent={me.weeklyReturnPercent} mine />
+            </>
+          )}
+        </RankingTable>
+      )}
+      <p className="ranking-week-note">
+        {user && !me ? "이번 주에 한 번 이상 거래하면 순위에 들어가요. " : ""}
+        이번 주에 1회 이상 거래한 사용자만 집계하며, 출석·미션 보상과 대출금은 수익률에서 제외합니다.
+      </p>
+    </>
+  );
+}
+
+export function RankingPage() {
+  const [tab, setTab] = useState<RankingTab>(readTab);
+
+  const selectTab = (next: RankingTab) => {
+    setTab(next);
+    try { window.localStorage.setItem(RANKING_TAB_KEY, next); } catch { /* storage may be disabled */ }
+  };
+
+  return (
+    <div className="page-stack is-compact ranking-page">
+      <h1 className="page-title">랭킹</h1>
+
+      <div className="ranking-tabs" role="tablist" aria-label="랭킹 종류">
+        <button type="button" role="tab" id="ranking-tab-total" aria-selected={tab === "total"} aria-controls="ranking-panel"
+          className={`ranking-tab${tab === "total" ? " is-active" : ""}`} onClick={() => selectTab("total")}>전체 자산</button>
+        <button type="button" role="tab" id="ranking-tab-weekly" aria-selected={tab === "weekly"} aria-controls="ranking-panel"
+          className={`ranking-tab${tab === "weekly" ? " is-active" : ""}`} onClick={() => selectTab("weekly")}>이번 주 수익률</button>
+      </div>
+
+      <section id="ranking-panel" role="tabpanel" aria-labelledby={tab === "total" ? "ranking-tab-total" : "ranking-tab-weekly"}>
+        {tab === "total" ? <TotalRanking /> : <WeeklyRankingView />}
+      </section>
+    </div>
+  );
+}

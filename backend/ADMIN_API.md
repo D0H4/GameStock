@@ -107,9 +107,15 @@
   "published": true,
   "startsAt": null,
   "endsAt": null,
-  "reason": "운영 공지 게시"
+  "reason": "운영 공지 게시",
+  "imageUrl": "/notice/maintenance.png",
+  "actionLabel": "자세히 보기",
+  "actionUrl": "/news",
+  "dismissLabel": "닫기"
 }
 ```
+
+`imageUrl`, `actionLabel`, `actionUrl`, `dismissLabel`은 선택 항목이며 NOTICE 공지 창의 머리 그림과 두 버튼에 쓰인다. 주소는 `/`로 시작하는 사이트 경로나 `https://` 주소만 받고, 이동 버튼은 문구와 주소를 함께 적어야 한다. 이동 버튼 문구는 40자, 닫기 버튼 문구는 40자, 주소는 500자까지 받는다.
 
 제목 150자, 본문 2만자. 끝 시각은 시작 시각 이후여야 한다. NEWS는 운영자가 작성한 콘텐츠이며 기존 외부 뉴스 수집·가격 영향 엔진과 별도로 `/api/content`에서 제공한다. 기존 하드코딩 공지 팝업과 뉴스 화면은 이번 작업에서 변경하지 않았다. EVENT의 현금 보상은 별도 보상 API로 실행한다.
 

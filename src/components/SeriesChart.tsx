@@ -8,8 +8,9 @@ import { chartGeometry, clamp, nearestSampleIndex, normalizeChartSamples } from 
 import type { ChartCandle, ChartGeometry, ChartMode, ChartSample } from "../market/chartGeometry";
 import { CANDLE_INTERVAL_MS, collectLiveCandles, mergeLiveCandles } from "../market/liveCandles";
 import type { LiveCandle } from "../market/liveCandles";
+import { AnimatedNav } from "../next/AnimatedNav";
 
-export type ChartRange = "realtime" | "1h" | "6h" | "12h" | "1d" | "1w" | "1m" | "1y";
+export type ChartRange = "1h" | "6h" | "12h" | "1d" | "3d" | "2w" | "1m" | "1y";
 type PricePoint = { recordedAt: string; price: number };
 type Marker = { at: number; label: string };
 type Inspection = { at: number; y: number };
@@ -17,10 +18,11 @@ const NO_MARKERS: Marker[] = [];
 const NO_SAMPLES: ChartSample[] = [];
 const NO_LIVE_CANDLES: LiveCandle[] = [];
 const RANGE_OPTIONS: Array<{ value: ChartRange; label: string; interval: string }> = [
-  { value: "realtime", label: "실시간", interval: "1분봉" }, { value: "1h", label: "1시간", interval: "1분봉" },
-  { value: "6h", label: "6시간", interval: "5분봉" }, { value: "12h", label: "12시간", interval: "10분봉" },
-  { value: "1d", label: "1일", interval: "30분봉" }, { value: "1w", label: "1주", interval: "2시간봉" },
-  { value: "1m", label: "1개월", interval: "일봉" }, { value: "1y", label: "1년", interval: "주봉" },
+  // 버튼 이름은 서버가 실제로 묶는 봉 간격(MarketService.chartBucketSeconds)과 같아야 한다.
+  { value: "1h", label: "1분", interval: "1분봉" }, { value: "6h", label: "5분", interval: "5분봉" },
+  { value: "12h", label: "10분", interval: "10분봉" }, { value: "1d", label: "30분", interval: "30분봉" },
+  { value: "3d", label: "1시간", interval: "1시간봉" }, { value: "2w", label: "6시간", interval: "6시간봉" },
+  { value: "1m", label: "일", interval: "일봉" }, { value: "1y", label: "주", interval: "주봉" },
 ];
 const priceFormatter = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 const timeFormatter = new Intl.DateTimeFormat("ko-KR", {
@@ -32,9 +34,10 @@ const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul",
 const monthFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "2-digit", month: "numeric" });
 
 /** Pointer inspection only updates the crosshair and readout; the recorded bars stay memoized. */
-const ChartDrawing = memo(function ChartDrawing({ samples, geometry: g, mode, markers, currentPrice, prevClose, code, rangeLabel, tone, width, height }: {
+const ChartDrawing = memo(function ChartDrawing({ samples, geometry: g, mode, markers, currentPrice, prevClose, code, rangeLabel, tone, width, height, formatValue }: {
   samples: ChartSample[]; geometry: ChartGeometry; mode: ChartMode; markers: Marker[];
   currentPrice: number; prevClose: number; code: string; rangeLabel: string; tone: string; width: number; height: number;
+  formatValue: (value: number) => string;
 }) {
   const clipId = useId();
   const firstAt = samples[0]?.at ?? 0;
@@ -51,7 +54,7 @@ const ChartDrawing = memo(function ChartDrawing({ samples, geometry: g, mode, ma
   const linePath = mode === "line" ? samples.map((sample, index) => `${index ? "L" : "M"}${g.xAtIndex(index).toFixed(2)},${g.y(sample.price).toFixed(2)}`).join(" ") : "";
   const prevY = g.y(prevClose);
   return <svg className="market-chart-drawing" viewBox={`0 0 ${width} ${height}`} role="img"
-    aria-label={`${code} ${rangeLabel} ${mode === "candle" ? "캔들" : "선형"} 차트. 현재가 ${won(currentPrice)}`}>
+    aria-label={`${code} ${rangeLabel} ${mode === "candle" ? "캔들" : "선형"} 차트. 현재가 ${formatValue(currentPrice)}`}>
     <defs><clipPath id={clipId}><rect width={g.plotWidth} height={g.plotHeight} /></clipPath></defs>
     <g className="market-chart-grid" aria-hidden="true">
       {g.scale.ticks.map(price => <line key={price} x1={0} x2={g.plotWidth} y1={Math.round(g.y(price)) + 0.5} y2={Math.round(g.y(price)) + 0.5} />)}
@@ -86,11 +89,20 @@ const ChartDrawing = memo(function ChartDrawing({ samples, geometry: g, mode, ma
   </svg>;
 });
 
-export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = false, initialMode = "line" }: {
-  code: string; tone?: "up" | "down" | "flat"; markers?: Marker[]; fitMarkers?: boolean; initialMode?: ChartMode;
+/** 지수 선물은 주식 시세 대신 이 값과 /api/derivatives/futures/chart의 봉을 쓴다. 지수 기록은 30일까지만 남는다. */
+type IndexFeed = { price: number; prevClose: number };
+const INDEX_RANGE_OPTIONS = RANGE_OPTIONS.filter(option => option.value !== "1y");
+
+export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = false, initialMode = "line", index }: {
+  code: string; tone?: "up" | "down" | "flat"; markers?: Marker[]; fitMarkers?: boolean; initialMode?: ChartMode; index?: IndexFeed;
 }) {
   const snapshot = useMarket();
-  const quote = snapshot.quotes[code];
+  const stock = index ? undefined : snapshot.quotes[code];
+  const quote = index ?? stock;
+  const isIndex = Boolean(index);
+  const rangeOptions = isIndex ? INDEX_RANGE_OPTIONS : RANGE_OPTIONS;
+  const formatValue = isIndex ? indexValue : won;
+  const formatPrice = isIndex ? indexValue : priceFormatter.format;
   const helpId = useId();
   const [mode, setMode] = useState<ChartMode>(initialMode);
   const [range, setRange] = useState<ChartRange>(initialMode === "candle" ? "1h" : "6h");
@@ -111,8 +123,8 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
   const liveBars = useMemo(() => {
     if (mode !== "candle") return NO_LIVE_CANDLES;
     const previous = live.key === dataKey ? live.bars : NO_LIVE_CANDLES;
-    return quote?.prints.length ? collectLiveCandles(previous, quote.prints, CANDLE_INTERVAL_MS[range]) : previous;
-  }, [mode, live, dataKey, quote?.prints, range]);
+    return stock?.prints.length ? collectLiveCandles(previous, stock.prints, CANDLE_INTERVAL_MS[range]) : previous;
+  }, [mode, live, dataKey, stock?.prints, range]);
   const samples = useMemo(() => mode === "candle"
     ? mergeLiveCandles(recordedSamples, liveBars) : recordedSamples, [recordedSamples, mode, liveBars]);
   const currentPrice = quote?.price ?? 1;
@@ -154,12 +166,16 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
       pending = true;
       try {
         let next: ChartSample[];
-        if (mode === "line" && range !== "1m" && range !== "1y") {
-          const historyRange = range === "realtime" ? "30m" : range === "1d" ? "24h" : range;
+        // 원래 가격 기록은 하루치까지만 그대로 그린다. 더 긴 기간은 봉의 종가로 잇는다. 지수는 봉만 있다.
+        if (isIndex) {
+          const candles = await apiFetch<ChartCandle[]>(`/api/derivatives/futures/chart?range=${range}`, { auth: false });
+          next = candles.map(candle => ({ at: serverTimestamp(candle.recordedAt), price: candle.closePrice, candle }));
+        } else if (mode === "line" && (range === "1h" || range === "6h" || range === "12h" || range === "1d")) {
+          const historyRange = range === "1d" ? "24h" : range;
           const points = await apiFetch<PricePoint[]>(`/api/stocks/${code}/history?range=${historyRange}`, { auth: false });
           next = points.map(point => ({ at: serverTimestamp(point.recordedAt), price: point.price }));
         } else {
-          const candles = await apiFetch<ChartCandle[]>(`/api/stocks/${code}/chart?range=${range === "realtime" ? "1h" : range}`, { auth: false });
+          const candles = await apiFetch<ChartCandle[]>(`/api/stocks/${code}/chart?range=${range}`, { auth: false });
           next = candles.map(candle => ({ at: serverTimestamp(candle.recordedAt), price: candle.closePrice, candle }));
         }
         if (!active) return;
@@ -179,9 +195,9 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
       }
     };
     void load();
-    const timer = window.setInterval(() => void load(), range === "realtime" ? 2000 : 10_000);
+    const timer = window.setInterval(() => void load(), range === "1h" ? 2000 : 10_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [code, mode, range, dataKey, earliestMarker]);
+  }, [code, mode, range, dataKey, earliestMarker, isIndex]);
 
   const clearInspection = () => {
     window.cancelAnimationFrame(pointerFrame.current);
@@ -211,10 +227,10 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
   const hovered = hoveredIndex >= 0 && samples[hoveredIndex].at === inspection?.at ? samples[hoveredIndex] : undefined;
   const selected = hovered ?? samples.at(-1);
   const selectedBar = mode === "candle" ? selected?.candle : undefined;
-  const ratio = sessionRate(quote);
+  const ratio = stock ? sessionRate(stock) : quote.prevClose > 0 ? (quote.price - quote.prevClose) / quote.prevClose : 0;
   const chartTone = tone ?? (ratio > 0 ? "up" : ratio < 0 ? "down" : "flat");
   const selectedTone = selectedBar ? (selectedBar.closePrice >= selectedBar.openPrice ? "up" : "down") : chartTone;
-  const rangeOption = RANGE_OPTIONS.find(option => option.value === range)!;
+  const rangeOption = rangeOptions.find(option => option.value === range)!;
   const markerOutside = markers.length > 0 && samples.length > 1 && markers.every(marker => marker.at < samples[0].at);
   const crossY = inspection ? clamp(inspection.y * geometry.plotHeight, 0, geometry.plotHeight) : 0;
   const crossX = hovered ? geometry.xAtIndex(hoveredIndex) : 0;
@@ -223,15 +239,15 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
 
   return <figure className={`stock-series-chart market-chart mode-${mode}`}>
     <div className="market-chart-toolbar">
-      <div className="market-chart-ranges" role="group" aria-label="차트 기간">
-        {RANGE_OPTIONS.map(option => <button key={option.value} type="button" className={range === option.value ? "is-active" : undefined}
+      <AnimatedNav as="div" fill activeKey={String(range)} className="market-chart-ranges" role="group" aria-label="봉 간격">
+        {rangeOptions.map(option => <button key={option.value} type="button" className={range === option.value ? "is-active" : undefined}
           aria-pressed={range === option.value} onClick={() => { clearInspection(); setRange(option.value); autoFit.current = false; }}>{option.label}</button>)}
-      </div>
-      <div className="market-chart-modes" role="group" aria-label="차트 표현 방식">
+      </AnimatedNav>
+      <AnimatedNav as="div" fill activeKey={mode} className="market-chart-modes" role="group" aria-label="차트 표현 방식">
         {([["line", "선"], ["candle", "캔들"]] as const).map(([value, label]) => <button key={value} type="button"
           className={mode === value ? "is-active" : undefined} aria-pressed={mode === value}
           onClick={() => { clearInspection(); setMode(value); }}>{label}</button>)}
-      </div>
+      </AnimatedNav>
     </div>
     <div className="market-chart-readout" aria-live="off">
       {/* 종목 코드는 화면 머리에, 통화는 차트 아래 줄에 이미 있다. 여기에는 봉 간격만 둔다. */}
@@ -240,11 +256,11 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
       </div>
       <dl className={`market-chart-ohlc num is-${selectedTone}`}>
         {selectedBar ? <>
-          <div><dt><abbr title="시가">시</abbr></dt><dd>{priceFormatter.format(selectedBar.openPrice)}</dd></div>
-          <div><dt><abbr title="고가">고</abbr></dt><dd>{priceFormatter.format(selectedBar.highPrice)}</dd></div>
-          <div><dt><abbr title="저가">저</abbr></dt><dd>{priceFormatter.format(selectedBar.lowPrice)}</dd></div>
-          <div><dt><abbr title="종가">종</abbr></dt><dd>{priceFormatter.format(selectedBar.closePrice)}</dd></div>
-        </> : <div><dt>{hovered ? "선택 가격" : "마지막 기록"}</dt><dd>{selected ? priceFormatter.format(selected.price) : "—"}</dd></div>}
+          <div><dt><abbr title="시가">시</abbr></dt><dd>{formatPrice(selectedBar.openPrice)}</dd></div>
+          <div><dt><abbr title="고가">고</abbr></dt><dd>{formatPrice(selectedBar.highPrice)}</dd></div>
+          <div><dt><abbr title="저가">저</abbr></dt><dd>{formatPrice(selectedBar.lowPrice)}</dd></div>
+          <div><dt><abbr title="종가">종</abbr></dt><dd>{formatPrice(selectedBar.closePrice)}</dd></div>
+        </> : <div><dt>{hovered ? "선택 가격" : "마지막 기록"}</dt><dd>{selected ? formatPrice(selected.price) : "—"}</dd></div>}
       </dl>
     </div>
     <div className="market-chart-plot" ref={plot} role="group" aria-label={`${code} 가격 차트 탐색`} aria-describedby={helpId}
@@ -266,26 +282,26 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
         setInspection({ at: samples[next].at, y: geometry.y(samples[next].price) / geometry.plotHeight });
       }}>
       <ChartDrawing samples={samples} geometry={geometry} mode={mode} markers={markers} currentPrice={currentPrice} prevClose={quote.prevClose}
-        code={code} rangeLabel={rangeOption.label} tone={chartTone} width={size.width} height={size.height} />
+        code={code} rangeLabel={rangeOption.label} tone={chartTone} width={size.width} height={size.height} formatValue={formatValue} />
       {samples.length > 0 && <span className={`market-chart-price-tag num is-${chartTone}`} aria-hidden="true"
-        style={{ top: clamp(geometry.y(currentPrice), 10, geometry.plotHeight - 10), width: geometry.axisWidth }}>{priceFormatter.format(currentPrice)}</span>}
+        style={{ top: clamp(geometry.y(currentPrice), 10, geometry.plotHeight - 10), width: geometry.axisWidth }}>{formatPrice(currentPrice)}</span>}
       {hovered && <div className="market-chart-crosshair" aria-hidden="true">
         <span className="market-chart-cross-v" style={{ left: crossX, height: geometry.plotHeight }} />
         <span className="market-chart-cross-h" style={{ top: crossY, width: geometry.plotWidth }} />
-        <span className="market-chart-cross-price num" style={{ top: clamp(crossY, 10, geometry.plotHeight - 10), width: geometry.axisWidth }}>{priceFormatter.format(geometry.priceAtY(crossY))}</span>
+        <span className="market-chart-cross-price num" style={{ top: clamp(crossY, 10, geometry.plotHeight - 10), width: geometry.axisWidth }}>{formatPrice(geometry.priceAtY(crossY))}</span>
         <span className="market-chart-cross-time num" style={{ top: geometry.plotHeight, left: clamp(crossX, 76, Math.max(76, geometry.plotWidth - 76)) }}>{timeFormatter.format(hovered.at)}</span>
         {mode === "line" && <span className="market-chart-cross-dot" style={{ left: crossX, top: geometry.y(hovered.price) }} />}
       </div>}
       {!samples.length && <p className="market-chart-empty" role="status">{status}</p>}
     </div>
-    <figcaption className="market-chart-footer"><span role="status">{samples.length ? status : ""}</span><span className="num">UTC+9 · KRW</span></figcaption>
+    <figcaption className="market-chart-footer"><span role="status">{samples.length ? status : ""}</span><span className="num">{isIndex ? "UTC+9 · 지수 포인트" : "UTC+9 · KRW"}</span></figcaption>
     <p id={helpId} className="vh">마우스나 터치로 가격과 시각을 확인합니다. 키보드 좌우 방향키로 기록을 이동하고 Home·End로 처음과 끝을 선택합니다.</p>
     <table className="vh"><caption>{`${code} ${rangeOption.label} 차트 요약`}</caption><tbody>
-      <tr><th scope="row">기간 최고</th><td>{samples.length ? won(geometry.max) : "기록 없음"}</td></tr>
-      <tr><th scope="row">기간 최저</th><td>{samples.length ? won(geometry.min) : "기록 없음"}</td></tr>
-      <tr><th scope="row">전일 종가</th><td>{won(quote.prevClose)}</td></tr>
-      <tr><th scope="row">현재가</th><td>{won(currentPrice)}</td></tr>
-      <tr><th scope="row">마지막 저장 가격</th><td>{recordedSamples.length ? won(recordedSamples.at(-1)!.price) : "기록 없음"}</td></tr>
+      <tr><th scope="row">기간 최고</th><td>{samples.length ? formatValue(geometry.max) : "기록 없음"}</td></tr>
+      <tr><th scope="row">기간 최저</th><td>{samples.length ? formatValue(geometry.min) : "기록 없음"}</td></tr>
+      <tr><th scope="row">전일 종가</th><td>{formatValue(quote.prevClose)}</td></tr>
+      <tr><th scope="row">현재가</th><td>{formatValue(currentPrice)}</td></tr>
+      <tr><th scope="row">마지막 저장 가격</th><td>{recordedSamples.length ? formatValue(recordedSamples.at(-1)!.price) : "기록 없음"}</td></tr>
       <tr><th scope="row">세션 등락률</th><td>{indexValue(ratio * 100)}%</td></tr>
     </tbody></table>
   </figure>;

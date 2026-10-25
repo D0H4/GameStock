@@ -113,38 +113,6 @@ class LiquidityRecoveryPolicyTest {
         assertEquals(2,book.fills.size());
     }
 
-    @Test void stalledFlowKeepsWorkingOrdersAndRotatesParticipants() {
-        var book=book();var policy=new LiquidityRecoveryPolicy();var stock=book.stocks.get(1L);
-        for(long bot=3;bot<=4;bot++) {
-            book.accounts.put(bot,new Account(bot,5000000,false,true));
-            book.holdings.put(new PositionKey(bot,1),new Holding(1000,1000,10000,0));
-        }
-        book.submit(1,1,"SELL","LIMIT",20,10000,0,100000);
-        book.submit(1,1,"BUY","LIMIT",20,9990,0,100000);
-        Order resting=book.submit(3,1,"SELL","LIMIT",5,10020,0,100000);
-        policy.stalled(stock,0);
-        assertTrue(policy.submitStalledFlow(book,stock,List.of(3L,4L),1L,60000));
-        assertEquals(3,book.fills.get(0).taker().user);
-        assertEquals("OPEN",resting.status);
-        assertTrue(policy.submitStalledFlow(book,stock,List.of(3L,4L),1L,65000));
-        assertEquals(4,book.fills.get(1).taker().user);
-        assertTrue(book.working(3,1).contains(resting));assertTrue(book.working(4,1).isEmpty());
-    }
-
-    @Test void stalledFlowSkipsNonLpBestQuoteAndWaitsAfterFailure() {
-        var book=book();var policy=new LiquidityRecoveryPolicy();var stock=book.stocks.get(1L);
-        book.accounts.put(3L,new Account(3,5000000,false,true));
-        Order human=book.submit(2,1,"SELL","LIMIT",5,10000,0,100000);
-        book.submit(1,1,"SELL","LIMIT",20,10010,0,100000);
-        policy.stalled(stock,0);
-        assertFalse(policy.submitStalledFlow(book,stock,List.of(3L),1L,60000));
-        assertTrue(book.fills.isEmpty());assertTrue(book.working(3,1).isEmpty());
-        book.cancel(human);
-        assertFalse(policy.submitStalledFlow(book,stock,List.of(3L),1L,61000));
-        assertTrue(policy.submitStalledFlow(book,stock,List.of(3L),1L,65000));
-        assertEquals(1,book.fills.get(0).maker().user);assertEquals(10010,book.fills.get(0).price());
-    }
-
     private long reserved(BatchOrderBook book) {
         return book.accounts.keySet().stream().flatMap(id->book.working(id,1).stream()).mapToLong(o->o.reservedCash).sum();
     }

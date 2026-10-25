@@ -52,7 +52,7 @@ public final class BotStrategyEngine {
             double memory=StockMarketProfile.isLargeCap(symbol) ? 8_000+preference.nextDouble()*22_000
                     : 1_500+preference.nextDouble()*4_000;
             double cycle=demandShock(key,now,memory,preference);
-            return Math.min(equity/Math.max(1,price)*.1,Math.max(0,5+4*cycle)*weight);
+            return Math.min(equity/Math.max(1,price)*.1/Math.max(1,symbols),Math.max(0,5+4*cycle)*weight);
         }
         double demand=1+.4*demandShock(key,now,30_000+preference.nextDouble()*60_000,preference);
         // Even at maximum demand/weight, aggregate targets consume less than 75% of account equity.
@@ -237,7 +237,7 @@ public final class BotStrategyEngine {
         // Allocation-driven traders stop once their allocation is satisfied. Previously a fresh
         // random score could buy or sell at the target, then immediately trade back to repair the
         // inventory error it had just created, repeatedly sweeping both ends of the same ladder.
-        if(flow && large && !protectiveExit && !inventoryExit) {
+        if(flow && !protectiveExit && !inventoryExit) {
             double gap=position.targetQuantity()<=0?-position.quantity():effectiveInventoryGap(position);
             if(("BUY".equals(side) && gap<=0) || ("SELL".equals(side) && gap>=0))side="HOLD";
         }
@@ -299,18 +299,23 @@ public final class BotStrategyEngine {
             price=side.equals("BUY")?Math.min(m.bestAsk()-tick,reference/(1+edge)):
                     Math.max(m.bestBid()+tick,Math.max(reference*(1+edge),passiveIntraday?position.averagePrice()*1.0025:0));
         }
-        if(hasInventoryDemand(p) && p.holdingTimePreference()<5000) {
+        if(flow && !riskExit && !inventoryExit) {
             // Cash-flow demand is price sensitive. An urgent allocation change is not permission
             // to chase an empty book arbitrarily far from recent paid transactions.
             double edge=StockMarketProfile.isSpeculative(symbol)?.015+p.aggression()*.02:.004+p.aggression()*.006;
             // A small allocation adjustment should not sweep 0.4–1% across an unchanged book.
             // Its execution budget follows short-horizon paid prices and non-bounce volatility.
-            if(large)edge=Math.min(edge,Math.max(2*tick/Math.max(1,m.executionVwap()),m.volatility()*Math.sqrt(5)));
-            double reference=large?m.executionVwap():.8*m.vwap()+.2*m.microPrice();
+            double executionRoom=Math.max(2*tick,Math.min(m.spread()*.5,3*tick));
+            edge=Math.min(edge,Math.max(executionRoom/Math.max(1,m.executionVwap()),m.volatility()*Math.sqrt(5)));
+            double reference=m.executionVwap();
             // Research nudges a flow trader's execution budget without dictating its allocation side.
             // Bound stale research locally so both acquisition and disposal remain possible.
-            if(StockMarketProfile.isSpeculative(symbol))
-                reference=.8*reference+.2*clamp(estimatedValue,reference*.95,reference*1.05);
+            double researchRoom=large?.005:.05;
+            double researched=clamp(estimatedValue,reference*(1-researchRoom),reference*(1+researchRoom));
+            // Research may support urgent execution, but cannot turn an allocation reduction
+            // into a bet on an unreachable future ask (or prevent replenishing a cash-backed need).
+            researched=side.equals("BUY")?Math.max(reference,researched):Math.min(reference,researched);
+            reference=.5*reference+.5*researched;
             double reservation=reference*(1+clamp(score,-1,1)*edge);
             if(market || random.nextDouble()<clamp(p.aggression()+confidence*.65,.3,.95))
                 price=side.equals("BUY")?m.bestAsk():m.bestBid();
@@ -340,13 +345,18 @@ public final class BotStrategyEngine {
         // Passive participants receive a stable, per-bot price-level preference. This keeps
         // every funded bot from collapsing onto the same best tick while preserving urgent
         // exits and executable value edges.
-        if(dayReference>0 && !(flow && large) && !market && !economicCross && !riskExit && !inventoryExit && !dipBuyer
-                && !side.equals("HOLD")) {
+        if(dayReference>0 && !flow && !market && !economicCross && !riskExit && !inventoryExit && !dipBuyer
+                && !side.equals("HOLD")
+                && (side.equals("BUY")?price<m.bestAsk():price>m.bestBid())) {
             int span=p.strategy().family()==Family.INTRADAY?1:2;
             int offset=Math.floorMod(Long.hashCode(seed^((long)(p.username()+":"+symbol+":"+side).hashCode()*0x9E3779B97F4A7C15L)),span*2+1)-span;
             long dispersed=Math.round(price+offset*tick);
             long bounded=quoteBand(symbol,dayReference,perceivedNews).clamp(dispersed);
             price=side.equals("BUY")?floorToTick(bounded):ceilToTick(bounded);
+            // A passive price preference must not turn into an aggressive order or sweep
+            // extra levels. Orders already chosen to cross keep their original execution cap.
+            price=side.equals("BUY")?Math.min(price,previousTickPrice(Math.round(m.bestAsk()))):
+                    Math.max(price,nextTickPrice(Math.round(m.bestBid())));
         }
         price=Math.max(tick,price);
         double volatilityPenalty=1+m.volatility()*150+Math.max(0,e.volatilityMultiplier()-1)*.25;
@@ -355,21 +365,20 @@ public final class BotStrategyEngine {
                 *Math.sqrt(e.volumeMultiplier())*liquidity/volatilityPenalty);
         quantity=Math.min(p.maxOrderSize(),Math.max(p.minOrderSize(),quantity));
         if(intradayMaker) quantity=Math.min(quantity,MAX_ORDER_SIZE);
-        if(flow && large && !riskExit && !inventoryExit) {
+        if(flow && !riskExit && !inventoryExit) {
             // A five-share minimum used to overshoot a one-share allocation need, causing a
             // reversing sale on the next decision. Matching accepts single shares; size to need.
             double gap=position.targetQuantity()-position.quantity();
             double need="BUY".equals(side)?Math.max(0,gap):Math.max(0,-gap);
             quantity=Math.min(quantity,(int)Math.floor(need));
-        } else if(flow && position.targetQuantity()>0)
-            quantity=Math.min(quantity,Math.max(MIN_ORDER_SIZE,(int)Math.ceil(Math.abs(position.targetQuantity()-position.quantity()))));
+        }
         if("BUY".equals(side)) quantity=Math.min(quantity,Math.min(p.positionLimit()-position.quantity(),
                 (int)Math.min(Integer.MAX_VALUE,position.cash()/Math.max(1,(market?m.bestAsk()*1.03:price)*1.001))));
         else if("SELL".equals(side)) quantity=Math.min(quantity,position.quantity());
         else quantity=0;
         if(inventoryExit)quantity=Math.min(quantity,excessQuantity);
         // Never invent cash to reach a lot. Small sell remainders remain eligible for liquidation.
-        if("BUY".equals(side) && quantity<(flow && large?1:MIN_ORDER_SIZE))quantity=0;
+        if("BUY".equals(side) && quantity<(flow?1:MIN_ORDER_SIZE))quantity=0;
         return new Decision(side,score,confidence,Math.max(0,quantity),market,price,
                 p.decisionInterval()<1000?Math.max(1200,p.ttlMillis(random)):p.ttlMillis(random));
     }

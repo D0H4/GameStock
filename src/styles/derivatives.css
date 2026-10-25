@@ -21,37 +21,12 @@
     letter-spacing: var(--tracking);
   }
 
-  .derivative-eyebrow {
-    color: var(--ink-muted);
-    font-size: var(--step--1);
-  }
-
   .derivatives-lede {
     max-width: 64ch;
     margin-top: var(--space-2);
     color: var(--ink-muted);
     font-size: var(--step-1);
     line-height: 1.55;
-  }
-
-  .derivatives-head-index {
-    display: grid;
-    justify-items: end;
-    gap: 2px;
-    padding-left: var(--space-5);
-    border-left: 1px solid var(--rule);
-    white-space: nowrap;
-  }
-
-  .derivatives-head-index > span {
-    color: var(--ink-muted);
-    font-size: var(--step--1);
-  }
-
-  .derivatives-head-index > strong {
-    font-size: var(--step-4);
-    font-weight: 700;
-    letter-spacing: var(--tracking);
   }
 
   .derivatives-tabs {
@@ -152,6 +127,81 @@
     gap: var(--space-5);
   }
 
+  /* ------------------------------------------------------------ ETF */
+
+  .etf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .etf-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px var(--space-2);
+    align-items: center;
+    padding: var(--space-3);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--paper);
+    text-align: left;
+  }
+
+  .etf-card:hover {
+    border-color: var(--ink-muted);
+  }
+
+  .etf-card.is-active {
+    border-color: var(--ink);
+    background: var(--nx-tint, var(--sunken));
+  }
+
+  .etf-card-theme {
+    grid-column: 1 / -1;
+    color: var(--ink-muted);
+    font-size: var(--step--2);
+    font-weight: 700;
+  }
+
+  .etf-card-name {
+    overflow: hidden;
+    font-size: var(--step-1);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .etf-card-code {
+    color: var(--ink-faint);
+    font-size: var(--step--2);
+  }
+
+  .etf-card-price {
+    font-size: var(--step-3);
+    font-weight: 700;
+    letter-spacing: var(--tracking);
+  }
+
+  .etf-card-change {
+    font-size: var(--step-0);
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .etf-card .spark {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 28px;
+    margin-top: 2px;
+  }
+
+  .etf-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+  }
+
   /* ------------------------------------------------------------ 공통 카드 */
 
   .derivative-card {
@@ -248,10 +298,6 @@
     background: var(--paper);
   }
 
-  .derivative-ticket.is-wide {
-    border-top: var(--rule-heavy);
-  }
-
   .derivative-ticket h2 {
     font-size: var(--step-2);
     font-weight: 700;
@@ -277,17 +323,28 @@
   }
 
   .derivative-side-tabs .terminal-tab.is-active {
-    background: var(--paper);
     color: var(--ink);
   }
 
   .derivative-side-tabs .terminal-tab.is-buy.is-active {
     color: var(--up-deep);
-    background: var(--up-wash);
   }
 
   .derivative-side-tabs .terminal-tab.is-sell.is-active {
     color: var(--down-deep);
+  }
+
+  /* 고른 방향의 바탕은 칸 사이를 미끄러지는 막대가 칠한다. */
+  .derivative-side-tabs > .nx-nav-indicator {
+    border-radius: var(--radius);
+    background: var(--paper);
+  }
+
+  .derivative-side-tabs:has(> .is-buy.is-active) > .nx-nav-indicator {
+    background: var(--up-wash);
+  }
+
+  .derivative-side-tabs:has(> .is-sell.is-active) > .nx-nav-indicator {
     background: var(--down-wash);
   }
 
@@ -392,197 +449,6 @@
     color: var(--ink);
   }
 
-  /* ------------------------------------------------------------ 선물 */
-
-  .futures-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 1.1fr);
-    gap: var(--space-5);
-    align-items: center;
-    padding-bottom: var(--space-4);
-    border-bottom: var(--rule-heavy);
-  }
-
-  .futures-quote {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-
-  .futures-price {
-    font-size: var(--step-6);
-    font-weight: 700;
-    letter-spacing: var(--tracking);
-    line-height: 1.1;
-  }
-
-  .futures-change {
-    font-size: var(--step-1);
-    font-weight: 700;
-  }
-
-  .futures-quote .spark {
-    width: min(100%, 260px);
-    height: 44px;
-    margin-top: var(--space-2);
-  }
-
-  .futures-facts {
-    border-top: 0;
-    padding-top: 0;
-  }
-
-  .futures-order-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr);
-    gap: var(--space-5);
-    align-items: start;
-  }
-
-  .futures-order-main {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .derivative-leverage {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  .derivative-chip {
-    min-width: 52px;
-    min-height: 32px;
-    padding: 0 12px;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius-pill);
-    color: var(--ink-muted);
-    font-size: var(--step-0);
-    font-weight: 700;
-  }
-
-  .derivative-chip:hover {
-    border-color: var(--ink-muted);
-    color: var(--ink);
-  }
-
-  .derivative-chip.is-active {
-    border-color: var(--ink);
-    background: var(--nx-tint, var(--sunken));
-    color: var(--ink);
-  }
-
-  /* ------------------------------------------------------------ 옵션 */
-
-  .option-cycles {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-3);
-  }
-
-  .option-cycle {
-    display: grid;
-    gap: 2px;
-    padding: var(--space-3);
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    background: var(--paper);
-    text-align: left;
-  }
-
-  .option-cycle:hover {
-    border-color: var(--ink-muted);
-  }
-
-  .option-cycle.is-active {
-    border-color: var(--ink);
-    background: var(--nx-tint, var(--sunken));
-  }
-
-  .option-cycle-tag {
-    width: fit-content;
-    padding: 1px 6px;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius-pill);
-    color: var(--ink-muted);
-    font-size: var(--step--2);
-    font-weight: 700;
-  }
-
-  .option-cycle strong {
-    font-size: var(--step-1);
-  }
-
-  .option-cycle-count {
-    font-size: var(--step-3);
-    font-weight: 700;
-    letter-spacing: var(--tracking);
-  }
-
-  .option-cycle-expiry {
-    color: var(--ink-muted);
-    font-size: var(--step--2);
-  }
-
-  .option-chain td {
-    padding-block: 10px;
-  }
-
-  .option-chain tr.is-atm td {
-    background: var(--sunken);
-  }
-
-  .option-strike {
-    position: relative;
-    font-weight: 700;
-  }
-
-  .option-strike em {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 0 5px;
-    border-radius: var(--radius-pill);
-    background: var(--brand-wash);
-    color: var(--brand-wine);
-    font-size: var(--step--2);
-    font-style: normal;
-    font-weight: 700;
-    vertical-align: 1px;
-  }
-
-  .option-quote {
-    display: grid;
-    justify-items: end;
-    gap: 1px;
-    width: 100%;
-    padding: 4px 8px;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
-    text-align: right;
-  }
-
-  .option-quote:hover {
-    border-color: var(--rule);
-    background: var(--paper);
-  }
-
-  .option-quote small {
-    color: var(--ink-faint);
-    font-size: var(--step--2);
-  }
-
-  .option-quote.is-call.is-selected {
-    background: var(--up-wash);
-    color: var(--up-deep);
-  }
-
-  .option-quote.is-put.is-selected {
-    background: var(--down-wash);
-    color: var(--down-deep);
-  }
-
   /* ------------------------------------------------------------ 반응형 */
 
   @media (max-width: 900px) {
@@ -590,18 +456,11 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .derivatives-head-index {
-      justify-items: start;
-      padding-left: 0;
-      border-left: 0;
-    }
-
     .derivative-account {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .futures-hero,
-    .futures-order-grid {
+    .etf-detail-grid {
       grid-template-columns: minmax(0, 1fr);
     }
   }
@@ -634,22 +493,12 @@
       align-items: stretch;
     }
 
-    .option-cycles {
-      grid-template-columns: minmax(0, 1fr);
+    .etf-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .option-cycle {
-      grid-template-columns: 1fr auto;
-      align-items: center;
-    }
-
-    .option-cycle-tag,
-    .option-cycle-expiry {
-      grid-column: 1 / -1;
-    }
-
-    .futures-price {
-      font-size: var(--step-5);
+    .etf-card-name {
+      font-size: var(--step-0);
     }
   }
 }

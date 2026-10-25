@@ -1,53 +1,96 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { useSiteNotice, type SiteNotice, type SiteNoticeItem } from "../notice";
-import { useModalDialog } from "../lib/useModalDialog";
+import { useSiteNotices, type SiteNoticeItem } from "../notice";
+import { navigate } from "../router";
 
 const SEEN_KEY = "gamestock-site-notice-seen";
 
-function readSeen() {
-  try { return localStorage.getItem(SEEN_KEY); }
-  catch { return null; }
+/** 확인한 공지 열쇠들. 예전에 한 창으로 묶어 저장한 값("1:t,2:t")도 그대로 읽힌다. */
+function readSeen(): string[] {
+  try { return (localStorage.getItem(SEEN_KEY) ?? "").split(",").filter(Boolean); }
+  catch { return []; }
 }
 
 export function SiteNoticeDialog() {
-  const [seen, setSeen] = useState(readSeen);
-  const notice = useSiteNotice();
-  if (!notice || seen === notice.id) return null;
-  const close = () => {
-    try { localStorage.setItem(SEEN_KEY, notice.id); } catch { /* Hide for this session only. */ }
-    setSeen(notice.id);
+  const [seen] = useState(readSeen);
+  // 한 번 들어올 때 공지는 하나만 띄운다. 남은 공지는 다음 접속 때 차례로 뜬다.
+  const [closed, setClosed] = useState(false);
+  const notices = useSiteNotices();
+  const current = notices?.find((item) => !seen.includes(item.key));
+  if (closed || !current) return null;
+  const dismiss = () => {
+    // API가 안 될 때 뜨는 대체 공지도 같은 기록에 남으므로, 지금 목록에 없는 열쇠도 지우지 않고 최근 50개만 둔다.
+    const next = [...seen, current.key].slice(-50);
+    try { localStorage.setItem(SEEN_KEY, next.join(",")); } catch { /* Hide for this session only. */ }
+    setClosed(true);
   };
 
-  return <NoticeDialog notice={notice} onClose={close} />;
+  return <NoticeDialog item={current} onDismiss={dismiss} />;
 }
 
-/** 공지 창의 내용. 관리자 화면의 미리보기도 같은 마크업을 쓴다. */
-export function SiteNoticeContent({ items, onClose, titleId = "site-notice-title" }: { items: SiteNoticeItem[]; onClose?: () => void; titleId?: string }) {
+const isExternal = (url: string) => /^https:\/\//i.test(url);
+
+/** 공지 창 한 장. 관리자 화면의 미리보기도 같은 마크업을 쓴다. 미리보기(onDismiss 없음)에서는 버튼이 눌리지 않는다. */
+export function SiteNoticeCard({ item, onDismiss, titleId = "site-notice-title" }: { item: SiteNoticeItem; onDismiss?: () => void; titleId?: string }) {
+  const live = Boolean(onDismiss);
+  const inert = live ? {} : { tabIndex: -1, "aria-hidden": true as const };
+  const { action } = item;
+  const follow = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!live || !action) { event.preventDefault(); return; }
+    if (!isExternal(action.url)) { event.preventDefault(); navigate(action.url); }
+    onDismiss?.();
+  };
+
   return (
-    <div className="circuit-notice-content">
-      <p id={titleId} className="circuit-notice-kicker">📢공지사항</p>
-      {items.map((item, index) => (
-        <section key={`${index}:${item.heading}`} className="site-notice-item">
-          <h3>{item.heading}</h3>
-          <p>{item.body}</p>
-          {item.code && <p className="site-notice-code">코드 <strong>{item.code}</strong></p>}
-        </section>
-      ))}
-      {/* 미리보기(onClose 없음)에서는 누를 수 없는 그림으로만 둔다. */}
-      <button type="button" className="circuit-notice-confirm" onClick={onClose} autoFocus={Boolean(onClose)}
-        tabIndex={onClose ? undefined : -1} aria-hidden={onClose ? undefined : true}>확인했어요</button>
-    </div>
+    <article className={`site-notice-card${item.image ? " has-image" : ""}`}>
+      <button type="button" className="site-notice-close" aria-label="닫기" onClick={onDismiss} {...inert}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 3.5l9 9m0-9l-9 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      </button>
+      {item.image && <img className="site-notice-image" src={item.image} alt="" />}
+      <div className="site-notice-text">
+        <h2 id={titleId}>{item.heading}</h2>
+        <p className="site-notice-body">{item.body}</p>
+        {item.code && <p className="site-notice-code">코드 <strong>{item.code}</strong></p>}
+      </div>
+      <div className="site-notice-actions">
+        <button type="button" className={`site-notice-button ${action ? "is-quiet" : "is-strong"}`} onClick={onDismiss} {...inert}>
+          {item.dismissLabel || (action ? "닫기" : "확인했어요")}
+        </button>
+        {action && (
+          <a className="site-notice-button is-strong" href={action.url} onClick={follow}
+            {...(isExternal(action.url) ? { target: "_blank", rel: "noopener noreferrer" } : {})} {...inert}>
+            {action.label}
+          </a>
+        )}
+      </div>
+    </article>
   );
 }
 
-function NoticeDialog({ notice, onClose }: { notice: SiteNotice; onClose: () => void }) {
-  const dialog = useModalDialog();
+function NoticeDialog({ item, onDismiss }: { item: SiteNoticeItem; onDismiss: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    element.showModal();
+    return () => {
+      element.close();
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus({ preventScroll: true });
+    };
+  }, []);
+  // showModal은 첫 번째 버튼(X)에 초점을 둔다. 공지가 열리거나 다음 공지로 넘어가면 진한 버튼으로 옮긴다.
+  useEffect(() => {
+    dialog.current?.querySelector<HTMLElement>(".site-notice-button.is-strong")?.focus();
+  }, [item.key]);
 
   return createPortal(
     <dialog ref={dialog} className="circuit-notice site-notice" aria-labelledby="site-notice-title"
-      onCancel={(event) => { event.preventDefault(); onClose(); }}>
-      <SiteNoticeContent items={notice.items} onClose={onClose} />
+      onCancel={(event) => { event.preventDefault(); onDismiss(); }}>
+      <SiteNoticeCard key={item.key} item={item} onDismiss={onDismiss} />
     </dialog>, document.body,
   );
 }

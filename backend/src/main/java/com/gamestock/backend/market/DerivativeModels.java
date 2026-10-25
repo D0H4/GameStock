@@ -66,4 +66,17 @@ public final class DerivativeModels {
     public record CloseRequest(@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.gamestock.backend.config.StrictIntegerDeserializer.class) @Min(1) @Max(100) int quantity) { }
 
     public record OrderResult(String message, Account account) { }
+
+    /** 옵션 거래 흐름 한 봉. at은 봉 시작(epoch 초), index는 봉 안 마지막 지수 관측(없으면 null). */
+    public record OptionFlowBucket(long at, Double index, long callVolume, long putVolume,
+                                   long callPremium, long putPremium, long netPremium) { }
+
+    /** 지수 선물 한 봉. 주식 차트 봉과 같은 이름을 쓰되 지수라 소수 둘째 자리까지 둔다. volume은 봉 안 지수 관측 수. */
+    public record IndexCandle(String recordedAt, double openPrice, double highPrice, double lowPrice,
+                              double closePrice, long volume) { }
+
+    /** 기간 전체 합계와 봉 목록. netPremium = (콜 매수 − 콜 청산) − (풋 매수 − 풋 청산). */
+    public record OptionFlow(String range, int intervalSeconds, long from, long to,
+                             long callVolume, long putVolume, long callPremium, long putPremium, long netPremium,
+                             List<OptionFlowBucket> buckets) { }
 }

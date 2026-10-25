@@ -37,5 +37,5 @@ export function GameIcon({
 
   if (!source) return <span className={classes} aria-hidden="true" />;
 
-  return <img className={classes} src={source} alt={name ? `${name} 앱 아이콘` : ""} aria-hidden={name ? undefined : true} loading="lazy" decoding="async" />;
+  return <img className={classes} src={source} alt={name ? `${name} 앱 아이콘` : ""} aria-hidden={name ? undefined : true} />;
 }

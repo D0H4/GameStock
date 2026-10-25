@@ -6,8 +6,8 @@ export type LiveCandle = { at: number; firstAt: number; lastAt: number; open: nu
 
 /** Match the server's UTC/Unix bucket boundaries, including weekly candles. */
 export const CANDLE_INTERVAL_MS = {
-  realtime: 60_000, "1h": 60_000, "6h": 300_000, "12h": 600_000,
-  "1d": 1_800_000, "1w": 7_200_000, "1m": 86_400_000, "1y": 604_800_000,
+  "1h": 60_000, "6h": 300_000, "12h": 600_000,
+  "1d": 1_800_000, "3d": 3_600_000, "2w": 21_600_000, "1m": 86_400_000, "1y": 604_800_000,
 } as const;
 
 /** Trade snapshots are newest first. Keep actual server times; never create bars from a client clock. */
