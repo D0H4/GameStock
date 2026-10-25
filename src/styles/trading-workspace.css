@@ -37,11 +37,6 @@ html[data-nx-theme="light"] :is(.nx-trade-page, .nx-product-page) {
 .nx-trade-page .nx-head-price .restriction-badge { align-self: flex-start; }
 .nx-trade-page .nx-chart { min-height: 0; margin-top: 20px; }
 html[data-nx] .nx-trade-page .stock-series-chart { display: flex; flex-direction: column; }
-html[data-nx] .nx-trade-page .chart-toolbar { order: 2; flex-wrap: wrap; padding-top: 16px; border: 0; }
-html[data-nx] .nx-trade-page .chart-readout { min-height: 32px; }
-html[data-nx] .nx-trade-page .chart-plot { height: clamp(260px, 34vh, 360px); }
-html[data-nx] .nx-trade-page .chart-control-button { min-height: 38px; padding: 6px 10px; }
-html[data-nx] .nx-trade-page .chart-control-button.is-active { background: var(--trade-field); }
 .nx-trade-facts h2, .nx-stock-news h2 { margin: 0 0 24px; font-size: 18px; font-weight: 500; }
 .nx-trade-page .nx-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: auto; grid-auto-flow: row; gap: 28px 32px; margin: 0; padding: 0; border: 0; }
 .nx-trade-page .nx-stats > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }

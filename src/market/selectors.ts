@@ -70,16 +70,6 @@ export function sessionRate(quote: Quote): number {
   return (quote.price - quote.prevClose) / quote.prevClose;
 }
 
-/** 세션 누적 거래대금. */
-export function turnover(snapshot: MarketSnapshot): number {
-  let total = 0;
-  for (const code of snapshot.codes) {
-    const quote = snapshot.quotes[code];
-    if (quote) total += quote.price * quote.volume;
-  }
-  return total;
-}
-
 /**
  * 최근 체결 내역의 매수·매도 수량. 서버 시세의 누적 buyVolume·sellVolume은 거래량을 반씩 나눈 값이라
  * 쏠림이 보이지 않아서, 매수·매도가 표시된 체결 내역으로 센다.
@@ -104,29 +94,6 @@ export function strengthRatio(quote: Quote): number | null {
 export function buyShare(quote: Quote): number {
   const { bought, sold } = printVolumes(quote);
   return bought + sold > 0 ? bought / (bought + sold) : 0.5;
-}
-
-/** 등락 상위·하위 종목. */
-export function movers(snapshot: MarketSnapshot, direction: 1 | -1, count: number): string[] {
-  return [...snapshot.codes]
-    .filter((code) => snapshot.quotes[code])
-    .sort((a, b) => (sessionRate(snapshot.quotes[b]) - sessionRate(snapshot.quotes[a])) * direction)
-    .slice(0, count);
-}
-
-/** 가장 많이 거래된 종목. */
-export function busiest(snapshot: MarketSnapshot): string | null {
-  let best: string | null = null;
-  let bestVolume = -1;
-  for (const code of snapshot.codes) {
-    const quote = snapshot.quotes[code];
-    if (!quote) continue;
-    if (quote.volume > bestVolume) {
-      bestVolume = quote.volume;
-      best = code;
-    }
-  }
-  return best;
 }
 
 /** 소식 발행 시점 대비 현재까지의 시세 반영률. */

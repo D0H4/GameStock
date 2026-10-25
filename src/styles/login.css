@@ -5,13 +5,6 @@
  */
 
 @layer component {
-  .login-page {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: calc(100dvh - var(--bar));
-    padding: 56px var(--space-4) 64px;
-  }
 
   /* ------------------------------------------------------------- 카드 */
 
@@ -172,15 +165,6 @@
 
 @layer responsive {
   /* 콘텐츠 여백이 좁아지는 지점(720px)에 맞춰 무대 여백도 상쇄한다. */
-  @media (max-width: 720px) {
-    .login-page {
-      min-height: calc(100dvh - 48px);
-      margin-top: calc(var(--space-4) * -1);
-      margin-bottom: calc(var(--space-6) * -1);
-      padding: 40px var(--space-3) 48px;
-      border-radius: 0;
-    }
-  }
 
   @media (max-width: 560px) {
     .login-panel { padding: 26px 20px; border-radius: 16px; }

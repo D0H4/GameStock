@@ -123,7 +123,6 @@ html[data-nx][data-nx-theme="light"] .nx-seg,
 html[data-nx][data-nx-theme="light"] .nx-ticket-sides,
 html[data-nx][data-nx-theme="light"] .nx-ticket-submit:disabled { box-shadow: inset 0 0 0 1px var(--nx-line); }
 html[data-nx][data-nx-theme="light"] .nx-seg button.is-active { background: var(--nx-tint); font-weight: 500; }
-html[data-nx][data-nx-theme="light"] .nx-news.is-empty { border: 1px solid var(--nx-line); }
 
 html[data-nx] {
   --nx-num: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Malgun Gothic", system-ui, sans-serif;
@@ -258,22 +257,6 @@ html[data-nx] .nx-combo .is-up { color: var(--up-deep); }
 html[data-nx] .nx-num.is-down,
 html[data-nx] .nx-combo .is-down { color: var(--down-deep); }
 
-/* 터미널 격자: 목록 | 시세·차트 위 잔고 | 호가 위 주문. 가운데와 오른쪽은 각자 세로로 쌓는다. */
-.nx-terminal {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr) 420px;
-  grid-template-areas: "watch main side";
-  gap: var(--nx-gap);
-  min-height: calc(100vh - 56px);
-  box-sizing: border-box;
-  padding: var(--nx-gap);
-  background: var(--nx-stage);
-}
-
-.nx-terminal .nx-panel { border-radius: var(--nx-radius); }
-/* 라이트는 무대와 상자가 같은 흰색이라 괘선 한 줄로만 경계를 그린다. */
-html[data-nx][data-nx-theme="light"] .nx-terminal .nx-panel { box-shadow: inset 0 0 0 1px var(--nx-line); }
-
 .nx-panel {
   min-width: 0;
   padding: 24px var(--nx-pad);
@@ -297,36 +280,7 @@ html[data-nx][data-nx-theme="light"] .nx-terminal .nx-panel { box-shadow: inset 
 
 .nx-panel-head .nx-panel-title { margin: 0; }
 .nx-muted { color: var(--ink-muted); font-size: 12px; }
-
-/* 종목 목록 */
-.nx-watch { grid-area: watch; padding: 24px 12px; }
 /* 넓은 화면: 종목 목록은 격자 높이를 늘리지 않고 제 칸 안에서 스크롤한다. 아래 빈 공간을 막는다. */
-@media (min-width: 1081px) {
-  .nx-watch { contain: size; overflow-y: auto; scrollbar-width: thin; }
-}
-.nx-watch .nx-panel-title { padding: 0 8px; }
-.nx-watch ul { margin: 0; padding: 0; list-style: none; }
-
-.nx-watch-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  grid-template-areas: "icon name name" "icon price rate";
-  align-items: center;
-  column-gap: 12px;
-  min-height: 60px;
-  padding: 8px 10px;
-  border-radius: var(--nx-radius);
-  color: var(--ink);
-  text-decoration: none;
-}
-
-.nx-watch-row:hover { background: var(--nx-tint); }
-.nx-watch-row.is-active { background: var(--nx-tint); }
-.nx-watch-row .game-icon { grid-area: icon; width: 28px; height: 28px; border-radius: 6px; }
-.nx-watch-name { grid-area: name; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.nx-watch-price { grid-area: price; color: var(--ink-muted); font-size: 12px; }
-.nx-watch-rate { grid-area: rate; font-size: 13px; text-align: right; }
 
 .nx-watch-limit {
   position: absolute;
@@ -339,11 +293,6 @@ html[data-nx][data-nx-theme="light"] .nx-terminal .nx-panel { box-shadow: inset 
   font-size: 10px;
   line-height: 15px;
 }
-
-.nx-watch-row:has(.nx-watch-limit) .nx-watch-name { padding-right: 26px; }
-
-/* 가운데: 종목 머리, 차트, 뉴스 */
-.nx-center { grid-area: center; display: flex; flex-direction: column; gap: 24px; padding: 28px var(--nx-pad); }
 
 .nx-head-id { display: flex; align-items: center; gap: 14px; }
 .nx-head-id .game-icon { width: 48px; height: 48px; border-radius: 8px; }
@@ -451,69 +400,8 @@ html[data-nx] .restriction-badge {
 /* 기존 차트를 무대 위에 맞춘다. */
 html[data-nx] .nx-chart { --rule-width: 1px; }
 html[data-nx] .nx-chart .chart { margin: 0; border: 0; background: transparent; }
-html[data-nx] .nx-chart .stock-series-chart .chart-toolbar { gap: 12px; }
-html[data-nx] .nx-chart .stock-series-chart .chart-range-control,
-html[data-nx] .nx-chart .stock-series-chart .chart-mode-control { gap: 2px; padding: 0; }
-html[data-nx] .nx-chart .stock-series-chart .chart-control-button { padding: 4px 10px; border-radius: 6px; color: var(--ink-muted); font-size: 13px; }
-html[data-nx] .nx-chart .stock-series-chart .chart-control-button.is-active { background: var(--nx-tint); color: var(--ink); font-weight: 500; }
-html[data-nx] .nx-chart .stock-series-chart .chart-readout { min-height: 44px; padding: 4px 0 6px; justify-content: flex-start; text-align: left; }
-html[data-nx] .nx-chart .stock-series-chart .chart-status { color: var(--ink-muted); font-size: 12px; }
-html[data-nx] .nx-chart .stock-series-chart .chart-plot { height: clamp(280px, 38vh, 440px); }
-html[data-nx] .nx-chart .stock-series-chart .chart-current { border-radius: 4px; background: var(--brand); color: var(--brand-ink); }
-html[data-nx] .nx-chart .chart-prevclose { stroke: var(--ink-faint); }
-html[data-nx] .nx-chart .chart-timeline { padding-top: 8px; }
-
-.chart-news-dot {
-  position: absolute;
-  z-index: 2;
-  width: 12px;
-  height: 12px;
-  border: 3px solid var(--nx-stage, #1b1726);
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 0 1px var(--ink-faint, #a29db0);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* 뉴스 띠: 두 테마 모두 흰 면. 가격을 움직인 이유가 들어오는 자리. */
-.nx-news {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: "tag title effect" "tag meta effect";
-  align-items: center;
-  column-gap: 16px;
-  padding: 16px 20px;
-  border: 1px solid var(--nx-news-rule);
-  border-radius: var(--nx-radius);
-  background: var(--nx-news-bg);
-  color: var(--nx-news-ink);
-  text-decoration: none;
-}
-
-.nx-news:hover .nx-news-title { text-decoration: underline; text-underline-offset: 3px; }
-.nx-news.is-empty { display: block; margin: 0; background: var(--nx-raised); color: var(--ink-muted); font-size: 13px; }
-
-.nx-news-tag {
-  grid-area: tag;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--brand);
-  color: var(--brand-ink);
-  font-size: 12px;
-}
 
 .nx-news-title { grid-area: title; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
-.nx-news-meta { grid-area: meta; color: var(--nx-news-muted); font-size: 12px; }
-.nx-news-effect { grid-area: effect; display: grid; justify-items: end; font-size: 18px; font-weight: 600; }
-.nx-news-effect-label { color: var(--nx-news-muted); font-size: 11px; font-weight: 400; }
-/* 공통 등락색 규칙(html[data-nx] .nx-num.is-up)보다 구체적이어야 밝은 뉴스 면에서 진한 색이 적용된다. */
-html[data-nx] a.nx-news .nx-num.is-up { color: #c01f34; }
-html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
-
-/* 오른쪽 열: 호가 바로 아래에 주문서를 붙인다. 가운데 차트 높이와 상관없이 이어진다. */
-.nx-main { grid-area: main; display: flex; flex-direction: column; gap: var(--nx-gap); min-width: 0; }
-.nx-rail { grid-area: side; display: flex; flex-direction: column; gap: var(--nx-gap); min-width: 0; }
 
 /* 호가와 체결 레인 */
 .nx-book { display: flex; flex-direction: column; }
@@ -633,7 +521,6 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 
 /* 아래 줄: 잔고·주문 */
 .nx-account { grid-area: account; flex: 1; }
-.nx-order { flex: 1; min-width: 0; }
 
 .nx-alert { grid-column: 1 / -1; margin: 0; padding: 10px 16px; background: var(--notice-bg); color: var(--notice-ink); }
 .nx-empty { padding: 48px 24px; color: var(--ink-muted); }
@@ -652,9 +539,6 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
 .nx-text-button:hover { color: var(--ink); }
 
 /* 넓은 노트북: 목록을 줄인다. */
-@media (max-width: 1360px) {
-  .nx-terminal { grid-template-columns: 208px minmax(0, 1fr) 380px; }
-}
 
 /* 태블릿·휴대폰: 한 줄로 쌓고, 종목 목록은 가로로 넘긴다. */
 @media (max-width: 1080px) {
@@ -665,24 +549,9 @@ html[data-nx] a.nx-news .nx-num.is-down { color: #2f5fe0; }
   /* 지수가 빠진 자리를 밝기 버튼이 밀어내고, 로그인 버튼은 그 바로 오른쪽에 붙는다. */
   .nx-top .nx-icon-button { margin-left: auto; }
   .nx-top .profile-menu { margin-left: 0; }
-  .nx-terminal {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "watch" "center" "side" "account";
-  }
-  .nx-main { display: contents; }
-  .nx-watch { padding: 10px 0; }
-  .nx-watch .nx-panel-title { display: none; }
-  .nx-watch ul { display: flex; gap: 6px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
-  .nx-watch-row { grid-template-columns: 24px auto; grid-template-areas: "icon name" "icon rate"; min-width: 132px; }
-  .nx-watch-row .game-icon { width: 24px; height: 24px; }
-  .nx-watch-price { display: none; }
-  .nx-watch-rate { text-align: left; }
-  .nx-center { padding: 20px var(--nx-pad); }
   .nx-price { font-size: 36px; }
   .nx-head-name { font-size: 18px; }
-  .nx-news { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "tag title" "tag meta" "effect effect"; }
   .nx-news-title { white-space: normal; }
-  .nx-news-effect { justify-items: start; grid-auto-flow: column; gap: 8px; align-items: baseline; margin-top: 6px; }
 }
 
 @media (max-width: 520px) {

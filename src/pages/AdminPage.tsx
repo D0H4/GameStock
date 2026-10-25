@@ -1,16 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "../components/Link";
 import { Panel } from "../components/Panel";
 import { apiFetch } from "../lib/api";
-import { useProfile } from "../lib/profile";
 import { won } from "../market/format";
-import { useRoute, type AdminSection } from "../router";
-import { AdminAudit } from "./admin/AdminAudit";
-import { AdminNotices } from "./admin/AdminNotices";
+import type { AdminSection } from "../router";
 import { AdminMemberDetail, CashAdjustment, MissionRecovery } from "./admin/AdminMember";
-import { AdminRuntime } from "./admin/AdminRuntime";
-import { AdminOrders } from "./admin/AdminOrders";
-import { AdminPromos } from "./admin/AdminPromos";
 
 type AdminUser = {
   id: number;
@@ -37,36 +30,6 @@ const BAN_PRESETS = [1, 3, 7, 30] as const;
 
 const formatTime = (value: string | null) =>
   value ? new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "short" }) : "-";
-
-/** 관리자 전용 화면. 서버가 모든 요청에서 ADMIN 권한을 다시 확인한다. */
-export function AdminPage() {
-  const profile = useProfile();
-  const route = useRoute();
-  const section = route.name === "admin" ? route.section : "users";
-
-  if (!profile) return <p className="empty" role="status">권한을 확인하고 있어요.</p>;
-  if (!profile.admin) return <p className="empty" role="alert">관리자만 볼 수 있는 페이지입니다.</p>;
-
-  return (
-    <div className="page-stack">
-      <h1 className="page-title">관리자</h1>
-      <AdminRuntime />
-      <nav className="admin-nav" aria-label="관리 메뉴">
-        {ADMIN_SECTIONS.map((item) => (
-          <Link key={item.section} to={item.to} className={`admin-nav-link${item.section === section ? " is-active" : ""}`}
-            aria-current={item.section === section ? "page" : undefined}>
-            {item.label}
-          </Link>
-        ))}
-      </nav>
-      {section === "users" && <AdminUsers />}
-      {section === "orders" && <AdminOrders />}
-      {section === "notices" && <AdminNotices />}
-      {section === "promos" && <AdminPromos />}
-      {section === "audit" && <AdminAudit />}
-    </div>
-  );
-}
 
 export function AdminUsers() {
   const [query, setQuery] = useState("");

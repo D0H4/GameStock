@@ -14,18 +14,6 @@
     overflow-x: clip;
   }
 
-  /* ---------------------------------------------------------------- 틀 */
-
-  .topbar {
-    border-bottom: var(--rule-width) solid var(--rule);
-  }
-
-  /* 상단 바는 창 양끝까지 편다. 폭을 막으면 로고는 왼쪽 끝, 프로필은 1280px 지점에 떠 좌우가 어긋난다. */
-  .topbar-inner {
-    gap: clamp(24px, 3vw, 56px);
-    padding-inline: var(--gutter);
-  }
-
   .nav {
     gap: clamp(20px, 2.4vw, 44px);
   }
@@ -42,141 +30,16 @@
   }
 
   /* 괘선이 본문 단과 같은 폭에서 끝나도록 안쪽 여백 대신 폭을 줄인다. */
-  /* 모의 시세 안내는 괘선 없이 모든 화면 맨 아래 가운데에 둔다. .app 이 화면 높이를 채우므로 내용이 짧아도 바닥에 붙는다. */
-  .statusbar {
-    width: calc(100% - 2 * var(--gutter));
-    max-width: calc(var(--page) - 2 * var(--gutter));
-    margin-inline: auto;
-    padding: var(--space-3) 0;
-    justify-content: center;
-  }
 
   .table {
     width: 100%;
   }
 
-  .quote-table .cell-name {
-    width: 100%;
-  }
-
-  /* ---------------------------------------------------------------- 홈 */
-
-  .home-page {
-    gap: var(--space-4);
-  }
-
-  .home-page .head {
-    padding-bottom: var(--space-3);
-    border-bottom: var(--rule-heavy);
-  }
-
-  .home-page .head-me.is-guest {
-    gap: var(--space-1);
-  }
-
-  .home-page .head-guest {
-    line-height: 1.4;
-  }
-
-  .home-page .head-value {
-    font-size: var(--step-6);
-  }
-
-  .home-page .head-value.is-small {
-    font-size: var(--step-5);
-  }
-
-  /* 오른 게임은 화면 폭을 가로로 쓰는 띠로 만든다. 아트워크는 줄이고 이름·등락을 바로 읽는다. */
-  /* 최대 6개가 한 줄 6칸 또는 3칸 두 줄로 떨어지게 칸 수를 정한다. auto-fit 은 5+1 로 한 장만 남기기도 한다. */
-  .home-page .spot {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: var(--space-2);
-  }
-
-  .home-page .spot > * {
-    display: grid;
-  }
-
-  .home-page .spot-item {
-    display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
-    grid-template-areas: "icon copy";
-    align-items: center;
-    column-gap: var(--space-3);
-    min-width: 0;
-    padding: 6px;
-    border: var(--rule-width) solid var(--rule);
-    border-radius: var(--radius);
-  }
-
-  .home-page .spot-item .game-icon {
-    grid-area: icon;
-    width: 48px;
-    height: 48px;
-  }
-
-  .home-page .spot-copy {
-    grid-area: copy;
-    display: grid;
-    gap: 1px;
-    min-width: 0;
-  }
-
-  .home-page .spot-name {
-    display: -webkit-box;
-    overflow: hidden;
-    font-size: var(--step-0);
-    font-weight: 600;
-    line-height: 1.35;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
-  }
-
-  .home-page .spot-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0 var(--space-3);
-    min-width: 0;
-    font-size: var(--step--1);
-  }
-
-  .home-page .spot-meta .delta {
-    font-size: var(--step--1);
-  }
-
-  .home-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
-    gap: clamp(16px, 1.4vw, 24px);
-    align-items: start;
-  }
-
-  .home-grid > .panel {
-    min-width: 0;
-  }
-
-  .home-page .quote-table tbody tr {
-    height: 46px;
-  }
-
-  .home-page .quote-table tbody th,
-  .home-page .quote-table tbody td {
-    padding-block: 4px;
-  }
-
   /* 표의 양끝을 패널 제목과 머리글 오른쪽 글자의 양끝에 맞춘다. 남는 폭은 이름 칸이 가져간다. */
-  .home-page .quote-table :is(th, td):first-child,
-  .account-page .table :is(th, td):first-child,
-  .loan-page .table :is(th, td):first-child,
   .admin-page .admin-table :is(th, td):first-child {
     padding-left: 0;
   }
 
-  .home-page .quote-table :is(th, td):last-child,
-  .account-page .table :is(th, td):last-child,
-  .loan-page .table :is(th, td):last-child,
   .admin-page .admin-table :is(th, td):last-child {
     padding-right: 0;
   }
@@ -186,194 +49,7 @@
     margin-left: auto;
   }
 
-  .home-grid .news-list {
-    gap: 0;
-  }
-
-  .home-grid .news-item {
-    padding: 5px 0;
-    border-bottom: var(--rule-width) solid var(--rule);
-  }
-
-  .home-grid .news-item:first-child {
-    padding-top: 0;
-  }
-
-  .home-grid .news-item:last-child {
-    padding-bottom: 0;
-    border-bottom: 0;
-  }
-
-  /* 한 줄로 잘라 제목이 끝나는 열을 맞추고, 등락 칸 폭을 고정해 그 열도 흔들리지 않게 한다. */
-  .home-grid .news-title a {
-    display: block;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .home-grid .news-item > .delta {
-    flex: none;
-    justify-content: flex-end;
-    width: 84px;
-  }
-
-  /* ---------------------------------------------------------------- 시장 */
-
-  /* 랭킹 탭과 같은 모양: 탭 줄 아래에만 괘선을 긋는다. */
-  .market-page .controls {
-    padding-block: var(--space-2);
-    border-bottom: var(--rule-width) solid var(--rule);
-  }
-
-  .market-page .market-layout.has-detail {
-    grid-template-columns: minmax(0, 1.7fr) minmax(420px, 1fr);
-    gap: clamp(24px, 3vw, 56px);
-  }
-
-  .market-page .market-detail {
-    top: calc(var(--bar) + var(--space-5));
-    max-height: calc(100dvh - var(--bar) - var(--space-6));
-    overflow-y: auto;
-    padding-right: var(--space-2);
-    scrollbar-gutter: stable;
-  }
-
-  .market-page .quote-table tbody tr {
-    height: 54px;
-  }
-
-  .market-page .quote-table tbody th,
-  .market-page .quote-table tbody td {
-    padding-block: 10px;
-  }
-
-  .market-page .quote-table .cell-volume {
-    color: var(--ink-muted);
-  }
-
-  .market-page .quote-table .cell-turnover,
-  .market-page .quote-table .cell-marketcap {
-    color: var(--ink-muted);
-    white-space: nowrap;
-  }
-
   /* 넓은 화면에서는 이름 칸이 남는 폭을 독차지하지 않게 열 비율을 고정한다. */
-  @media (min-width: 721px) {
-    .market-page .quote-table {
-      table-layout: fixed;
-    }
-
-    .market-page .quote-table .cell-watch {
-      width: 48px;
-    }
-
-    .market-page .quote-table .cell-name {
-      width: 34%;
-    }
-
-    .market-page .quote-table .cell-num {
-      width: 13.2%;
-    }
-  }
-
-  @media (min-width: 721px) and (max-width: 1100px) {
-    .market-page .quote-table .cell-name {
-      width: 55%;
-    }
-
-    .market-page .quote-table .cell-num {
-      width: 15%;
-    }
-  }
-
-  /* ---------------------------------------------------------------- 뉴스 */
-  .news-page {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .news-page .news-split {
-    flex: 1 1 auto;
-  }
-
-  /* 본문을 고르지 않았을 때는 넓은 종이를 두 단으로 나눠 쓴다.
-     다단(columns) 대신 격자로 놓아 두 단의 첫 기사와 행 괘선이 같은 높이에 오게 한다. */
-  .news-page .news-split:not(.has-detail) .news-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: clamp(32px, 4vw, 72px);
-  }
-
-  .news-page .news-split:not(.has-detail) .news-item {
-    padding-block: var(--space-4);
-    border-bottom: var(--rule-width) solid var(--rule);
-  }
-
-  .news-page .news-split:not(.has-detail) .news-item:nth-child(-n + 2) {
-    padding-top: 0;
-  }
-
-  .news-page .news-split.has-detail {
-    grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
-    gap: clamp(24px, 3vw, 56px);
-  }
-
-  .news-page .news-split.has-detail .news-split-list,
-  .news-page .news-split-detail {
-    max-height: calc(100dvh - var(--bar) - 190px);
-  }
-
-  /* ---------------------------------------------------------------- 랭킹 */
-
-  .ranking-page .integration-ranking {
-    width: 100%;
-  }
-
-  @media (min-width: 641px) {
-    .ranking-page .integration-ranking col.ranking-col-rank {
-      width: 96px;
-    }
-
-    .ranking-page .integration-ranking col.ranking-col-change {
-      width: clamp(140px, 14vw, 220px);
-    }
-
-    .ranking-page .integration-ranking col.ranking-col-asset {
-      width: clamp(180px, 18vw, 300px);
-    }
-  }
-
-  .ranking-page .integration-ranking tbody tr {
-    height: 56px;
-  }
-
-  .ranking-page .integration-ranking th,
-  .ranking-page .integration-ranking td {
-    padding-block: 10px;
-  }
-
-  /* ---------------------------------------------------------------- 내 계좌 */
-
-  .account-page .account-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-    gap: var(--shell-gap);
-    align-items: start;
-  }
-
-  /* 칸 폭을 고정해 둬야 넓은 표가 패널을 밀어내지 않고 표 상자 안에서 가로로 넘긴다. */
-  .account-page .account-column {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-content: start;
-    gap: var(--shell-gap);
-    min-width: 0;
-  }
-
-  .account-page .table td:not(.cell-num) {
-    white-space: nowrap;
-  }
 
   /* ---------------------------------------------------------------- 설정 */
 
@@ -395,54 +71,11 @@
   }
 
   .account-settings:has(#settings-nickname) > .account-message,
-  .account-settings:has(#settings-nickname) > .account-reset,
   .account-settings:has(#settings-nickname) > .empty {
     grid-column: 1 / -1;
   }
 
-  /* ---------------------------------------------------------------- 충전 */
-
-  .charge-page {
-    display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
-    align-content: start;
-    gap: var(--shell-gap) clamp(24px, 3vw, 56px);
-  }
-
-  .charge-page > h1,
-  .charge-page > .charge-intro {
-    grid-column: 1 / -1;
-  }
-
   /* 설정과 같은 이유로 칸 지정은 두 칸일 때만 둔다. */
-  @media (min-width: 1101px) {
-    .charge-page > [aria-labelledby="mission-board"] {
-      grid-column: 1;
-    }
-
-    .charge-page > [aria-labelledby="promo-code"] {
-      grid-column: 2;
-    }
-  }
-
-  /* ---------------------------------------------------------------- 칭호 */
-
-  .titles-page {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-    gap: var(--shell-gap);
-  }
-
-  .titles-page > h1,
-  .titles-page > .title-progress,
-  .titles-page > .empty {
-    grid-column: 1 / -1;
-  }
-
-  .titles-page > .panel {
-    min-width: 0;
-  }
 
   /* ---------------------------------------------------------------- 관리자 */
 
@@ -465,39 +98,9 @@
 
   /* ---------------------------------------------------------------- 로그인 */
 
-  /* 본문 위아래 여백과 하단 안내 줄까지 빼서 첫 화면 안에 하단 안내가 다 들어오게 한다. */
-  .login-page {
-    min-height: calc(100dvh - var(--bar) - 2 * var(--shell-gap) - 48px);
-    padding: var(--space-6) var(--gutter);
-  }
-
   /* ---------------------------------------------------------------- 반응형 */
 
   @media (max-width: 1100px) {
-    .market-page .market-layout.has-detail {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .market-page .market-detail {
-      position: static;
-      order: -1;
-      max-height: none;
-      overflow: visible;
-      padding-right: 0;
-    }
-
-    .market-page .quote-table .cell-turnover,
-    .market-page .quote-table .cell-marketcap {
-      display: none;
-    }
-
-    .news-page .news-split.has-detail {
-      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-    }
-
-    .account-page .account-layout {
-      grid-template-columns: minmax(0, 1fr);
-    }
 
     .account-settings:has(#settings-nickname) {
       grid-template-columns: minmax(0, 1fr);
@@ -505,18 +108,6 @@
 
     .account-settings:has(#settings-nickname) > * {
       grid-column: 1;
-    }
-
-    .charge-page {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .charge-page > * {
-      grid-column: 1;
-    }
-
-    .titles-page {
-      grid-template-columns: minmax(0, 1fr);
     }
 
     .account-settings.admin-page,
@@ -531,98 +122,17 @@
     }
   }
 
-  @media (max-width: 1180px) {
-    .home-page .spot {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 980px) {
-    .home-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  @media (max-width: 900px) {
-    .news-page .news-split,
-    .news-page .news-split.has-detail {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 0;
-    }
-
-    .news-page .news-split.has-detail .news-split-list {
-      display: none;
-    }
-
-    .news-page .news-split-detail {
-      max-height: none;
-      overflow: visible;
-    }
-  }
-
   @media (max-width: 720px) {
     .content {
-      padding-inline: var(--space-4);
-    }
-
-    /* 메뉴마다 44px 누름 영역이 있으니 간격을 줄여 "로그인"까지 화면 안에 들어오게 한다. */
-    .topbar-inner {
-      gap: var(--space-2);
       padding-inline: var(--space-4);
     }
 
     .nav {
       gap: 0;
     }
-
-    .statusbar {
-      width: calc(100% - 2 * var(--space-4));
-      padding-inline: 0;
-    }
-
-    .home-page .spot {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .home-page .spot-name {
-      -webkit-line-clamp: 2;
-    }
-
-    .news-page .news-split:not(.has-detail) .news-list {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .news-page .news-split:not(.has-detail) .news-item:nth-child(2) {
-      padding-top: var(--space-4);
-    }
-
-    .market-page .controls {
-      padding-block: 0;
-      border: 0;
-    }
-
-    .login-page {
-      padding: var(--space-5) var(--space-4);
-    }
-  }
-
-  @media (max-width: 720px) {
-    .account-page .table .cell-name {
-      min-width: 0;
-    }
   }
 
   /* 폰 폭에서는 거래량 칸을 접어 게임 이름이 두세 글자로 잘리지 않게 한다. */
-  @media (max-width: 480px) {
-    .market-page .quote-table .cell-volume {
-      display: none;
-    }
-  }
-
-  /* 계좌 총액은 쉼표 뒤(<wbr>)에서만 줄을 바꾼다. 기본값 overflow-wrap: anywhere 는 숫자 묶음 중간을 자른다. */
-  .account-page .head-value {
-    overflow-wrap: normal;
-  }
 
   /*
    * 손가락 누름 영역. 폰 폭에서는 누를 수 있는 것을 모두 44×44px 이상으로 맞춘다.
@@ -634,13 +144,9 @@
       height: 44px;
     }
 
-    .filter-button,
-    .ranking-tab,
-    .admin-nav-link,
     .runtime-toggle,
     .text-button,
-    .member-more,
-    .charge-page .mission-action {
+    .member-more {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -649,8 +155,6 @@
     }
 
     .account-button,
-    .account-button.loan-chip,
-    .account-orders-table .account-button,
     .account-form input:not([type="checkbox"]):not([type="radio"]),
     .account-form select,
     .runtime-form input {
@@ -660,24 +164,6 @@
     .account-form input:not([type="checkbox"]):not([type="radio"]),
     .runtime-form input {
       height: 44px;
-    }
-
-    .quote-table .cell-watch,
-    .quote-table .watch-button {
-      width: 44px;
-      min-width: 44px;
-    }
-
-    .watch-button,
-    .integration-tools .watch-button {
-      min-width: 44px;
-      min-height: 44px;
-    }
-
-    .sort-button {
-      min-height: 44px;
-      padding-inline: 11px;
-      margin-inline: -11px;
     }
 
     .name-link {
@@ -695,13 +181,11 @@
       inset: 0;
     }
 
-    .notice-check,
-    .trade-page .terminal-filter {
+    .notice-check {
       min-height: 44px;
     }
 
-    .account-form .notice-check input,
-    .trade-page .terminal-filter input {
+    .account-form .notice-check input {
       width: 20px;
       height: 20px;
     }

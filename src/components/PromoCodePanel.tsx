@@ -1,6 +1,5 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { useEffect, useState, type FormEvent } from "react";
-import { Panel } from "./Panel";
 import { firebaseAuth } from "../lib/firebase";
 import { redeemPromoCode } from "../lib/titles";
 
@@ -41,33 +40,3 @@ export function usePromoCode() {
   return { user, code, setCode, pending, message, submit };
 }
 
-export function PromoCodePanel() {
-  const { user, code, setCode, pending, message, submit } = usePromoCode();
-  return (
-    <Panel id="promo-code" title="프로모션 코드">
-      <form className="account-form promo-form" onSubmit={submit}>
-        <label htmlFor="promo-code-input">코드를 입력하면 보상을 받을 수 있어요.</label>
-        <div className="account-input-row">
-          <input
-            id="promo-code-input"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder={user ? "프로모션 코드 입력" : "로그인 후 입력할 수 있어요"}
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={40}
-            disabled={!user || pending}
-          />
-          <button type="submit" className="account-button is-primary" disabled={!user || pending || !code.trim()}>
-            {pending ? "확인 중…" : "사용"}
-          </button>
-        </div>
-        {message && (
-          <p className={`account-hint promo-message${message.ok ? " is-ok" : " is-error"}`} role={message.ok ? "status" : "alert"}>
-            {message.text}
-          </p>
-        )}
-      </form>
-    </Panel>
-  );
-}

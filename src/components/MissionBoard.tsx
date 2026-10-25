@@ -1,7 +1,5 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "./Link";
-import { Panel } from "./Panel";
 import { announceMissionReward } from "./MissionRewardToast";
 import { firebaseAuth } from "../lib/firebase";
 import { apiFetch } from "../lib/api";
@@ -201,50 +199,3 @@ export function useDailyMissions() {
 export const MISSION_REWARD = MISSION_REWARD_CASH;
 export const missionLabel = (id: string) => (labels as Record<string, { title: string; description: string; action: string; href: string }>)[id];
 
-export function MissionBoard() {
-  const { user, ready, error, pending, completed, count, visibleMissionIds, complete } = useDailyMissions();
-  return (
-    <Panel id="mission-board" title="오늘의 투자 미션" meta={user && !ready ? (error ? "확인 필요" : "확인 중") : `${count}/${visibleMissionIds.length} 완료`}>
-      <p className="mission-reset-note">오늘 배정된 {visibleMissionIds.length}개 미션을 완료하면 하루 최대 {(visibleMissionIds.length * MISSION_REWARD_CASH).toLocaleString("ko-KR")}원 획득 가능</p>
-      {error && <p className="mission-reset-note" role="status">{error}</p>}
-      <div className="mission-list">
-        {visibleMissionIds.map((id) => {
-          const mission = labels[id];
-          return (
-            <article className={`mission-row${completed.has(id) ? " is-done" : ""}`} key={id}>
-              <span className="mission-check" aria-hidden="true">{completed.has(id) ? "✓" : "○"}</span>
-              <div className="mission-copy">
-                <h3>{mission.title}</h3>
-                <p>{mission.description}</p>
-                <p className="mission-reset-note">완료 보상 {MISSION_REWARD_CASH.toLocaleString("ko-KR")}원</p>
-              </div>
-              {completed.has(id) ? <span className="mission-status">5만원 수령 완료</span> : !user ? (
-                <button
-                  type="button"
-                  className="mission-action"
-                  aria-label={`${mission.title} 수행을 위해 로그인`}
-                  onClick={() => window.dispatchEvent(new Event("gamestock-request-login"))}
-                >
-                  로그인 필요
-                </button>
-              ) : pending.has(id) || !ready ? (
-                <span className="mission-action mission-action-disabled">{pending.has(id) ? "지급 중…" : "확인 중…"}</span>
-              ) : (
-                <Link
-                  className="mission-action"
-                  to={mission.href}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void complete(id, mission.href);
-                  }}
-                >
-                  {mission.action}
-                </Link>
-              )}
-            </article>
-          );
-        })}
-      </div>
-    </Panel>
-  );
-}
