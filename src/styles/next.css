@@ -161,6 +161,8 @@ html[data-nx] :focus-visible {
 
 /* 화면을 옮길 때 본문으로 보내는 초점은 낭독기용이다. 누를 수 있는 것이 아니라 본문 전체에 링을 두르지 않는다. */
 html[data-nx] main[tabindex="-1"]:focus-visible { outline: none; }
+/* 공지 창 자체에 초점이 와도 창 둘레에는 포커스 선을 그리지 않는다. */
+html[data-nx] dialog.site-notice:focus-visible { outline: none; }
 
 /* 공지 창은 열릴 때 버튼에 바로 초점이 가므로 링 대신 밝기로만 표시한다(protection.css). */
 html[data-nx] .circuit-notice-confirm:focus-visible,

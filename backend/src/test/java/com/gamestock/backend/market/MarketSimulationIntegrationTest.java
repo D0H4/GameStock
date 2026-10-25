@@ -142,8 +142,10 @@ class MarketSimulationIntegrationTest {
         var repository=new BatchMarketRepository(jdbc,new BotLedgerJournal(jdbc));var book=repository.load(now,Set.of(stock),Set.of(buyer,lp));
         book.submit(lp,stock,"SELL","LIMIT",2,10000,now,60000);book.submit(buyer,stock,"BUY","MARKET",2,0,now,0);repository.persist(book,now);
         MarketMakerEngine.RiskBook after=ReflectionTestUtils.invokeMethod(market,"liquidityRiskBook","UMA",lp);
-        assertEquals(1,book.fills.stream().mapToInt(BatchOrderBook.Fill::quantity).sum(),"The protected LP share remains for human orders");
-        assertEquals(before.cashBudget()+10000,after.cashBudget());
+        assertEquals(2,book.fills.stream().mapToInt(BatchOrderBook.Fill::quantity).sum(),"Published LP liquidity is executable through the last share");
+        assertEquals(before.cashBudget()+20000,after.cashBudget());
+        assertEquals(before.inventory()-2,after.inventory());
+        assertTrue(book.working(lp,stock).isEmpty(),"The fully filled LP quote must leave the book");
         long fees=jdbc.queryForObject("SELECT SUM(fees) FROM bot_ledger_totals",Long.class);
         assertEquals(0,fees,"Internal fills do not drain simulation cash");
         assertEquals(beforeCash,jdbc.queryForObject("SELECT SUM(cash) FROM users",Long.class)+fees);
