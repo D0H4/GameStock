@@ -20,8 +20,10 @@ export const FIREBASE_CONFIG = {
   messagingSenderId: "957680390567",
   appId: "1:957680390567:web:8f0d60ea888daae68e2682",
 };
-// 예전 네이티브 인증 화면과의 호환성을 위해 남겨둔 값이다.
-// Google 로그인은 외부 브라우저와 딥링크, 이메일 로그인은 공통 웹 화면을 사용한다.
+// 네이티브 Google 로그인용 OAuth 클라이언트 ID(Firebase 프로젝트 gamestock-20994의 Google Cloud).
+// WEB은 Firebase 콘솔 > Authentication > Google > 웹 SDK 구성의 웹 클라이언트 ID, IOS는 iOS 유형 클라이언트 ID다.
+// Android는 ID를 넣지 않고 패키지명(com.gamestock.mobile)과 서명 SHA-1로 Android 유형 클라이언트를 등록해 두면 된다.
+// 값이 비면 앱 안 인증 세션으로 웹 /login/google을 연다.
 export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
 export const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "";
 export const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";

@@ -30,7 +30,7 @@ function GoogleMark() {
 export function LoginScreen({ visible, onClose }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { user, googleError, signInEmail, register, resetPassword, startGoogle } = useAuth();
+  const { user, googleError, googleInApp, signInEmail, register, resetPassword, startGoogle } = useAuth();
   const [method, setMethod] = useState('choose');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -65,7 +65,7 @@ export function LoginScreen({ visible, onClose }) {
   const google = async () => {
     setError('');
     setWaitingGoogle(true);
-    try { await startGoogle(); } catch (failure) { setError(authErrorMessage(failure)); setWaitingGoogle(false); }
+    try { if (!(await startGoogle())) setWaitingGoogle(false); } catch (failure) { setError(authErrorMessage(failure)); setWaitingGoogle(false); }
   };
 
   const submit = async () => {
@@ -124,13 +124,13 @@ export function LoginScreen({ visible, onClose }) {
             <View style={styles.stack}>
               <Pressable accessibilityRole="button" onPress={() => void google()} disabled={waitingGoogle} style={({ pressed }) => [styles.button, styles.outline, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
                 {waitingGoogle ? <ActivityIndicator color={theme.inkSoft} /> : <GoogleMark />}
-                <Txt variant="body">{waitingGoogle ? '브라우저에서 로그인하는 중이에요' : 'Google로 로그인'}</Txt>
+                <Txt variant="body">{waitingGoogle ? 'Google 계정을 확인하는 중이에요' : 'Google로 로그인'}</Txt>
               </Pressable>
               <Pressable accessibilityRole="button" onPress={() => switchTo('email')} style={({ pressed }) => [styles.button, styles.outline, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
                 <Ionicons name="mail-outline" size={19} color={theme.ink} />
                 <Txt variant="body">이메일로 로그인</Txt>
               </Pressable>
-              {waitingGoogle ? <Txt variant="caption" tone="inkSoft" style={styles.help}>브라우저에서 로그인을 마치고 "앱 로그인 완료하기"를 누르면 이 화면으로 돌아와요.</Txt> : null}
+              {waitingGoogle && !googleInApp ? <Txt variant="caption" tone="inkSoft" style={styles.help}>로그인 창에서 "앱 로그인 완료하기"를 누르면 이 화면으로 돌아와요.</Txt> : null}
             </View>
           ) : (
             <View style={styles.stack}>

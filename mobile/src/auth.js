@@ -1,14 +1,23 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
+import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp } from 'firebase/app';
 import {
-  createUserWithEmailAndPassword, getAuth, getReactNativePersistence, initializeAuth, onIdTokenChanged,
-  sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signOut as firebaseSignOut, validatePassword,
+  createUserWithEmailAndPassword, getAuth, getReactNativePersistence, GoogleAuthProvider, initializeAuth, onIdTokenChanged,
+  sendPasswordResetEmail, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signOut as firebaseSignOut, validatePassword,
 } from 'firebase/auth';
-import { API_BASE_URL, FIREBASE_CONFIG, WEB_APP_URL } from './config';
+import { API_BASE_URL, FIREBASE_CONFIG, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, WEB_APP_URL } from './config';
+
+// 네이티브 Google 로그인. Android는 Play 서비스 계정 선택 창, iOS는 Google SDK가 띄우는
+// ASWebAuthenticationSession("…을(를) 사용하려고 합니다" 팝업)을 쓴다.
+// Expo Go처럼 네이티브 모듈이 없거나 클라이언트 ID가 비어 있으면 웹 /login/google 흐름으로 돌아간다.
+let GoogleSignin = null;
+try { ({ GoogleSignin } = require('@react-native-google-signin/google-signin')); } catch { GoogleSignin = null; }
+const nativeGoogle = Boolean(GoogleSignin && GOOGLE_WEB_CLIENT_ID && (Platform.OS === 'android' || GOOGLE_IOS_CLIENT_ID));
+if (nativeGoogle) GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, iosClientId: GOOGLE_IOS_CLIENT_ID || undefined });
 
 const firebaseApp = initializeApp(FIREBASE_CONFIG);
 let firebaseAuth;
@@ -46,10 +55,13 @@ export function authErrorMessage(error) {
     case 'auth/email-already-in-use': return '이미 사용 중인 이메일이에요. 로그인하거나 비밀번호를 재설정해 주세요.';
     case 'auth/weak-password':
     case 'auth/password-does-not-meet-requirements': return '비밀번호가 가입 조건에 맞지 않아요. 더 길고 복잡한 비밀번호를 입력해 주세요.';
+    case 'auth/account-exists-with-different-credential': return '같은 이메일로 가입한 다른 로그인 방법을 사용해 주세요.';
     case 'auth/operation-not-allowed': return '이 로그인 방법은 지금 쓸 수 없어요. 다른 방법을 선택해 주세요.';
     case 'auth/too-many-requests': return '요청이 많아 잠시 제한됐어요. 잠시 후 다시 시도해 주세요.';
     case 'auth/user-disabled': return '이 계정은 지금 로그인할 수 없어요.';
-    case 'auth/network-request-failed': return '연결을 확인한 뒤 다시 시도해 주세요.';
+    case 'auth/network-request-failed':
+    case 'NETWORK_ERROR': return '연결을 확인한 뒤 다시 시도해 주세요.';
+    case 'PLAY_SERVICES_NOT_AVAILABLE': return '이 기기에서 Google Play 서비스를 쓸 수 없어요. 이메일로 로그인해 주세요.';
     default: return error?.message && !code ? error.message : '로그인을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.';
   }
 }
@@ -67,6 +79,7 @@ export function AuthProvider({ children, onWebToken, onWebSignOut }) {
   const [profile, setProfile] = useState(null);
   const [googleError, setGoogleError] = useState('');
   const pendingState = useRef(null);
+  const handledCodes = useRef(new Set());
   const redirectUri = AuthSession.makeRedirectUri({ scheme: 'gamestock', path: 'auth/callback' });
   const webTokenRef = useRef(onWebToken);
   webTokenRef.current = onWebToken;
@@ -122,9 +135,46 @@ export function AuthProvider({ children, onWebToken, onWebSignOut }) {
 
   const resetPassword = useCallback(email => sendPasswordResetEmail(firebaseAuth, email.trim()), []);
 
-  /** Google은 기본 브라우저의 웹 /login/google에서 인증하고, 딥링크로 받은 일회용 코드를 커스텀 토큰으로 바꾼다. */
+  /** 웹 /login/google이 딥링크로 돌려준 일회용 코드를 커스텀 토큰으로 바꿔 로그인한다. */
+  const finishWebGoogle = useCallback(async url => {
+    if (!url) return;
+    let callback;
+    try { callback = new URL(url); } catch { return; }
+    const code = callback.searchParams.get('code');
+    if (!['gamestock:', 'exp:'].includes(callback.protocol) || !code || handledCodes.current.has(code)) return;
+    const expected = pendingState.current || await AsyncStorage.getItem(MOBILE_AUTH_STATE_KEY);
+    if (!expected || handledCodes.current.has(code)) return;
+    // Android는 인증 세션 결과와 딥링크 이벤트가 같은 주소로 두 번 올 수 있다.
+    handledCodes.current.add(code);
+    pendingState.current = null;
+    await AsyncStorage.removeItem(MOBILE_AUTH_STATE_KEY).catch(() => {});
+    try {
+      if (callback.searchParams.get('state') !== expected) throw new Error('인증 상태가 일치하지 않아요. 다시 로그인해 주세요.');
+      const { customToken } = await request('/api/auth/mobile/exchange', { method: 'POST', body: { code }, auth: false });
+      await signInWithCustomToken(firebaseAuth, customToken);
+      await connect(customToken);
+    } catch (error) {
+      setGoogleError(authErrorMessage(error));
+    }
+  }, [connect]);
+
+  /**
+   * Google 로그인. 네이티브 모듈이 있으면 앱 안에서 받은 ID 토큰으로 바로 Firebase에 로그인하고,
+   * 없으면 인증 세션으로 웹 /login/google을 열어 끝나면 앱으로 돌아온다.
+   * 사용자가 창을 닫으면 false를 돌려준다.
+   */
   const startGoogle = useCallback(async () => {
     setGoogleError('');
+    if (nativeGoogle) {
+      if (Platform.OS === 'android') await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (response.type !== 'success') return false;
+      const idToken = response.data.idToken;
+      if (!idToken) throw new Error('Google 계정 정보를 받지 못했어요. 다시 시도해 주세요.');
+      await signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken));
+      await connect();
+      return true;
+    }
     const state = Crypto.randomUUID();
     pendingState.current = state;
     await AsyncStorage.setItem(MOBILE_AUTH_STATE_KEY, state);
@@ -133,40 +183,28 @@ export function AuthProvider({ children, onWebToken, onWebSignOut }) {
     url.searchParams.set('mobileAuth', '1');
     url.searchParams.set('returnUri', redirectUri);
     url.searchParams.set('state', state);
-    await Linking.openURL(url.toString());
-  }, [redirectUri]);
+    const result = await WebBrowser.openAuthSessionAsync(url.toString(), redirectUri);
+    if (result.type !== 'success') return false;
+    await finishWebGoogle(result.url);
+    return true;
+  }, [connect, finishWebGoogle, redirectUri]);
 
   useEffect(() => {
-    const finish = async url => {
-      if (!url) return;
-      let callback;
-      try { callback = new URL(url); } catch { return; }
-      if (!['gamestock:', 'exp:'].includes(callback.protocol) || !callback.searchParams.get('code')) return;
-      const expected = pendingState.current || await AsyncStorage.getItem(MOBILE_AUTH_STATE_KEY);
-      if (!expected) return;
-      pendingState.current = null;
-      await AsyncStorage.removeItem(MOBILE_AUTH_STATE_KEY).catch(() => {});
-      try {
-        if (callback.searchParams.get('state') !== expected) throw new Error('인증 상태가 일치하지 않아요. 다시 로그인해 주세요.');
-        const { customToken } = await request('/api/auth/mobile/exchange', { method: 'POST', body: { code: callback.searchParams.get('code') }, auth: false });
-        await signInWithCustomToken(firebaseAuth, customToken);
-        await connect(customToken);
-      } catch (error) {
-        setGoogleError(authErrorMessage(error));
-      }
-    };
-    const subscription = Linking.addEventListener('url', ({ url }) => void finish(url));
-    Linking.getInitialURL().then(finish).catch(() => {});
+    // 인증 세션 밖에서 딥링크로 돌아온 경우(앱이 다시 시작된 경우 등)도 받는다.
+    const subscription = Linking.addEventListener('url', ({ url }) => void finishWebGoogle(url));
+    Linking.getInitialURL().then(finishWebGoogle).catch(() => {});
     return () => subscription.remove();
-  }, [connect]);
+  }, [finishWebGoogle]);
 
   const signOut = useCallback(async () => {
     await firebaseSignOut(firebaseAuth);
+    // 다음 로그인 때 계정 선택 창이 다시 뜨도록 기기의 Google 세션도 정리한다.
+    if (nativeGoogle) await GoogleSignin.signOut().catch(() => {});
     onWebSignOut?.();
   }, [onWebSignOut]);
 
   const value = useMemo(() => ({
-    user, ready, profile, googleError, signInEmail, register, resetPassword, startGoogle, signOut, syncWeb, refreshProfile: loadProfile,
+    user, ready, profile, googleError, googleInApp: nativeGoogle, signInEmail, register, resetPassword, startGoogle, signOut, syncWeb, refreshProfile: loadProfile,
   }), [user, ready, profile, googleError, signInEmail, register, resetPassword, startGoogle, signOut, syncWeb, loadProfile]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
