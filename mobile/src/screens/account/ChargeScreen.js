@@ -128,7 +128,7 @@ function PromoCode() {
       const named = (status?.newlyAwarded ?? []).map(title => title.name);
       const cash = Number(status?.rewardCash) || 0;
       const parts = [cash > 0 ? `현금 ${cash.toLocaleString('ko-KR')}원` : '', named.length ? `칭호 ${named.join(', ')}` : ''].filter(Boolean);
-      setMessage({ text: parts.length ? `${parts.join('과 ')}을(를) 받았어요.` : '프로모션 코드를 사용했어요.', ok: true });
+      setMessage({ text: parts.length ? `받았어요: ${parts.join(', ')}` : '프로모션 코드를 사용했어요.', ok: true });
       setCode('');
     } catch (failure) {
       setMessage({ text: failure.message, ok: false });

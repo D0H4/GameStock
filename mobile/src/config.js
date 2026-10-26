@@ -6,10 +6,10 @@ export const API_BASE_URL =
 export const MARKET_SOCKET_URL =
   API_BASE_URL.replace(/^http/, "ws") + "/ws/market";
 
-// 모바일 앱은 웹 클라이언트를 그대로 보여주므로, 기본값은 Firebase Hosting 주소를 사용한다.
+// 앱 안 웹 화면, Google 로그인, 공지 그림, OpenAPI 문서는 서비스 도메인(Firebase Hosting과 같은 배포)을 쓴다.
 // 로컬 웹 화면을 확인할 때는 EXPO_PUBLIC_WEB_APP_URL에 PC의 LAN 주소를 지정한다.
 export const WEB_APP_URL =
-  process.env.EXPO_PUBLIC_WEB_APP_URL || "https://gamestock-20994.web.app";
+  process.env.EXPO_PUBLIC_WEB_APP_URL || "https://syuenasset.xyz";
 
 // 웹 Firebase 설정과 동일한 프로젝트를 사용한다.
 export const FIREBASE_CONFIG = {

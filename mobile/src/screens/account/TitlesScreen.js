@@ -56,7 +56,7 @@ export function TitlesScreen({ onBack }) {
       setStatus(withSpecial(next));
       setError('');
       const fresh = (next.newlyAwarded ?? []).map(title => title.name);
-      if (fresh.length) setNotice(`새 칭호 ${fresh.join(', ')}을(를) 받았어요.`);
+      if (fresh.length) setNotice(`새 칭호를 받았어요: ${fresh.join(', ')}`);
     } catch {
       if (alive.current) setError('칭호 정보를 불러오지 못했어요. 아래로 당겨 다시 불러오세요.');
     }

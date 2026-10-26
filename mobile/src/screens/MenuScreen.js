@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { WEB_APP_URL } from '../config';
 import { useAuth } from '../auth';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,12 +10,15 @@ import { RADIUS, RADIUS_SM, SPACE, Txt, useTheme, useThemeMode } from '../theme'
 // 관리자 화면은 관리자 계정에만 보인다. 서버도 모든 관리 요청에서 권한을 다시 확인한다.
 const ACCOUNT = { label: '내 계좌', detail: '보유 종목과 손익, 주문·체결 내역', icon: 'wallet-outline', path: '/mypage' };
 const ITEMS = [
+  { label: '출석체크', detail: '연속 출석 보상과 이번 달 출석 기록', icon: 'calendar-outline', path: '/attendance' },
   { label: '충전하기', detail: '오늘의 투자 미션과 모의 자금 보상', icon: 'gift-outline', path: '/charge' },
   { label: '대출', detail: '모의 대출과 상환, 한도와 이자', icon: 'cash-outline', path: '/loan' },
   { label: '칭호 설정', detail: '칭호 조건과 획득 현황, 장착', icon: 'ribbon-outline', path: '/titles' },
   { label: '프로필·계정 설정', detail: '닉네임, 프로필 사진, 계좌 초기화', icon: 'person-circle-outline', path: '/settings' },
 ];
-const ADMIN = { label: '관리자', detail: '회원 조치, 주문 조회, 공지, 감사 기록', icon: 'shield-checkmark-outline', path: '/admin' };
+const ADMIN = { label: '관리자', detail: '회원 조치, 주문 조회, 공지, 프로모션 코드, 감사 기록', icon: 'shield-checkmark-outline', path: '/admin' };
+
+const API_DOCS = { label: 'OpenAPI 문서', detail: '시세·주문 API 사용법과 API 키 발급. 브라우저에서 열려요', icon: 'code-slash-outline' };
 
 const SCHEMES = [
   { key: 'dark', label: '어둡게', icon: 'moon' },
@@ -61,6 +65,10 @@ export function MenuScreen({ onOpen, onLogin }) {
             <Row item={ADMIN} onOpen={onOpen} />
           </View>
         ) : null}
+        {/* 개발자용 문서와 API 키 발급은 넓은 화면에서 쓰는 일이라 기본 브라우저의 웹 화면으로 연다. */}
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <Row item={API_DOCS} onOpen={() => void Linking.openURL(new URL('/api-docs', WEB_APP_URL).toString()).catch(() => {})} trailing="open-outline" />
+        </View>
         {/* 로그인 없이도 바꿀 수 있다. 앱 안의 웹 화면도 같은 밝기를 따른다. */}
         <View style={[styles.card, styles.scheme, { backgroundColor: theme.card }]}>
           <Txt variant="callout">화면 밝기</Txt>
@@ -93,7 +101,7 @@ export function MenuScreen({ onOpen, onLogin }) {
   );
 }
 
-function Row({ item, onOpen, divided, large }) {
+function Row({ item, onOpen, divided, large, trailing = 'chevron-forward' }) {
   const theme = useTheme();
   return (
     <Pressable
@@ -112,7 +120,7 @@ function Row({ item, onOpen, divided, large }) {
         <Txt variant={large ? 'headline' : 'callout'}>{item.label}</Txt>
         <Txt variant="caption" tone="inkSoft" style={{ marginTop: 2 }}>{item.detail}</Txt>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={theme.inkSoft} />
+      <Ionicons name={trailing} size={18} color={theme.inkSoft} />
     </Pressable>
   );
 }

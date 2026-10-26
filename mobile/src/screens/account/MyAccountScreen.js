@@ -265,7 +265,7 @@ function Watchlist({ quotes, account, onGo }) {
               <Txt variant="callout" numeric>{price(stock.price)}</Txt>
               <Txt variant="caption" tone={toneOf(rate)} numeric>{signedPercent(rate)}</Txt>
             </View>
-            <Button label="해제" small onPress={() => { setError(''); account.toggleWatch(code).catch(failure => setError(failure.message)); }} accessibilityLabel={`${stock.name} 관심 종목 해제`} />
+            <Button label="빼기" small onPress={() => { setError(''); account.toggleWatch(code).catch(failure => setError(failure.message)); }} accessibilityLabel={`${stock.name} 관심 종목에서 빼기`} />
           </Row>
         );
       })}

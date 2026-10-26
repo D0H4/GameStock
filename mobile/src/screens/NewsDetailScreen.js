@@ -151,7 +151,7 @@ export function NewsDetailScreen({ item, market, onBack, onOpenStock, onLogin })
       {stock ? (
         <View style={[styles.actions, { backgroundColor: theme.card, borderTopColor: theme.line }]}>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: watching }} accessibilityLabel={watching ? '관심 종목에서 빼기' : '관심 종목에 넣기'} onPress={() => void toggleWatch()} style={({ pressed }) => [styles.watch, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
-            <Ionicons name={watching ? 'star' : 'star-outline'} size={22} color={watching ? theme.guard : theme.ink} />
+            <Ionicons name={watching ? 'star' : 'star-outline'} size={22} color={watching ? theme.star : theme.ink} />
           </Pressable>
           <Pressable accessibilityRole="button" onPress={() => onOpenStock(item.stockCode)} style={({ pressed }) => [styles.action, styles.outline, { borderColor: theme.edge, backgroundColor: pressed ? theme.pressed : theme.card }]}>
             <Txt variant="body">종목 보기</Txt>

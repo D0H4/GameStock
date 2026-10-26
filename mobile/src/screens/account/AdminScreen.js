@@ -14,6 +14,7 @@ const SECTIONS = [
   { key: 'users', label: '회원' },
   { key: 'orders', label: '주문' },
   { key: 'notices', label: '공지' },
+  { key: 'promos', label: '프로모' },
   { key: 'audit', label: '감사 기록' },
 ];
 const PAGE_SIZE = 50;
@@ -73,10 +74,12 @@ export function AdminScreen({ market, onBack }) {
   return (
     <AccountFrame title="관리자" onBack={onBack}>
       <Txt variant="caption" tone="inkSoft" style={styles.lead}>모든 조치는 감사 기록에 남아요. 시장 운영 설정은 웹 관리자 화면에서 바꿔요.</Txt>
-      <View style={styles.sections}><Segment options={SECTIONS} value={section} onChange={setSection} label="관리 구획" /></View>
+      {/* 구획이 다섯이라 한 줄을 나누면 폰 폭에서 칸이 글자보다 좁아진다. 가로로 넘기는 칩으로 둔다. */}
+      <View style={styles.sections} accessibilityLabel="관리 구획"><Chips options={SECTIONS} value={section} onChange={setSection} /></View>
       {section === 'users' ? <Users /> : null}
       {section === 'orders' ? <Orders names={names} /> : null}
       {section === 'notices' ? <Notices /> : null}
+      {section === 'promos' ? <Promos /> : null}
       {section === 'audit' ? <Audit /> : null}
     </AccountFrame>
   );
@@ -199,7 +202,7 @@ function UserActions({ user, onChange }) {
   const rename = () => {
     const value = nickname.trim();
     if (value && (value.length < 2 || value.length > 10)) { setMessage('닉네임은 2~10자로 입력해 주세요.'); return; }
-    confirm(`"${user.nickname}" 닉네임을 "${value || '자동 생성 닉네임'}"(으)로 바꿀까요?`, '3일 변경 제한을 무시하고 바로 바뀌어요.', '닉네임 변경', () => void run(async () => {
+    confirm(`"${user.nickname}" 닉네임을 바꿀까요? 새 닉네임: ${value || '자동 생성'}`, '3일 변경 제한을 무시하고 바로 바뀌어요.', '닉네임 변경', () => void run(async () => {
       const next = await request(`/api/admin/users/${user.id}/nickname`, { method: 'PUT', body: { nickname: value } });
       setNickname('');
       return next;
@@ -331,7 +334,9 @@ function noticeState(published, startsAt, endsAt, now = Date.now()) {
   return '게시 중';
 }
 
-const EMPTY_DRAFT = { title: '', body: '', code: '', published: true, startsAt: '', endsAt: '' };
+const EMPTY_DRAFT = { title: '', body: '', code: '', image: '', actionLabel: '', actionUrl: '', dismissLabel: '', published: true, startsAt: '', endsAt: '' };
+// 서버와 같은 규칙: 사이트 안 경로(/...)나 https 주소.
+const LINK = /^(https:\/\/\S+|\/(?!\/)\S*)$/i;
 
 function Notices() {
   const theme = useTheme();
@@ -358,14 +363,22 @@ function Notices() {
   const edit = row => {
     const { body, code } = splitCode(row.body);
     setEditingId(num(row.id));
-    setDraft({ title: String(row.title ?? ''), body, code, published: Boolean(row.published), startsAt: toKstText(row.starts_at), endsAt: toKstText(row.ends_at) });
+    setDraft({
+      title: String(row.title ?? ''), body, code, image: String(row.image_url ?? ''), actionLabel: String(row.action_label ?? ''),
+      actionUrl: String(row.action_url ?? ''), dismissLabel: String(row.dismiss_label ?? ''),
+      published: Boolean(row.published), startsAt: toKstText(row.starts_at), endsAt: toKstText(row.ends_at),
+    });
     setReason('');
     setMessage('');
   };
 
   const timeError = badTime(draft.startsAt) || badTime(draft.endsAt) ? '시각은 2026-10-21 14:30 형식(한국시간)으로 적어 주세요.'
     : draft.startsAt && draft.endsAt && toInstant(draft.endsAt) <= toInstant(draft.startsAt) ? '끝나는 시각은 시작 시각보다 뒤여야 해요.' : '';
-  const valid = draft.title.trim() && draft.body.trim() && reason.trim() && !timeError;
+  const image = draft.image.trim(), actionText = draft.actionLabel.trim(), actionUrl = draft.actionUrl.trim();
+  const linkError = (image && !LINK.test(image)) || (actionUrl && !LINK.test(actionUrl))
+    ? '그림·이동 주소는 /로 시작하는 경로나 https:// 주소여야 해요.'
+    : Boolean(actionText) !== Boolean(actionUrl) ? '이동 버튼은 문구와 주소를 함께 적어 주세요.' : '';
+  const valid = draft.title.trim() && draft.body.trim() && reason.trim() && !timeError && !linkError;
 
   const save = async () => {
     if (!valid || busy) return;
@@ -376,6 +389,7 @@ function Notices() {
         method: editingId ? 'PUT' : 'POST',
         body: {
           kind: 'NOTICE', title: draft.title.trim(), body: joinCode(draft.body, draft.code), stockCode: null,
+          imageUrl: image || null, actionLabel: actionText || null, actionUrl: actionUrl || null, dismissLabel: draft.dismissLabel.trim() || null,
           published: draft.published, startsAt: toInstant(draft.startsAt), endsAt: toInstant(draft.endsAt), reason: reason.trim(),
         },
       });
@@ -438,6 +452,11 @@ function Notices() {
         <Field label="제목" value={draft.title} onChangeText={value => set('title', value)} maxLength={120} />
         <Field label="본문" value={draft.body} onChangeText={value => set('body', value)} multiline />
         <Field label="복사용 코드 (선택)" value={draft.code} onChangeText={value => set('code', value)} autoCapitalize="none" autoCorrect={false} hint="공지 창에서 복사 버튼이 붙어요." />
+        <Field label="머리 그림 주소 (선택)" value={draft.image} onChangeText={value => set('image', value)} maxLength={500} autoCapitalize="none" autoCorrect={false} placeholder="/notice/season-2.png" hint="창 위쪽에 16:7 비율로 잘려 보여요(권장 960×420). 비우면 글만 보여요." />
+        <Field label="이동 버튼 문구 (선택)" value={draft.actionLabel} onChangeText={value => set('actionLabel', value)} maxLength={40} placeholder="지금 확인하기" />
+        <Field label="이동 주소" value={draft.actionUrl} onChangeText={value => set('actionUrl', value)} maxLength={500} autoCapitalize="none" autoCorrect={false} placeholder="/market 또는 https://" />
+        <Field label="닫기 버튼 문구 (선택)" value={draft.dismissLabel} onChangeText={value => set('dismissLabel', value)} maxLength={40} placeholder={actionText ? '닫기' : '확인했어요'} hint="이동 버튼이 없으면 닫기 버튼 하나만 진하게 보여요." />
+        {linkError ? <FieldError text={linkError} /> : null}
         <View style={kit.between}>
           <Txt variant="callout">게시</Txt>
           <Switch value={draft.published} onValueChange={value => set('published', value)} trackColor={{ true: theme.ink, false: theme.edge }} thumbColor={theme.card} accessibilityLabel="게시" />
@@ -452,6 +471,208 @@ function Notices() {
         <Button label={editingId ? '고친 내용 저장' : '공지 등록'} kind="primary" busy={busy} disabled={!valid} onPress={() => void save()} />
         {editingId ? <Button label="공지 삭제" kind="danger" disabled={busy || !reason.trim()} onPress={remove} /> : null}
       </Card>
+    </>
+  );
+}
+
+const PROMO_EMPTY = { code: '', rewardCash: '', titleIds: [], maxUses: '', startsAt: '', endsAt: '', active: true, memo: '' };
+// 특별 칭호가 프로모션 코드의 본래 용도라 맨 앞에 둔다(웹 AdminPromos와 같은 순서).
+const PROMO_CATEGORIES = ['특별', '자산', '수익률', '보유', '거래', '활동', '수집'];
+const MAX_REWARD_CASH = 100_000_000;
+const onlyDigits = value => value.replace(/[^0-9]/g, '');
+const splitTitles = value => String(value ?? '').split(',').map(id => id.trim()).filter(Boolean);
+
+function promoState(row, now = Date.now()) {
+  if (!row.active) return '꺼짐';
+  if (row.starts_at && Date.parse(row.starts_at) > now) return '예약';
+  if (row.ends_at && Date.parse(row.ends_at) <= now) return '기간 끝';
+  if (row.max_uses != null && num(row.used_count) >= num(row.max_uses)) return '소진';
+  return '사용 가능';
+}
+
+const promoDraft = row => ({
+  code: String(row.code ?? ''),
+  rewardCash: num(row.reward_cash) ? String(num(row.reward_cash)) : '',
+  titleIds: splitTitles(row.title_ids),
+  maxUses: row.max_uses == null ? '' : String(row.max_uses),
+  startsAt: toKstText(row.starts_at),
+  endsAt: toKstText(row.ends_at),
+  active: Boolean(row.active),
+  memo: String(row.memo ?? ''),
+});
+
+const rewardSummary = (cash, titleIds, names) => {
+  const parts = [];
+  if (cash > 0) parts.push(`현금 ${won(cash)}`);
+  if (titleIds.length) parts.push(`칭호 ${titleIds.map(id => names.get(id) ?? id).join(', ')}`);
+  return parts.length ? parts.join(' + ') : '보상 없음';
+};
+
+/** 프로모션 코드 관리. 한 계정은 코드 하나를 한 번만 쓸 수 있고, 현금 보상은 랭킹 수익률에서 빠진다. */
+function Promos() {
+  const theme = useTheme();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(PROMO_EMPTY);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [usage, setUsage] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      setData(await request('/api/admin/promos'));
+      setError('');
+    } catch (failure) {
+      setError(failure.message || '프로모션 코드를 불러오지 못했어요.');
+    }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    setUsage(null);
+    if (!editing) return undefined;
+    let alive = true;
+    request(`/api/admin/promos/${encodeURIComponent(editing)}/redemptions`)
+      .then(rows => { if (alive) setUsage(rows); })
+      .catch(() => { if (alive) setUsage([]); });
+    return () => { alive = false; };
+  }, [editing, data]);
+
+  const rows = data?.codes ?? null;
+  const catalog = data?.titles ?? [];
+  const names = new Map(catalog.map(title => [title.id, title.name]));
+  const groups = PROMO_CATEGORIES.map(category => ({ category, titles: catalog.filter(title => title.category === category) })).filter(group => group.titles.length);
+
+  const set = (key, value) => setDraft(current => ({ ...current, [key]: value }));
+  const startNew = () => { setEditing(null); setDraft(PROMO_EMPTY); setReason(''); setMessage(''); };
+  const edit = row => { setEditing(String(row.code)); setDraft(promoDraft(row)); setReason(''); setMessage(''); };
+  const toggleTitle = id => set('titleIds', draft.titleIds.includes(id) ? draft.titleIds.filter(item => item !== id) : [...draft.titleIds, id]);
+
+  const cash = Number(draft.rewardCash || 0);
+  const codeError = !editing && draft.code && !/^[A-Za-z0-9_-]{2,40}$/.test(draft.code) ? '코드는 영문·숫자와 _ - 로 2~40자예요.' : '';
+  const cashError = cash > MAX_REWARD_CASH ? '현금 보상은 1억원까지예요.' : '';
+  const usesError = draft.maxUses !== '' && (Number(draft.maxUses) < 1 || Number(draft.maxUses) > 1_000_000) ? '인원 제한은 1~1,000,000명이에요.' : '';
+  const timeError = badTime(draft.startsAt) || badTime(draft.endsAt) ? '시각은 2026-10-21 14:30 형식(한국시간)으로 적어 주세요.'
+    : draft.startsAt && draft.endsAt && toInstant(draft.endsAt) <= toInstant(draft.startsAt) ? '끝나는 시각은 시작 시각보다 뒤여야 해요.' : '';
+  const rewardError = cash === 0 && draft.titleIds.length === 0 ? '현금이나 칭호 중 하나는 골라 주세요.' : '';
+  const valid = draft.code.trim() && reason.trim() && !codeError && !cashError && !usesError && !timeError && !rewardError;
+
+  const save = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const saved = await request(editing ? `/api/admin/promos/${encodeURIComponent(editing)}` : '/api/admin/promos', {
+        method: editing ? 'PUT' : 'POST',
+        body: {
+          code: draft.code.trim(), rewardCash: cash, titleIds: draft.titleIds, maxUses: draft.maxUses === '' ? null : Number(draft.maxUses),
+          startsAt: toInstant(draft.startsAt), endsAt: toInstant(draft.endsAt), active: draft.active, memo: draft.memo.trim(), reason: reason.trim(),
+        },
+      });
+      setMessage(editing ? '코드를 고쳤어요. 이미 받은 사람의 보상은 그대로예요.' : `${String(saved.code)} 코드를 만들었어요.`);
+      setEditing(String(saved.code));
+      setDraft(promoDraft(saved));
+      setReason('');
+      await load();
+    } catch (failure) {
+      setMessage(failure.message || '코드를 저장하지 못했어요.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {error ? <Notice text={error} /> : null}
+      <Card padded={false}>
+        <View style={[kit.between, styles.headRow]}>
+          <Txt variant="headline">프로모션 코드</Txt>
+          <Button label="새 코드" small icon="add" onPress={startNew} />
+        </View>
+        {rows == null ? (error
+          ? <Empty text="프로모션 코드를 불러오지 못했어요." action="다시 시도" onAction={() => void load()} />
+          : <Empty loading text="프로모션 코드를 불러오는 중이에요" />) : rows.length === 0 ? <Empty text="아직 코드가 없어요. 첫 코드를 만들어 보세요." /> : rows.map((row, index) => {
+          const code = String(row.code);
+          const selected = editing === code;
+          const used = `${num(row.used_count).toLocaleString('ko-KR')}${row.max_uses != null ? ` / ${num(row.max_uses).toLocaleString('ko-KR')}` : ''}명 사용`;
+          return (
+            <Row key={code} divided={index > 0} onPress={() => edit(row)} accessibilityLabel={`${code}, ${promoState(row)}, ${used}. 누르면 고쳐요`} style={selected && { backgroundColor: theme.raised }}>
+              <View style={kit.grow}>
+                <Txt variant="callout" numeric numberOfLines={1}>{code}</Txt>
+                <Txt variant="caption" tone="inkSoft" numberOfLines={2}>{rewardSummary(num(row.reward_cash), splitTitles(row.title_ids), names)}</Txt>
+                <Txt variant="caption" tone="inkSoft" numeric>{`${promoState(row)} · ${used}`}</Txt>
+              </View>
+              {selected ? <Txt variant="caption" tone="brandText">고치는 중</Txt> : <Ionicons name="create-outline" size={18} color={theme.inkSoft} />}
+            </Row>
+          );
+        })}
+      </Card>
+
+      <Card>
+        <CardHead title={editing ? `${editing} 고치기` : '새 코드'} meta={rewardSummary(cash, draft.titleIds, names)} />
+        <Field
+          label="코드" value={draft.code} onChangeText={value => set('code', value.replace(/\s/g, ''))} maxLength={40} editable={!editing}
+          autoCapitalize="none" autoCorrect={false} placeholder="launch2026"
+          hint={editing ? '이미 쓴 사람의 기록이 이 코드에 묶여 있어 코드는 바꿀 수 없어요.' : '대소문자는 구분하지 않아요.'} error={codeError}
+        />
+        <Field
+          label="현금 보상" unit="원" numeric value={draft.rewardCash} onChangeText={value => set('rewardCash', onlyDigits(value).slice(0, 10))} placeholder="0"
+          hint={`${cash > 0 ? `${won(cash)}을 줘요. ` : '비우면 현금은 주지 않아요. '}받은 현금은 랭킹 수익률에서 빠져요.`} error={cashError}
+        />
+        <Txt variant="callout">{`칭호 보상 · ${draft.titleIds.length ? `${draft.titleIds.length}개 선택` : '선택 안 함'}`}</Txt>
+        {groups.map(group => (
+          <View key={group.category} style={styles.titleGroup}>
+            <Txt variant="caption" tone="inkSoft">{group.category}</Txt>
+            <View style={styles.titleOptions}>
+              {group.titles.map(title => {
+                const picked = draft.titleIds.includes(title.id);
+                return (
+                  <Pressable
+                    key={title.id}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: picked }}
+                    onPress={() => toggleTitle(title.id)}
+                    style={[styles.titleOption, { borderColor: picked ? theme.ink : theme.edge, backgroundColor: picked ? theme.ink : 'transparent' }]}
+                  >
+                    <Txt variant="caption" style={{ color: picked ? theme.ground : theme.ink }}>{title.name}</Txt>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+        {rewardError && draft.code ? <FieldError text={rewardError} /> : null}
+        <Field label="사용 인원 제한" unit="명" numeric value={draft.maxUses} onChangeText={value => set('maxUses', onlyDigits(value).slice(0, 7))} placeholder="비우면 제한 없음" error={usesError} />
+        <View style={styles.filters}>
+          <Field label="시작 (선택)" style={kit.grow} value={draft.startsAt} onChangeText={value => set('startsAt', value)} placeholder="비우면 바로" autoCorrect={false} />
+          <Field label="끝 (선택)" style={kit.grow} value={draft.endsAt} onChangeText={value => set('endsAt', value)} placeholder="비우면 계속" autoCorrect={false} />
+        </View>
+        {timeError ? <FieldError text={timeError} /> : <Txt variant="caption" tone="inkSoft">시각은 2026-10-21 14:30 형식의 한국시간이에요.</Txt>}
+        <View style={kit.between}>
+          <Txt variant="callout">코드 켜기</Txt>
+          <Switch value={draft.active} onValueChange={value => set('active', value)} trackColor={{ true: theme.ink, false: theme.edge }} thumbColor={theme.card} accessibilityLabel="코드 켜기" />
+        </View>
+        <Field label="메모 (관리자만 봐요)" value={draft.memo} onChangeText={value => set('memo', value)} maxLength={200} placeholder="10월 방송 시청자용" />
+        <Field label="사유 (감사 기록에 남아요)" value={reason} onChangeText={setReason} maxLength={300} placeholder={editing ? '기간 연장' : '오픈 이벤트'} />
+        {message ? <Notice text={message} /> : null}
+        <Button label={editing ? '변경 저장' : '코드 만들기'} kind="primary" busy={busy} disabled={!valid} onPress={() => void save()} />
+      </Card>
+
+      {editing ? (
+        <Card padded={false}>
+          <CardHead title="최근 사용" padded />
+          {usage == null ? <Empty loading text="사용 기록을 불러오는 중이에요" />
+            : usage.length === 0 ? <Empty text="아직 쓴 사람이 없어요." />
+            : usage.map((entry, index) => (
+              <Row key={String(entry.user_id)} divided={index > 0}>
+                <Txt variant="callout" style={kit.grow} numberOfLines={1}>{String(entry.nickname ?? '')}</Txt>
+                <Txt variant="caption" tone="inkSoft" numeric>{kstShort(entry.redeemed_at)}</Txt>
+              </Row>
+            ))}
+        </Card>
+      ) : null}
     </>
   );
 }
@@ -582,4 +803,7 @@ const styles = StyleSheet.create({
   headRow: { paddingHorizontal: SPACE.lg + 2, paddingTop: SPACE.lg, paddingBottom: SPACE.sm },
   audit: { paddingHorizontal: SPACE.lg + 2, paddingVertical: SPACE.md, gap: 2 },
   diff: { marginHorizontal: SPACE.lg + 2, marginBottom: SPACE.md, padding: SPACE.md, borderRadius: 8, gap: 2 },
+  titleGroup: { gap: SPACE.xs },
+  titleOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs },
+  titleOption: { minHeight: 44, borderWidth: 1, borderRadius: 6, paddingHorizontal: SPACE.md, justifyContent: 'center' },
 });

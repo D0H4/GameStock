@@ -7,6 +7,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { MenuScreen } from './src/screens/MenuScreen';
 import { MarketScreen } from './src/screens/MarketScreen';
 import { StockScreen } from './src/screens/StockScreen';
+import { EtfScreen } from './src/screens/derivatives/EtfScreen';
 import { SwipeBack } from './src/components/SwipeBack';
 import { NewsScreen } from './src/screens/NewsScreen';
 import { RankingScreen } from './src/screens/RankingScreen';
@@ -17,6 +18,7 @@ import { LoanScreen } from './src/screens/account/LoanScreen';
 import { TitlesScreen } from './src/screens/account/TitlesScreen';
 import { ProfileScreen } from './src/screens/account/ProfileScreen';
 import { AdminScreen } from './src/screens/account/AdminScreen';
+import { AttendanceScreen } from './src/screens/account/AttendanceScreen';
 import { AccountProvider } from './src/account';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { AuthProvider, useAuth } from './src/auth';
@@ -34,6 +36,8 @@ const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
 const PARK_PATH = '/news';
 /** /market/BA, /trade/BA 같은 웹 주소에서 종목 코드를 꺼낸다. */
 const stockFromPath = path => String(path || '').split('/').filter(Boolean)[1]?.toUpperCase() ?? null;
+/** /market/etf/ETFIDX 에서 ETF 코드를 꺼낸다. ETF 주소가 아니면 undefined. */
+const etfFromPath = path => { const parts = String(path || '').split('/').filter(Boolean); return parts[1] === 'etf' ? parts[2]?.toUpperCase() ?? null : undefined; };
 /** /news/123 에서 기사 id를 꺼낸다. */
 const newsFromPath = path => { const id = Number(String(path || '').split('/').filter(Boolean)[1]); return Number.isFinite(id) && id > 0 ? id : null; };
 // 설정 탭의 계정 화면. 모두 네이티브이고, 여기 없는 주소만 웹 화면으로 연다.
@@ -44,6 +48,7 @@ const ACCOUNT_SCREENS = {
   '/titles': TitlesScreen,
   '/settings': ProfileScreen,
   '/admin': AdminScreen,
+  '/attendance': AttendanceScreen,
 };
 const accountScreenFor = path => ACCOUNT_SCREENS[String(path || '').split('?')[0].replace(/\/$/, '')] ?? null;
 
@@ -90,6 +95,15 @@ function ShellBody({ web }) {
   const [tab, setTab] = useState('home');
   // 시장 탭에서 연 종목. null이면 시장 목록을 보여 준다.
   const [stock, setStock] = useState(null);
+  // 시장 탭에서 연 ETF 코드. 종목 상세와 같은 자리에 겹쳐 연다.
+  const [etf, setEtf] = useState(null);
+  /** 웹 시장 주소(/market/BA, /market/etf/ETFIDX)를 시장 탭의 상세로 연다. */
+  const showMarket = useCallback(path => {
+    const etfCode = etfFromPath(path);
+    if (etfCode !== undefined) { setEtf(etfCode); setStock(null); } else { setEtf(null); setStock(stockFromPath(path)); }
+    setStockOrder(null);
+    setTab('market');
+  }, []);
   // 종목 상세를 열면서 주문 시트도 바로 열지('buy' | 'sell' | null).
   const [stockOrder, setStockOrder] = useState(null);
   // 뉴스 탭에서 연 기사 id. null이면 뉴스 목록. 읽던 기사가 실시간 갱신으로 목록에서 밀려나도 계속 보여 준다.
@@ -120,7 +134,7 @@ function ShellBody({ web }) {
 
   const open = useCallback((key, path) => {
     // 시장은 네이티브 화면이다. 주소에 종목 코드가 있으면 상세를 연다.
-    if (key === 'market') { setStock(stockFromPath(path)); setStockOrder(null); setTab('market'); return; }
+    if (key === 'market') { showMarket(path); return; }
     if (key === 'news') { setNewsId(newsFromPath(path)); setTab('news'); return; }
     const target = path ?? TAB_BY_KEY[key]?.path;
     // 네이티브 계정 화면은 웹을 옮기지 않고 그 화면만 띄운다.
@@ -136,7 +150,7 @@ function ShellBody({ web }) {
   const selectTab = key => {
     if (key === 'home') return setTab('home');
     // 시장 탭을 다시 누르면 목록으로 돌아간다.
-    if (key === 'market') { if (tab === 'market') setStock(null); return setTab('market'); }
+    if (key === 'market') { if (tab === 'market') { setStock(null); setEtf(null); } return setTab('market'); }
     if (key === 'news') { if (tab === 'news') setNewsId(null); return setTab('news'); }
     if (key === 'ranking') return setTab('ranking');
     // 설정 탭은 누를 때마다 메뉴 목록부터 보여 준다.
@@ -162,7 +176,7 @@ function ShellBody({ web }) {
     if (['home', 'market', 'news', 'ranking'].includes(current) && owner !== 'home') return;
     if (current === 'more' && !menuRootRef.current) return;
     // 웹 화면(뉴스 등)의 종목 링크는 네이티브 종목 상세로 연다.
-    if (owner === 'market') { setStock(stockFromPath(path)); setStockOrder(null); setTab('market'); return; }
+    if (owner === 'market') { showMarket(path); return; }
     if (owner === 'news') { setNewsId(newsFromPath(path)); setTab('news'); return; }
     if (owner === 'ranking') { setTab('ranking'); return; }
     // 웹 화면의 계정 메뉴에서 계정 화면으로 가면 설정 탭이 그 화면을 이어받는다.
@@ -183,7 +197,8 @@ function ShellBody({ web }) {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (tab === 'home') return false;
       if (tab === 'market') {
-        if (stock) setStock(null); else setTab('home');
+        // ETF 구성 종목에서 연 종목 상세가 위에 있으면 그것부터 닫는다.
+        if (stock) setStock(null); else if (etf) setEtf(null); else setTab('home');
         return true;
       }
       if (tab === 'news') {
@@ -201,7 +216,7 @@ function ShellBody({ web }) {
       return true;
     });
     return () => subscription.remove();
-  }, [tab, menuRoot, stock, newsId]);
+  }, [tab, menuRoot, stock, etf, newsId]);
 
   const AccountScreen = tab === 'more' ? accountScreenFor(menuRoot) : null;
   // 메뉴 목록은 네이티브 계정 화면 아래에도 그려 둔다. 아이폰에서 밀어 닫으면 목록이 드러난다.
@@ -273,10 +288,15 @@ function ShellBody({ web }) {
           />
           {tab === 'home' ? <HomeScreen market={market} onOpen={open} /> : null}
           {/* 종목 상세를 여는 동안에도 목록을 아래에 그려 둔다. 아이폰에서 상세를 밀어 닫으면 목록이 드러나고 스크롤 위치도 남는다. */}
-          {tab === 'market' ? <MarketScreen market={market} onOpenStock={setStock} onLogin={() => requestLogin(null)} /> : null}
+          {tab === 'market' ? <MarketScreen market={market} onOpenStock={setStock} onOpenEtf={setEtf} onLogin={() => requestLogin(null)} /> : null}
           {tab === 'market' && stock ? (
             <SwipeBack key={stock} onBack={() => setStock(null)}>
-              <StockScreen code={stock} market={market} initialOrder={stockOrder} onBack={() => setStock(null)} onLogin={() => requestLogin(null)} />
+              <StockScreen code={stock} market={market} initialOrder={stockOrder} onBack={() => setStock(null)} onSwitch={setStock} onLogin={() => requestLogin(null)} />
+            </SwipeBack>
+          ) : null}
+          {tab === 'market' && etf && !stock ? (
+            <SwipeBack key={`etf:${etf}`} onBack={() => setEtf(null)}>
+              <EtfScreen code={etf} onBack={() => setEtf(null)} onOpenStock={setStock} onLogin={() => requestLogin(null)} />
             </SwipeBack>
           ) : null}
           {tab === 'ranking' ? <RankingScreen /> : null}

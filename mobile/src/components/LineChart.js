@@ -6,6 +6,8 @@ import { Txt, useTheme } from '../theme';
 
 const PAD_X = 4;
 const PAD_Y = 18;
+// 그래프 아래 뉴스 점 띠의 높이.
+const NEWS_LANE = 10;
 
 const shortTime = (ms, longRange) => {
   const at = new Date(ms);
@@ -14,7 +16,7 @@ const shortTime = (ms, longRange) => {
 };
 
 /**
- * 종목 상세의 가격 차트. 점선은 오늘 기준가, 흰 점은 관련 뉴스가 나온 시점이다.
+ * 종목 상세의 가격 차트. 점선은 오늘 기준가, 아래 점과 세로선은 관련 뉴스가 나온 시점이다.
  * 구간의 최고·최저가와 시작·끝 시각만 글자로 적고, 나머지 눈금은 두지 않는다.
  */
 export function LineChart({ points, current, reference, newsTimes = [], tone, height = 168 }) {
@@ -40,10 +42,7 @@ export function LineChart({ points, current, reference, newsTimes = [], tone, he
     const markers = newsTimes
       .map(iso => Date.parse(iso))
       .filter(t => Number.isFinite(t) && t >= t0 && t <= t1)
-      .map(t => {
-        const before = series.filter(point => point.t <= t).pop() ?? series[0];
-        return { cx: x(t), cy: y(before.p) };
-      });
+      .map(t => x(t));
     return {
       line: series.map(point => `${x(point.t).toFixed(1)},${y(point.p).toFixed(1)}`).join(' '),
       base: reference > 0 ? y(reference) : null,
@@ -55,15 +54,15 @@ export function LineChart({ points, current, reference, newsTimes = [], tone, he
 
   return (
     <View onLayout={event => setWidth(Math.floor(event.nativeEvent.layout.width))}>
-      <View style={{ height }}>
+      <View style={{ height: height + NEWS_LANE }}>
         {shape ? (
           <>
-            <Svg width={width} height={height} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Svg width={width} height={height + NEWS_LANE} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               {shape.base != null ? <Line x1={0} x2={width} y1={shape.base} y2={shape.base} stroke={theme.edge} strokeWidth={1} strokeDasharray="3 4" /> : null}
+              {/* 뉴스 시점은 선 뒤로 지나는 세로선과 아래 띠의 점이다. 점을 선 위에 찍으면 흐름을 가린다. */}
+              {shape.markers.map((cx, index) => <Line key={`line-${index}`} x1={cx} x2={cx} y1={0} y2={height} stroke={theme.edge} strokeWidth={1} />)}
               <Polyline points={shape.line} fill="none" stroke={theme[tone] ?? theme.flat} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-              {shape.markers.map((marker, index) => (
-                <Circle key={index} cx={marker.cx} cy={marker.cy} r={4} fill={theme.dot} stroke={theme.dotRing} strokeWidth={1.5} />
-              ))}
+              {shape.markers.map((cx, index) => <Circle key={`dot-${index}`} cx={cx} cy={height + NEWS_LANE / 2} r={3} fill={theme.ink} />)}
             </Svg>
             <Txt variant="micro" tone="inkSoft" numeric style={[styles.extreme, { top: Math.max(0, shape.highY - 17) }]}>{`최고 ${price(shape.high)}`}</Txt>
             <Txt variant="micro" tone="inkSoft" numeric style={[styles.extreme, { top: Math.min(height - 16, shape.lowY + 3) }]}>{`최저 ${price(shape.low)}`}</Txt>

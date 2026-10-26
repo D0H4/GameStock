@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAccount, heldQuantity } from '../account';
 import { useAuth } from '../auth';
 import { GameIcon } from '../components/GameIcon';
+import { CandleChart } from '../components/CandleChart';
 import { LineChart } from '../components/LineChart';
 import { cleanTitle, clockTime, newsSourceUrl, newsSummary, price, relativeTime, signedPercent } from '../format';
 import { api, sessionRate } from '../market';
@@ -17,12 +18,21 @@ const RANGES = [
   { key: '24h', label: '하루' },
   { key: '7d', label: '일주일' },
 ];
+// 캔들은 봉 간격으로 고른다. 키는 /api/stocks/{code}/chart의 range 값이다(웹 SeriesChart와 같다).
+const CANDLE_RANGES = [
+  { key: '1h', label: '1분봉' },
+  { key: '6h', label: '5분봉' },
+  { key: '1d', label: '30분봉' },
+  { key: '3d', label: '1시간봉' },
+];
+const MODES = [{ key: 'line', label: '선' }, { key: 'candle', label: '캔들' }];
 const BOOK_DEPTH = 5;
 const TRADE_COUNT = 10;
 const amount = value => `${Math.round(Number(value) || 0).toLocaleString('ko-KR')}주`;
 
 /** 종목 상세. 할 일은 판단 하나다: 가격과 흐름, 움직인 이유, 지금 호가, 그리고 주문. */
-export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
+export function StockScreen({ code, market, onBack, onLogin, onSwitch, initialOrder }) {
+  const [picking, setPicking] = useState(false);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -30,6 +40,9 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
   const stock = market.stocks.find(item => item.code === code);
   const [range, setRange] = useState('24h');
   const [history, setHistory] = useState({ range: null, points: null, error: false });
+  const [mode, setMode] = useState('line');
+  const [candleRange, setCandleRange] = useState('1h');
+  const [candles, setCandles] = useState({ range: null, bars: null, error: false });
   const [drivers, setDrivers] = useState(null);
   const [news, setNews] = useState(null);
   // 근거·뉴스를 한 번도 못 받았을 때만 실패로 보인다. 받은 값이 있으면 다음 갱신까지 그 값을 둔다.
@@ -61,6 +74,19 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
     const timer = setInterval(read, 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [code, range]);
+
+  // 캔들은 캔들 보기를 고른 동안만 받는다. 마지막 봉이 계속 자라므로 10초마다 다시 읽는다.
+  useEffect(() => {
+    if (mode !== 'candle') return undefined;
+    let cancelled = false;
+    setCandles(current => ({ range: candleRange, bars: current.range === candleRange ? current.bars : null, error: false }));
+    const read = () => api(`/api/stocks/${code}/chart?range=${candleRange}`)
+      .then(bars => { if (!cancelled) setCandles({ range: candleRange, bars, error: false }); })
+      .catch(() => { if (!cancelled) setCandles(current => ({ ...current, error: true })); });
+    void read();
+    const timer = setInterval(read, 10_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [code, mode, candleRange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,8 +140,14 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
         <Pressable accessibilityRole="button" accessibilityLabel="시장으로 돌아가기" onPress={onBack} style={styles.barButton}>
           <Ionicons name="chevron-back" size={26} color={theme.ink} />
         </Pressable>
+        {onSwitch ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="다른 종목 고르기" onPress={() => setPicking(true)} style={({ pressed }) => [styles.switcher, pressed && { backgroundColor: theme.pressed }]}>
+            <Txt variant="callout" numberOfLines={1} style={styles.shrink}>{stock.name}</Txt>
+            <Ionicons name="chevron-down" size={18} color={theme.inkSoft} />
+          </Pressable>
+        ) : <View style={styles.shrink} />}
         <Pressable accessibilityRole="button" accessibilityLabel={watching ? '관심 종목에서 빼기' : '관심 종목에 넣기'} accessibilityState={{ selected: watching }} onPress={() => void toggleWatch()} style={styles.barButton}>
-          <Ionicons name={watching ? 'star' : 'star-outline'} size={24} color={watching ? theme.guard : theme.ink} />
+          <Ionicons name={watching ? 'star' : 'star-outline'} size={24} color={watching ? theme.star : theme.ink} />
         </Pressable>
       </View>
 
@@ -145,17 +177,33 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
         ) : null}
 
         <Card>
-          <View style={styles.ranges} accessibilityRole="tablist">
-            {RANGES.map(item => {
-              const selected = range === item.key;
-              return (
-                <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRange(item.key)} style={[styles.range, selected && { backgroundColor: theme.raised }]}>
-                  <Txt variant="caption" tone={selected ? 'ink' : 'inkSoft'}>{item.label}</Txt>
-                </Pressable>
-              );
-            })}
+          <View style={styles.chartBar}>
+            <View style={[styles.ranges, styles.shrink]} accessibilityRole="tablist" accessibilityLabel="차트 구간">
+              {(mode === 'candle' ? CANDLE_RANGES : RANGES).map(item => {
+                const selected = (mode === 'candle' ? candleRange : range) === item.key;
+                return (
+                  <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => (mode === 'candle' ? setCandleRange : setRange)(item.key)} style={[styles.range, selected && { backgroundColor: theme.raised }]}>
+                    <Txt variant="caption" tone={selected ? 'ink' : 'inkSoft'}>{item.label}</Txt>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={[styles.modes, { borderColor: theme.edge }]} accessibilityRole="tablist" accessibilityLabel="차트 모양">
+              {MODES.map(item => {
+                const selected = mode === item.key;
+                return (
+                  <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setMode(item.key)} style={[styles.mode, selected && { backgroundColor: theme.ink }]}>
+                    <Txt variant="caption" style={{ color: selected ? theme.ground : theme.ink }}>{item.label}</Txt>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
-          {history.points == null && !history.error ? (
+          {mode === 'candle' ? (
+            candles.bars == null ? (
+              <View style={styles.chartLoading}>{candles.error ? <Txt variant="caption" tone="inkSoft">봉 기록을 불러오지 못했어요.</Txt> : <ActivityIndicator color={theme.inkSoft} />}</View>
+            ) : <CandleChart candles={candles.bars} reference={stock.referencePrice} />
+          ) : history.points == null && !history.error ? (
             <View style={styles.chartLoading}><ActivityIndicator color={theme.inkSoft} /></View>
           ) : history.error && history.points == null ? (
             <View style={styles.chartLoading}><Txt variant="caption" tone="inkSoft">가격 기록을 불러오지 못했어요.</Txt></View>
@@ -168,7 +216,7 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
               tone={tone}
             />
           )}
-          <Txt variant="micro" tone="inkSoft" style={{ marginTop: SPACE.sm }}>{range === '7d' ? '흰 점은 관련 뉴스가 나온 시점이에요.' : '흰 점은 관련 뉴스가 나온 시점, 점선은 오늘 기준가예요.'}</Txt>
+          <Txt variant="micro" tone="inkSoft" style={{ marginTop: SPACE.sm }}>{mode === 'candle' ? '최근 60개 봉이에요. 점선은 오늘 기준가예요.' : range === '7d' ? '아래 점과 세로선은 관련 뉴스가 나온 시점이에요.' : '아래 점과 세로선은 관련 뉴스가 나온 시점, 점선은 오늘 기준가예요.'}</Txt>
         </Card>
 
         <Card>
@@ -269,7 +317,58 @@ export function StockScreen({ code, market, onBack, onLogin, initialOrder }) {
         initialLimitPrice={order?.limitPrice ?? null}
         onClose={() => setOrder(null)}
       />
+      {onSwitch ? (
+        <StockPicker
+          visible={picking}
+          stocks={market.stocks}
+          current={code}
+          onPick={next => { setPicking(false); if (next !== code) onSwitch(next); }}
+          onClose={() => setPicking(false)}
+        />
+      ) : null}
     </View>
+  );
+}
+
+/** 목록으로 돌아가지 않고 다른 종목으로 바꾸는 시트. 웹 거래 화면의 종목 선택과 같은 일을 한다. */
+function StockPicker({ visible, stocks, current, onPick, onClose }) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]} onPress={onClose} accessibilityLabel="종목 고르기 닫기" />
+      <View style={[styles.picker, { backgroundColor: theme.card, paddingBottom: insets.bottom + SPACE.md }]}>
+        <View style={styles.pickerHead}>
+          <Txt variant="headline" accessibilityRole="header">종목 고르기</Txt>
+          <Pressable accessibilityRole="button" accessibilityLabel="닫기" onPress={onClose} hitSlop={8} style={styles.barButton}>
+            <Ionicons name="close" size={24} color={theme.ink} />
+          </Pressable>
+        </View>
+        <ScrollView>
+          {stocks.map((item, index) => {
+            const selected = item.code === current;
+            const rate = sessionRate(item);
+            return (
+              <Pressable
+                key={item.code}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${item.name} ${price(item.price)}원, 오늘 ${signedPercent(rate)}`}
+                onPress={() => onPick(item.code)}
+                style={({ pressed }) => [styles.pickerRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.line }, (pressed || selected) && { backgroundColor: theme.raised }]}
+              >
+                <GameIcon code={item.code} />
+                <Txt variant="callout" numberOfLines={1} style={styles.shrink}>{item.name}</Txt>
+                <View style={styles.pickerPrice}>
+                  <Txt variant="callout" numeric>{price(item.price)}</Txt>
+                  <Txt variant="caption" tone={toneOf(rate)} numeric>{signedPercent(rate)}</Txt>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
@@ -364,7 +463,12 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', gap: SPACE.md },
   backLink: { minHeight: 44, justifyContent: 'center' },
   shrink: { flex: 1, minWidth: 0 },
-  bar: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACE.xs },
+  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.xs },
+  switcher: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: RADIUS_SM, paddingHorizontal: SPACE.sm },
+  picker: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '75%', borderTopLeftRadius: RADIUS, borderTopRightRadius: RADIUS },
+  pickerHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: SPACE.lg + 2, paddingRight: SPACE.xs, paddingTop: SPACE.xs },
+  pickerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, minHeight: 60, paddingHorizontal: SPACE.lg + 2 },
+  pickerPrice: { alignItems: 'flex-end' },
   barButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   hero: { paddingHorizontal: SPACE.lg + 2, paddingBottom: SPACE.lg },
   heroName: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
@@ -372,7 +476,10 @@ const styles = StyleSheet.create({
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },
   cardHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: SPACE.lg + 2, paddingTop: SPACE.lg + 2, paddingBottom: SPACE.sm, gap: SPACE.sm },
-  ranges: { flexDirection: 'row', gap: 4, marginBottom: SPACE.md },
+  chartBar: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.md },
+  ranges: { flexDirection: 'row', gap: 4 },
+  modes: { flexDirection: 'row', borderWidth: 1, borderRadius: RADIUS_SM, overflow: 'hidden' },
+  mode: { minHeight: 44, minWidth: 44, paddingHorizontal: SPACE.sm, alignItems: 'center', justifyContent: 'center' },
   range: { flex: 1, minHeight: 44, borderRadius: RADIUS_SM, alignItems: 'center', justifyContent: 'center' },
   chartLoading: { minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   drivers: { marginTop: SPACE.md, paddingTop: SPACE.sm, borderTopWidth: StyleSheet.hairlineWidth, gap: SPACE.md },

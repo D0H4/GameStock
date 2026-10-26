@@ -14,7 +14,7 @@ export const TABS = [
 
 /**
  * 하단 탭바. 다섯 탭 모두 네이티브 화면이다. 설정 메뉴의 계정 화면만 아직 WebView로 연다.
- * 무대색 바 위에서 현재 탭은 잉크색 글자와 위쪽 2px 핑크 선으로 표시한다(웹 상단 바의 밑줄과 같은 표시).
+ * 현재 탭은 채워진 아이콘과 잉크색 글자로 표시한다. 색만이 아니라 아이콘 모양도 바뀐다.
  */
 export function TabBar({ active, onSelect }) {
   const theme = useTheme();
@@ -37,7 +37,6 @@ export function TabBar({ active, onSelect }) {
             android_ripple={{ color: theme.pressed, borderless: true }}
             style={styles.item}
           >
-            <View style={[styles.mark, selected && { backgroundColor: theme.brand }]} />
             <Ionicons name={selected ? tab.icon : `${tab.icon}-outline`} size={23} color={color} />
             <Txt variant="micro" style={{ color, marginTop: 3 }} maxFontSizeMultiplier={1.2}>{tab.label}</Txt>
           </Pressable>
@@ -50,5 +49,4 @@ export function TabBar({ active, onSelect }) {
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth },
   item: { flex: 1, minHeight: 56, alignItems: 'center', justifyContent: 'center', paddingTop: 4 },
-  mark: { position: 'absolute', top: 0, width: 28, height: 2 },
 });

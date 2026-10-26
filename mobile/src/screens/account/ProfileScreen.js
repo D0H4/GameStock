@@ -118,7 +118,7 @@ export function ProfileScreen({ onBack }) {
   const chosen = PROFILE_AVATARS.find(item => item.src === avatar);
   const avatarSaved = avatar !== '' && avatar === (profile.profileImageUrl ?? '');
   const avatarStatus = chosen
-    ? avatarSaved ? `${chosen.name} 사용 중` : `${chosen.name}을(를) 골랐어요. 저장하면 바뀌어요.`
+    ? avatarSaved ? `${chosen.name} 사용 중` : `고른 캐릭터: ${chosen.name}. 저장하면 바뀌어요.`
     : avatar ? '지금은 로그인 계정 사진을 쓰고 있어요. 바꾸려면 캐릭터를 골라 주세요.'
     : '캐릭터를 하나 골라 주세요.';
 

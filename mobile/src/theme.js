@@ -10,14 +10,8 @@ export const FONTS = { [FONT_FAMILY]: require('../assets/fonts/GyeonggiTitleM.tt
 // 제각각이라 호가 열이 흔들린다. 웹의 Pretendard 자리에 OS 기본 산세리프(SF Pro, Roboto)의 tnum을 쓴다.
 export const NUMBER_FONT = Platform.select({ ios: 'System', default: 'sans-serif' });
 
-/*
- * 색은 DESIGN.md(판정선)의 토큰을 그대로 옮겼다. 다크가 기본이고 라이트로 바꿀 수 있다.
- * 글자 색은 놓이는 면 대비 4.5:1 이상, 찾아 눌러야 하는 테두리는 3:1 이상이다.
- *   무대·패널·돋움: 무채색 세 단계 명도. 그림자 없이 명도로만 깊이를 만든다.
- *   상승 적 · 하락 청: 글자(up/down)와 흰 글자를 올리는 면(upFill/downFill)을 따로 둔다.
- *   핑크: "지금 여기"(현재 탭, 현재가 줄, 내 순위)에만. 글자로 쓸 때는 brandText.
- *   노랑: 거래 보호(VI·서킷브레이커)에만. 일반 오류·안내에는 쓰지 않는다.
- */
+// DESIGN.md(판정선) 토큰. 글자는 4.5:1, 눌러야 하는 테두리는 3:1 이상이다.
+// 핑크는 "지금 여기"(현재가·내 순위)에만, 노랑은 거래 보호(VI·서킷브레이커)에만 쓴다.
 const dark = {
   scheme: 'dark',
   ground: '#12101C',
@@ -43,11 +37,10 @@ const dark = {
   guard: '#FFC83D',
   guardWash: '#3A3014',
   guardText: '#FFD66E',
+  // 관심 종목 별. 그래픽이라 바탕·카드 대비 3:1 이상이면 된다.
+  star: '#FFC83D',
   // 기준가 점선과 입력칸·버튼 테두리. 패널 대비 3:1 이상(3.4:1).
   edge: '#6F6986',
-  // 뉴스 시점의 흰 점과 그 테두리.
-  dot: '#FFFFFF',
-  dotRing: '#12101C',
   scrim: 'rgba(5, 4, 10, 0.6)',
   // 자산 구성 막대의 종목 칸. 잉크에서 무대 쪽으로 내려가는 무채색 다섯 단계(현금만 핑크).
   // 그래픽 대비 3:1을 지키도록 가장 어두운 칸도 카드 대비 3.9:1에서 멈춘다(DESIGN.md 값보다 한 단계 밝다).
@@ -81,10 +74,10 @@ const light = {
   guard: '#E0A400',
   guardWash: '#FFF4D6',
   guardText: '#6B4C00',
+  // 보호 노랑(#E0A400)은 바탕 대비 1.9:1이라 별에는 한 단계 진한 금색을 쓴다(바탕 3.9:1, 카드 4.5:1).
+  star: '#9A6F00',
   // 바탕(#EFEDF5) 위에서도 3:1을 넘는 값(3.2:1).
   edge: '#87828F',
-  dot: '#FFFFFF',
-  dotRing: '#1B1726',
   scrim: 'rgba(27, 23, 38, 0.4)',
   alloc: ['#1B1726', '#3A3449', '#554F66', '#6F6986', '#857F99'],
   gaugeDanger: '#C01F34',

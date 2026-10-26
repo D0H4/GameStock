@@ -4,12 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONT_FAMILY, NUMBER_FONT, RADIUS, RADIUS_SM, SPACE, TYPE, Txt, useTheme } from '../theme';
 
-/*
- * 설정 탭에서 여는 계정 화면들이 같이 쓰는 부품. 시장·종목 화면과 같은 규칙을 따른다.
- *   카드: 8px 패널, 그림자 없음. 카드 속 카드는 만들지 않는다.
- *   버튼: 주 버튼은 잉크 면, 그 밖에는 테두리만. 색 면은 매수·매도와 같은 뜻일 때만.
- *   안내: 무채색 면. 노랑은 거래 보호와 대출 경고 구간에만.
- */
+// 계정·파생 화면이 같이 쓰는 부품. 카드는 그림자 없는 8px 패널이고 카드 속 카드는 만들지 않는다.
+// 주 버튼만 잉크 면이고, 색 면은 매수·매도와 같은 뜻일 때만 쓴다.
 
 /** 위쪽 뒤로 가기 막대, 화면 제목, 아래로 당겨 새로고침이 있는 스크롤 화면. */
 export function AccountFrame({ title, onBack, onRefresh, children, footer }) {
@@ -82,10 +78,8 @@ export function Figure({ label, value, tone = 'ink' }) {
 }
 
 /**
- * kind: primary(잉크 면, 화면의 주 동작) · ghost(테두리) · danger(되돌릴 수 없는 동작)
- *       · buy / sell(매수·매도와 같은 방향의 돈 흐름).
- * 적색은 이 체계에서 "상승"이라 위험 표시에 빌려 쓰지 않는다. danger는 잉크 테두리에 경고 아이콘을 달고,
- * 누르면 늘 확인 창을 한 번 더 거친다.
+ * kind: primary(주 동작) · ghost · danger(되돌릴 수 없음) · buy / sell(매수·매도 방향의 돈 흐름).
+ * 적색은 "상승"이라 위험 표시에 빌리지 않는다. danger는 잉크 테두리와 경고 아이콘이고, 늘 확인 창을 거친다.
  */
 export function Button({ label, onPress, kind = 'ghost', disabled, busy, small, icon, style, accessibilityLabel }) {
   const theme = useTheme();

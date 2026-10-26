@@ -13,26 +13,21 @@ const SIGN_OUT_FLAG = 'gamestock-native-signout';
 
 const withShell = path => `${path}${path.includes('?') ? '&' : '?'}app-shell=1`;
 
-/*
- * 웹 문서가 그려지기 전에 실행한다.
- * 1) 앱이 로그아웃을 요청했으면, 웹 Firebase가 로그인 정보를 읽기 전에 그 저장소를 지운다.
- *    IndexedDB 요청은 순서대로 처리되므로 지우기가 Firebase의 열기보다 먼저 끝난다.
- * 2) 네이티브 탭바가 있으니 웹 상단의 화면 이동 메뉴 줄만 숨긴다(로고·계정 메뉴는 남긴다).
- *    .topbar는 예전 화면, .nx-top은 새 화면(판정선)의 상단 바다.
- * 4) 웹이 앱과 같은 밝기로 처음부터 그려지도록, 웹이 읽는 테마 저장값을 앱의 선택으로 덮어 둔다.
- * 3) 웹 라우터의 주소 변경을 앱에 알려, 앱이 현재 탭을 맞추고 홈과 로그인은 네이티브 화면으로 돌린다.
- */
+// 웹 문서가 그려지기 전에 실행한다. 웹이 처음부터 앱과 같은 밝기로 그려지게 테마 저장값을 덮는다.
 const beforeLoad = scheme => `(function () {
   try { localStorage.setItem('${THEME_KEY}', '${scheme}'); } catch (error) {}
+  // 앱이 로그아웃했으면 웹 Firebase가 열기 전에 저장소를 지운다. IndexedDB는 요청 순서대로 처리된다.
   try {
     if (localStorage.getItem('${SIGN_OUT_FLAG}')) {
       localStorage.removeItem('${SIGN_OUT_FLAG}');
       indexedDB.deleteDatabase('firebaseLocalStorageDb');
     }
   } catch (error) {}
+  // 네이티브 탭바가 있으니 웹 상단의 이동 메뉴 줄만 숨긴다(.topbar는 예전 화면, .nx-top은 새 화면).
   var style = document.createElement('style');
   style.textContent = '.topbar .nav, .nx-top .nx-nav { display: none !important; }';
   (document.head || document.documentElement).appendChild(style);
+  // 웹 라우터의 주소 변경을 앱에 알려 앱이 현재 탭을 맞춘다.
   function report() {
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ROUTE', path: location.pathname }));
   }
