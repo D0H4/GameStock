@@ -27,6 +27,7 @@ import { FONTS, ThemeProvider, useTheme, useThemeMode } from './src/theme';
 import { Toast } from './src/components/Kit';
 import { CircuitBreakerModal, SiteNoticeModal, SuspensionScreen } from './src/components/Announcements';
 import { useCircuitNotice, useSiteNotice, useSuspendedUntil } from './src/notices';
+import { onAnnounce, useTitleWatcher } from './src/rewards';
 
 const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
 // 웹 화면이 보이지 않을 때 머물러 둘 공개 화면. 로그인 전용 웹 화면에 두면 로그인을 다시 요구한다.
@@ -78,6 +79,8 @@ function ShellBody({ web }) {
   const suspendedUntil = useSuspendedUntil(user ? profile : null);
   const siteNotice = useSiteNotice();
   const circuit = useCircuitNotice(market.status?.restriction);
+  // 정지된 계정은 서버가 칭호 확인도 거절하므로 확인하지 않는다.
+  useTitleWatcher(Boolean(user) && !suspendedUntil);
   // 앱을 켜 둔 사이 정지되거나 풀렸을 수 있으니 앱으로 돌아올 때 프로필을 다시 읽는다.
   useEffect(() => {
     if (!user) return undefined;
@@ -92,12 +95,14 @@ function ShellBody({ web }) {
   // 뉴스 탭에서 연 기사 id. null이면 뉴스 목록. 읽던 기사가 실시간 갱신으로 목록에서 밀려나도 계속 보여 준다.
   const [newsId, setNewsId] = useState(null);
   const lastNews = useRef(null);
-  // 화면을 옮긴 뒤에도 보여야 하는 짧은 알림. 3초 뒤 사라진다.
-  const [toast, setToast] = useState(null);
-  const notify = useCallback(text => setToast({ text, at: Date.now() }), []);
+  // 화면을 옮긴 뒤에도 보여야 하는 짧은 알림. 한 번에 여럿이 오면 3초씩 차례로 보여 준다.
+  const [toasts, setToasts] = useState([]);
+  const toast = toasts[0] ?? null;
+  const notify = useCallback((text, icon) => setToasts(current => [...current, { text, icon, at: Date.now() }]), []);
+  useEffect(() => onAnnounce(({ text, icon }) => notify(text, icon)), [notify]);
   useEffect(() => {
     if (!toast) return undefined;
-    const timer = setTimeout(() => setToast(null), 3000);
+    const timer = setTimeout(() => setToasts(current => current.slice(1)), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
   // 로그인 시트. next는 로그인 뒤에 열 화면 주소(없으면 지금 화면에 머문다).
@@ -293,7 +298,7 @@ function ShellBody({ web }) {
               <AccountScreen market={market} onBack={() => setMenuRoot(null)} onGo={go} onNotify={notify} />
             </SwipeBack>
           ) : null}
-          <Toast text={toast?.text} />
+          <Toast key={toast?.at} text={toast?.text} icon={toast?.icon} />
         </View>
         <TabBar active={tab} onSelect={selectTab} />
       </View>

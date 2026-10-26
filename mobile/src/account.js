@@ -1,5 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { request, useAuth } from './auth';
+import { won } from './format';
+import { announce } from './rewards';
 
 const AccountContext = createContext(null);
 export const useAccount = () => useContext(AccountContext);
@@ -49,7 +51,10 @@ export function AccountProvider({ children }) {
         void request('/api/missions')
           .then(missions => {
             if (!missions?.availableMissionIds?.includes('watch') || missions.completedMissionIds?.includes('watch')) return null;
-            return request('/api/missions/watch/reward', { method: 'POST' }).then(() => reload());
+            return request('/api/missions/watch/reward', { method: 'POST' }).then(result => {
+              if (result?.awarded) announce(`미션 보상 ${won(result.rewardCash)}을 받았어요.`, 'checkmark-circle');
+              return reload();
+            });
           })
           .catch(() => {});
       }

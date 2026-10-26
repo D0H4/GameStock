@@ -251,13 +251,13 @@ export function SideTag({ buy, label }) {
  * 화면을 옮긴 뒤에도 보여야 하는 짧은 결과 알림(미션 보상 지급 등). 탭바 바로 위에 잉크 면으로 3초 동안 뜬다.
  * 움직임은 쓰지 않는다(MOTION 1). 스크린리더에는 바로 읽힌다.
  */
-export function Toast({ text }) {
+export function Toast({ text, icon = 'checkmark-circle' }) {
   const theme = useTheme();
   if (!text) return null;
   return (
     <View pointerEvents="none" style={styles.toastWrap}>
       <View style={[styles.toast, { backgroundColor: theme.ink }]} accessibilityLiveRegion="assertive" accessibilityRole="alert">
-        <Ionicons name="checkmark-circle" size={18} color={theme.ground} />
+        <Ionicons name={icon} size={18} color={theme.ground} />
         <Txt variant="callout" style={{ color: theme.ground, flexShrink: 1 }}>{text}</Txt>
       </View>
     </View>
