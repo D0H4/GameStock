@@ -49,7 +49,8 @@ type BackendStock = {
   limitDown?: number;
   restriction?: TradingRestriction | null;
 };
-type BackendMarketStatus = { indexValue: number; tradingDate: string; restriction?: TradingRestriction | null };
+/** indexValue는 날이 바뀌어도 이어지는 게임주 지수, indexPrevClose는 그 지수의 전날 종가다. */
+type BackendMarketStatus = { indexValue: number; indexPrevClose?: number; tradingDate: string; restriction?: TradingRestriction | null };
 type BackendOrderBookLevel = { price: number; quantity: number; orderCount: number };
 type BackendOrderBook = { stockCode: string; bids: BackendOrderBookLevel[]; asks: BackendOrderBookLevel[] };
 type BackendTrade = { side: string; quantity: number; price: number; orderType?: string; createdAt: string };
@@ -178,11 +179,13 @@ function toSnapshot(stocks: BackendStock[], events: BackendEvent[], portfolio?: 
     series.push(price);
   }
   const newsIds = stableNewsIds();
+  // 서버 값이 없을 때만 오늘 기준가 대비 비율로 대신한다. 이때는 어제 종가 자리에 1,000을 둔다.
   const indexValue = market?.indexValue ?? (weight > 0 ? (weighted / weight) * 1000 : 1000);
+  const indexPrevClose = market?.indexValue != null && market.indexPrevClose ? market.indexPrevClose : 1000;
   return {
     quotes,
     marketRestriction: market?.restriction ?? null,
-    index: { value: indexValue, prevClose: 1000, series: [1000, indexValue], tradingDate: market?.tradingDate },
+    index: { value: indexValue, prevClose: indexPrevClose, series: [indexPrevClose, indexValue], tradingDate: market?.tradingDate },
     codes: stocks.map((stock) => stock.code).filter((code) => Boolean(quotes[code])),
     news: events.map((event) => ({
       id: newsIds.next(event),

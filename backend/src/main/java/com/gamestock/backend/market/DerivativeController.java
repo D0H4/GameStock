@@ -39,6 +39,11 @@ public class DerivativeController {
         return derivatives.futureChart(range);
     }
 
+    @GetMapping("/index/today")
+    public java.util.List<IndexCandle> indexToday() {
+        return derivatives.indexToday();
+    }
+
     @GetMapping("/account")
     public Account account(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return derivatives.account(auth.requireUser(authorization).id());

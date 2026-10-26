@@ -41,6 +41,7 @@ public class DerivativeService {
     private static final int SERIES_LIMIT = 120;
     private static final long MAX_ACCOUNT_EXPOSURE = 10_000_000;
     private static final String FUTURE_CODE = "FUTIDX";
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private record OpenRow(long id, long userId, String kind, String symbol, String name, String side,
                            int quantity, double entryPrice, long entryNotional, long margin, int leverage,
@@ -962,6 +963,28 @@ public class DerivativeService {
         long step = spec[1];
         long to = (nowMillis / 1000 / step + 1) * step;
         long from = to - ((spec[0] + step - 1) / step) * step;
+        List<IndexCandle> candles = indexCandles(from, to, step);
+        futureChartCache.put(range, Map.entry(nowMillis, candles));
+        return candles;
+    }
+
+    /**
+     * 한국시간 오늘 0시부터 지금까지 게임주 지수의 10분 봉. 홈 지수 그래프가 쓴다.
+     * 지수는 날이 바뀌어도 이어지므로 첫 봉은 1,000이 아니라 어제 마지막 값 근처에서 시작한다.
+     */
+    public List<IndexCandle> indexToday() {
+        long nowMillis = clock.millis();
+        Map.Entry<Long, List<IndexCandle>> cached = futureChartCache.get("today");
+        if (cached != null && nowMillis - cached.getKey() < 10_000) return cached.getValue();
+        long step = 600;
+        long from = Instant.ofEpochMilli(nowMillis).atZone(SEOUL).toLocalDate().atStartOfDay(SEOUL).toEpochSecond();
+        long to = (nowMillis / 1000 / step + 1) * step;
+        List<IndexCandle> candles = indexCandles(from, to, step);
+        futureChartCache.put("today", Map.entry(nowMillis, candles));
+        return candles;
+    }
+
+    private List<IndexCandle> indexCandles(long from, long to, long step) {
         Timestamp start = Timestamp.from(Instant.ofEpochSecond(from));
         List<IndexCandle> candles = jdbc.query("""
                 SELECT slot,
@@ -983,7 +1006,6 @@ public class DerivativeService {
                 rs.getDouble("open_value"), rs.getDouble("high_value"), rs.getDouble("low_value"),
                 rs.getDouble("close_value"), rs.getLong("points")),
                 start, step, start, step, start, step, start, Timestamp.from(Instant.ofEpochSecond(to)));
-        futureChartCache.put(range, Map.entry(nowMillis, candles));
         return candles;
     }
 

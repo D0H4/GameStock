@@ -22,6 +22,7 @@ public class TradingProtectionService {
     private static final long CB_AUCTION_SECONDS = 600;
     private final JdbcTemplate jdbc;
     private AdminRuntimeControl adminRuntime;
+    private DerivativeBaskets baskets;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     void configureAdminRuntime(AdminRuntimeControl runtime){this.adminRuntime=runtime;}
     // Wall clock in production; replaceable with a synchronized Java/SQL clock in soak tests.
@@ -143,7 +144,8 @@ public class TradingProtectionService {
         return repaired;
     }
 
-    public double indexValue() {
+    /** 서킷브레이커 판정용 당일 비율 지수. 종목마다 오늘 기준가를 1,000으로 둔 시가총액 가중 값이라 매일 1,000에서 시작한다. */
+    public double dailyIndex() {
         Double index = jdbc.query("""
                 SELECT s.stock_code, s.current_price, p.day_reference
                 FROM stocks s JOIN stock_protection_state p ON p.stock_id = s.id
@@ -161,15 +163,32 @@ public class TradingProtectionService {
         return index == null ? 1000 : index;
     }
 
+    /**
+     * 화면에 보이는 게임주 지수. 선물·옵션이 따르는 지수 ETF(ETFIDX) NAV라 자정에 1,000으로 돌아가지 않는다.
+     * 바스켓이 아직 없으면(첫 기동 전) 당일 비율 지수와 기준 1,000으로 대신한다.
+     */
+    double[] gameIndex() {
+        try {
+            if (baskets == null) baskets = new DerivativeBaskets(jdbc);
+            DerivativeBaskets.Basket basket = baskets.load().basket("ETFIDX");
+            if (basket.initialized() && basket.price() > 0 && basket.previous() > 0)
+                return new double[]{basket.price(), basket.previous()};
+        } catch (RuntimeException unavailable) {
+            // 파생 테이블이 없는 환경(일부 테스트)에서는 당일 비율 지수로 대신한다.
+        }
+        return new double[]{dailyIndex(), 1000};
+    }
+
     public MarketStatus marketStatus() {
         MarketState state = marketState();
+        double[] index = gameIndex();
         if(adminRuntime!=null&&adminRuntime.settings().marketPaused())
-            return new MarketStatus(false,"ADMIN_HALT","Asia/Seoul","운영 점검 중",adminRuntime.restriction(""),indexValue(),state.day().toString());
+            return new MarketStatus(false,"ADMIN_HALT","Asia/Seoul","운영 점검 중",adminRuntime.restriction(""),index[0],index[1],state.day().toString());
         TradingRestriction restriction = marketRestriction(state);
         boolean open = "NORMAL".equals(state.phase()) || "AUCTION".equals(state.phase());
         return new MarketStatus(open, "NORMAL".equals(state.phase()) ? "24H" : "CB_" + state.phase(),
                 "Asia/Seoul", restriction == null ? "24시간 거래 가능" : restriction.effect(),
-                restriction, indexValue(), state.day().toString());
+                restriction, index[0], index[1], state.day().toString());
     }
 
     public TradingRestriction restriction(String code) {
@@ -265,7 +284,7 @@ public class TradingProtectionService {
     public void observeMarket() {
         MarketState state = marketState();
         if (!"NORMAL".equals(state.phase()) || state.level() >= 3) return;
-        double value = indexValue();
+        double value = dailyIndex();
         int next = state.level() + 1;
         double threshold = switch (next) { case 1 -> 920; case 2 -> 850; default -> 800; };
         boolean crossed = value <= threshold + 1e-8
@@ -338,7 +357,7 @@ public class TradingProtectionService {
                 ? "모든 종목의 신규 주문·체결·자동 시세 변경을 한국시간 자정까지 중단합니다. 기존 주문 취소는 가능합니다."
                 : "모든 종목의 신규 주문·체결·자동 시세 변경을 20분간 중단합니다. 기존 주문 취소는 가능하며 이후 10분 단일가 접수를 거쳐 재개합니다.";
         return new TradingRestriction("CIRCUIT_BREAKER", "서킷 " + state.level() + "단계", phase, state.level(),
-                "당일 시작을 1,000으로 둔 전 종목 동일가중 가상 지수가 " + switch (state.level()) { case 1 -> "8%"; case 2 -> "15%"; default -> "20%"; }
+                "게임주 종목들이 오늘 기준가보다 시가총액 가중 평균 " + switch (state.level()) { case 1 -> "8%"; case 2 -> "15%"; default -> "20%"; }
                         + " 이상 하락한 상태로 1분 유지됐습니다." + (state.level() > 1 ? " 직전 단계 발동 지수보다 1% 이상 추가 하락했습니다." : ""),
                 effect, instant(state.startedAt()), instant(state.endsAt()), auction, false);
     }

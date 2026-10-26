@@ -172,57 +172,22 @@ export function usePriceHistory(codes) {
   return history;
 }
 
-const KST_OFFSET_MS = 9 * 60 * 60_000;
-const DAY_MS = 24 * 60 * 60_000;
-const INDEX_STEP_MS = 10 * 60_000;
-
-/** 서버 TradingProtectionService.indexValue와 같은 식: 오늘 기준가 대비 가격(×1000)을 시가총액으로 가중 평균한다. */
-export function computeIndex(stocks, priceOf = stock => stock.price) {
-  let weighted = 0;
-  let weight = 0;
-  for (const stock of stocks) {
-    const cap = Number(stock.marketCap) || 0;
-    const reference = Math.max(1, Number(stock.referencePrice) || 0);
-    if (!cap) continue;
-    weighted += (priceOf(stock) * 1000 / reference) * cap;
-    weight += cap;
-  }
-  return weight ? weighted / weight : null;
-}
-
 /**
- * 오늘(한국시간 0시부터) 게임주 지수 흐름. 지수 기록 API가 없어서 종목별 가격 기록으로
- * 10분 간격 지점을 다시 계산하고, 마지막 점은 실시간 시세로 계산한 현재 지수다.
- * 한 종목이라도 기록이 아직 없거나 요청이 실패했으면 null을 돌려준다. 빠진 종목을 기준가로
- * 채워 그리면 데이터가 아닌 평평한 선이 되기 때문이다. 빈 배열은 24시간 동안 체결이 없었다는 실제 값이다.
+ * 오늘 0시(한국시간)부터의 게임주 지수 10분 봉 종가. 서버가 저장한 지수 기록이라 날이 바뀌어도 이어진다.
+ * 아직 받지 못했거나 기록이 없으면 null이다. 1분마다 다시 읽는다.
  */
-export function indexTrail(stocks, history, now = Date.now()) {
-  if (!stocks.length || stocks.some(stock => !Array.isArray(history[stock.code]))) return null;
-  const start = Math.floor((now + KST_OFFSET_MS) / DAY_MS) * DAY_MS - KST_OFFSET_MS;
-  const series = {};
-  for (const stock of stocks) {
-    series[stock.code] = (history[stock.code] || [])
-      .map(point => ({ t: Date.parse(point.recordedAt), p: Number(point.price) }))
-      .filter(point => Number.isFinite(point.t) && point.p > 0)
-      .sort((a, b) => a.t - b.t);
-  }
-  // 시각이 앞으로만 가므로 종목마다 읽은 위치를 기억해 기록을 한 번만 훑는다.
-  const cursor = {};
-  const last = {};
-  const priceAt = t => stock => {
-    const points = series[stock.code];
-    let i = cursor[stock.code] ?? 0;
-    while (i < points.length && points[i].t <= t) { last[stock.code] = points[i].p; i += 1; }
-    cursor[stock.code] = i;
-    // 24시간 안에 체결 기록이 없던 종목은 기준가에 머물러 있던 것으로 본다.
-    return last[stock.code] ?? (Number(stock.referencePrice) || stock.price);
-  };
-  const points = [];
-  for (let t = start; t < now; t += INDEX_STEP_MS) {
-    const value = computeIndex(stocks, priceAt(t));
-    if (value != null) points.push({ recordedAt: new Date(t).toISOString(), price: value });
-  }
-  return { points, start };
+export function useIndexToday() {
+  const [points, setPoints] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const read = () => api('/api/derivatives/index/today')
+      .then(candles => { if (alive) setPoints(candles.length ? candles.map(candle => ({ recordedAt: candle.recordedAt, price: candle.closePrice })) : null); })
+      .catch(() => {});
+    void read();
+    const timer = setInterval(read, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  return points;
 }
 
 /** 기준가 대비 등락률(비율). 서버의 changePercent와 같은 값을 가격에서 다시 계산한다. */

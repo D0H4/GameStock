@@ -5,14 +5,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameIcon } from '../components/GameIcon';
 import { PriceTrail } from '../components/PriceTrail';
 import { cleanTitle, indexValue, price, relativeTime, signedPercent } from '../format';
-import { computeIndex, indexTrail, newsWithIds, sessionRate, usePriceHistory } from '../market';
+import { newsWithIds, sessionRate, useIndexToday, usePriceHistory } from '../market';
+import { useDerivatives } from '../derivatives';
 import { RADIUS, RADIUS_XS, SPACE, Txt, toneOf, useTheme } from '../theme';
 
 const MOVER_COUNT = 5;
 const DAY_MS = 24 * 60 * 60_000;
 // 종목 줄의 고정 폭: 화면 여백 32, 줄 안쪽 여백 32, 아이콘 40, 간격 30, 추이선 64, 가격 칸 72.
 // 이름에 남는 폭이 이보다 좁으면 추이선을 빼고 이름에 자리를 준다.
-const TRAIL_WIDTH = 64;
+const TRAIL_WIDTH = 72;
+// 종목 줄 추이선 높이. 아래 8px은 뉴스 표시 띠다.
+const TRAIL_HEIGHT = 38;
 const MIN_NAME_WIDTH = 96;
 // 종목 추이선을 숨기는 좁은 화면에서 쓰는 지수 그래프 폭. 넓은 화면에서는 아래 indexTrailWidth로 계산한다.
 const INDEX_TRAIL_WIDTH = 80;
@@ -44,11 +47,12 @@ export function HomeScreen({ market, onOpen }) {
 
   // 지수 흐름은 전 종목 기록으로 다시 계산하므로 기록과 기준가가 바뀔 때만 계산한다.
   const history = usePriceHistory(stocks.map(stock => stock.code));
-  const baseKey = stocks.map(stock => `${stock.code}:${stock.referencePrice}:${stock.marketCap}`).join(',');
-  const trail = useMemo(() => indexTrail(stocks, history), [history, baseKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // 실시간 시세로 계산한 현재 지수. 서버 식과 같고, 시세가 없을 때만 서버 값을 쓴다.
-  const liveIndex = computeIndex(stocks) ?? status?.indexValue;
-  const indexRatio = liveIndex != null ? (liveIndex - 1000) / 1000 : 0;
+  const trail = useIndexToday();
+  // 게임주 지수는 선물·옵션과 같은 지수 ETF NAV라 자정에 1,000으로 돌아가지 않는다. 2초마다 받는 파생 시세가 먼저다.
+  const { snapshot: derivatives } = useDerivatives(false);
+  const liveIndex = derivatives?.indexValue ?? status?.indexValue;
+  const indexPrevClose = derivatives?.indexPrevClose ?? status?.indexPrevClose ?? null;
+  const indexRatio = liveIndex != null && indexPrevClose ? (liveIndex - indexPrevClose) / indexPrevClose : 0;
   const restriction = status?.restriction;
 
   const refresh = async () => {
@@ -117,14 +121,14 @@ export function HomeScreen({ market, onOpen }) {
               <Delta ratio={indexRatio} variant="callout" label="오늘" />
             </View>
             {/* 좁은 화면에서는 종목 추이선과 범례를 숨기므로 지수 그래프도 함께 뺀다(맞출 세로줄과 점선 설명이 없다).
-                기록이 다 오기 전이나 일부 실패하면 자리만 비워 두고, 지어낸 선을 그리지 않는다. */}
+                기록을 받기 전이나 실패하면 자리만 비워 두고, 지어낸 선을 그리지 않는다. */}
             {showTrail ? (
               trail ? (
-                <View accessible accessibilityLabel={`오늘 0시부터 지금까지의 게임주 지수 흐름. 점선은 기준 1,000`}>
+                <View accessible accessibilityLabel={`오늘 0시부터 지금까지의 게임주 지수 흐름. 점선은 어제 종가 ${indexPrevClose ? indexValue(indexPrevClose) : ''}`}>
                   <PriceTrail
-                    points={trail.points}
+                    points={trail}
                     current={liveIndex}
-                    reference={1000}
+                    reference={indexPrevClose}
                     tone={toneOf(indexRatio)}
                     width={indexTrailWidth}
                     height={INDEX_TRAIL_HEIGHT}
@@ -164,7 +168,7 @@ export function HomeScreen({ market, onOpen }) {
                     ) : null}
                   </View>
                   {showTrail ? (
-                    <PriceTrail points={history[stock.code]} current={stock.price} reference={stock.referencePrice} newsAt={recent?.publishedAt} tone={toneOf(stock.rate)} width={TRAIL_WIDTH} />
+                    <PriceTrail points={history[stock.code]} current={stock.price} reference={stock.referencePrice} newsAt={recent?.publishedAt} newsLane tone={toneOf(stock.rate)} width={TRAIL_WIDTH} height={TRAIL_HEIGHT} strokeWidth={2} area />
                   ) : null}
                   <View style={[styles.moverPrice, { width: priceColumn }]}>
                     <Txt variant="callout" numeric>{price(stock.price)}</Txt>
@@ -177,7 +181,7 @@ export function HomeScreen({ market, onOpen }) {
               </Pressable>
             );
           })}
-          {showTrail ? <Txt variant="micro" tone="inkSoft" style={styles.legend}>흰 점은 마지막 관련 뉴스가 나온 시점, 점선은 기준가예요.</Txt> : null}
+          {showTrail ? <Txt variant="micro" tone="inkSoft" style={styles.legend}>그래프는 최근 24시간 흐름이에요. 아래 점과 세로선은 마지막 관련 뉴스가 나온 시점, 점선은 기준가예요.</Txt> : null}
         </Card>
       ) : !error ? (
         <Card>

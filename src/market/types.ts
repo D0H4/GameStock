@@ -64,7 +64,7 @@ export interface BookLevel {
   qty: number;
 }
 
-/** 서버 지수: 한국시간 거래일 기준 1000, 전체 종목 수익률을 동일가중 평균한다. */
+/** 서버 게임주 지수(지수 ETF NAV). 날이 바뀌어도 이어지고, prevClose는 전날 종가다. */
 export interface MarketIndex {
   value: number;
   prevClose: number;

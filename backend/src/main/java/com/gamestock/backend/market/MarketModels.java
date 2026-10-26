@@ -137,8 +137,9 @@ public final class MarketModels {
     /** Daily open/close/volume summary. High/low are intentionally omitted per README scope. */
     public record DailyCandle(String stockCode, String tradingDate, long openPrice, long closePrice,
                               long volume) { }
+    /** indexValue는 날이 바뀌어도 이어지는 게임주 지수(지수 ETF NAV), indexPrevClose는 그 지수의 전날 종가다. */
     public record MarketStatus(boolean open, String session, String timezone, String message,
-                               TradingRestriction restriction, double indexValue, String tradingDate) { }
+                               TradingRestriction restriction, double indexValue, double indexPrevClose, String tradingDate) { }
     public record SettlementEntry(long id, String side, String stockCode, int quantity, long grossAmount,
                                   long fee, long netAmount, String status, String settlementAt,
                                   String createdAt, boolean cancellable) {

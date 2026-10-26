@@ -16,36 +16,23 @@ import { useSteadySnapshot } from "../market/useSteadySnapshot";
 import { MARKET_PATH } from "../router";
 import { AnimatedNav } from "./AnimatedNav";
 
+type IndexCandle = { recordedAt: string; closePrice: number };
+
 /*
- * 지수 기록 API가 없어서 서버 지수와 같은 식(종목별 기준가 대비 비율을 시가총액으로 가중 평균 × 1000)을
- * 종목별 가격 기록에서 10분 간격으로 다시 계산한다. 마지막 점은 실시간 지수로 바꿔 끼운다.
+ * 오늘 0시부터의 게임주 지수 10분 봉(/api/derivatives/index/today)을 10분 칸 값으로 펼친다.
+ * 지수는 날이 바뀌어도 이어지므로 첫 칸은 어제 종가 근처다. 마지막 점은 실시간 지수로 바꿔 끼운다.
  */
-function useIndexHistory(snapshot: MarketSnapshot): { points: number[]; status: "loading" | "ready" | "error" } {
+function useIndexHistory(): { points: number[]; status: "loading" | "ready" | "error" } {
   const [state, setState] = useState<{ points: number[]; status: "loading" | "ready" | "error" }>({ points: [], status: "loading" });
-  const codes = snapshot.codes.join(",");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const list = codes.split(",").filter(Boolean);
-        const histories = await Promise.all(list.map((code) => apiFetch<PricePoint[]>(`/api/stocks/${code}/history?range=24h`).catch(() => [] as PricePoint[])));
+        const candles = await apiFetch<IndexCandle[]>("/api/derivatives/index/today", { auth: false });
         if (!active) return;
-        const now = Date.now();
-        const ratios = list.map((code, index) => {
-          const prevClose = snapshot.quotes[code]?.prevClose ?? 0;
-          const weight = snapshot.quotes[code]?.marketCap ?? 0;
-          const prices = bucketPrices(histories[index], now);
-          if (!prevClose || !weight || prices.length === 0) return null;
-          return { weight, ratios: prices.map((price) => price / prevClose) };
-        }).filter((row): row is { weight: number; ratios: number[] } => row !== null);
-        if (ratios.length === 0) {
-          setState({ points: [], status: "error" });
-          return;
-        }
-        const totalWeight = ratios.reduce((sum, row) => sum + row.weight, 0);
-        const points = ratios[0].ratios.map((_, index) => (1000 * ratios.reduce((sum, row) => sum + row.ratios[index] * row.weight, 0)) / totalWeight);
-        setState({ points, status: "ready" });
+        const points = bucketPrices(candles.map((candle): PricePoint => ({ recordedAt: candle.recordedAt, price: candle.closePrice })), Date.now());
+        setState({ points, status: points.length ? "ready" : "error" });
       } catch {
         if (active) setState((current) => ({ ...current, status: current.points.length ? "ready" : "error" }));
       }
@@ -56,8 +43,7 @@ function useIndexHistory(snapshot: MarketSnapshot): { points: number[]; status: 
       active = false;
       window.clearInterval(timer);
     };
-    // 시세가 바뀔 때마다가 아니라 종목 구성이 바뀔 때만 다시 받는다.
-  }, [codes]);
+  }, []);
 
   return state;
 }
@@ -80,9 +66,9 @@ function niceStep(span: number): number {
 
 /**
  * 오늘 0시부터 24시까지를 가로 전체로 잡는다. 선이 오른쪽 끝에 닿지 않은 만큼이 남은 하루다.
- * 점선은 어제 종가 기준인 1,000. 마우스를 올리면 그 10분 칸의 지수를 읽어 준다.
+ * 점선은 어제 종가. 마우스를 올리면 그 10분 칸의 지수를 읽어 준다.
  */
-function IndexChart({ points, live, status }: { points: number[]; live: number; status: "loading" | "ready" | "error" }) {
+function IndexChart({ points, live, prevClose, status }: { points: number[]; live: number; prevClose: number; status: "loading" | "ready" | "error" }) {
   const [frame, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const height = useNarrow() ? 200 : 280;
@@ -92,7 +78,7 @@ function IndexChart({ points, live, status }: { points: number[]; live: number; 
   const plotHeight = height - AXIS_BOTTOM;
   const empty = series.length < 2 || plotWidth === 0;
 
-  const values = [...series, 1000];
+  const values = [...series, prevClose];
   const step = niceStep(Math.max(...values) - Math.min(...values) || 2);
   const top = Math.ceil(Math.max(...values) / step) * step;
   const bottom = Math.floor(Math.min(...values) / step) * step;
@@ -102,7 +88,7 @@ function IndexChart({ points, live, status }: { points: number[]; live: number; 
   const bucketsPerDay = DAY_MS / BUCKET_MS;
   const x = (index: number) => (index / bucketsPerDay) * plotWidth;
   const path = series.map((value, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
-  const tone = live >= 1000 ? "is-up" : "is-down";
+  const tone = live >= prevClose ? "is-up" : "is-down";
   const midnight = kstMidnight(Date.now());
   const last = series.length - 1;
   const inspected = hover === null ? null : Math.min(hover, last);
@@ -133,7 +119,7 @@ function IndexChart({ points, live, status }: { points: number[]; live: number; 
               </text>
             ))}
           </g>
-          <line className="nx-index-base" x1={0} x2={plotWidth} y1={y(1000)} y2={y(1000)} />
+          <line className="nx-index-base" x1={0} x2={plotWidth} y1={y(prevClose)} y2={y(prevClose)} />
           <path className="nx-index-line" d={path} />
           <circle className="nx-index-dot" cx={x(last)} cy={y(live)} r={4} />
           {inspected !== null && (
@@ -239,7 +225,7 @@ function RankBoard() {
 
 export function HomeBoard() {
   const snapshot = useMarket();
-  const history = useIndexHistory(snapshot);
+  const history = useIndexHistory();
   const { value, prevClose } = snapshot.index;
   const change = value - prevClose;
   const sum = totals(snapshot);
@@ -270,7 +256,7 @@ export function HomeBoard() {
             </dl>
           )}
         </header>
-        <IndexChart points={history.points} live={value} status={history.status} />
+        <IndexChart points={history.points} live={value} prevClose={prevClose} status={history.status} />
       </section>
 
       <RankBoard />
