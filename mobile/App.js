@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { AppState, BackHandler, StyleSheet, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -25,6 +25,8 @@ import { WebPane } from './src/WebPane';
 import { newsWithIds, useMarket } from './src/market';
 import { FONTS, ThemeProvider, useTheme, useThemeMode } from './src/theme';
 import { Toast } from './src/components/Kit';
+import { CircuitBreakerModal, SiteNoticeModal, SuspensionScreen } from './src/components/Announcements';
+import { useCircuitNotice, useSiteNotice, useSuspendedUntil } from './src/notices';
 
 const TAB_BY_KEY = Object.fromEntries(TABS.map(tab => [tab.key, tab]));
 // 웹 화면이 보이지 않을 때 머물러 둘 공개 화면. 로그인 전용 웹 화면에 두면 로그인을 다시 요구한다.
@@ -72,7 +74,16 @@ function ShellBody({ web }) {
   const theme = useTheme();
   const { scheme, setScheme } = useThemeMode();
   const market = useMarket();
-  const { user, syncWeb } = useAuth();
+  const { user, profile, syncWeb, signOut, refreshProfile } = useAuth();
+  const suspendedUntil = useSuspendedUntil(user ? profile : null);
+  const siteNotice = useSiteNotice();
+  const circuit = useCircuitNotice(market.status?.restriction);
+  // 앱을 켜 둔 사이 정지되거나 풀렸을 수 있으니 앱으로 돌아올 때 프로필을 다시 읽는다.
+  useEffect(() => {
+    if (!user) return undefined;
+    const subscription = AppState.addEventListener('change', next => { if (next === 'active') void refreshProfile(); });
+    return () => subscription.remove();
+  }, [user, refreshProfile]);
   const [tab, setTab] = useState('home');
   // 시장 탭에서 연 종목. null이면 시장 목록을 보여 준다.
   const [stock, setStock] = useState(null);
@@ -227,6 +238,19 @@ function ShellBody({ web }) {
     setMenuRoot(null);
   }, [user]);
 
+  if (suspendedUntil) {
+    return (
+      <>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <SuspensionScreen until={suspendedUntil} reason={profile?.tradeBanReason} onSignOut={signOut} />
+      </>
+    );
+  }
+
+  // 창은 한 번에 하나만 띄운다(iOS는 창 두 개를 겹쳐 열지 못한다). 로그인 창이 먼저, 그다음 서킷브레이커, 공지 순이다.
+  const showCircuit = !login.visible && Boolean(circuit.restriction);
+  const showNotice = !login.visible && !showCircuit && Boolean(siteNotice.notice);
+
   return (
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
@@ -274,6 +298,8 @@ function ShellBody({ web }) {
         <TabBar active={tab} onSelect={selectTab} />
       </View>
       <LoginScreen visible={login.visible} onClose={closeLogin} />
+      {showCircuit ? <CircuitBreakerModal restriction={circuit.restriction} onClose={circuit.close} onConfirm={circuit.confirm} /> : null}
+      {showNotice ? <SiteNoticeModal notice={siteNotice.notice} onDismiss={siteNotice.dismiss} onGo={path => (tabForPath(path) === 'more' ? openMenuItem(path) : go(path))} /> : null}
     </>
   );
 }
