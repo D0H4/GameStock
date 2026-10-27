@@ -97,9 +97,9 @@ function optionPoints(spot, strike, secondsLeft, volatility, call) {
   return Math.max(0, value);
 }
 
-/** 지수 1포인트가 움직일 때 1계약 가격이 움직이는 포인트. */
+/** 지수 1포인트가 움직일 때 1계약 가격이 움직이는 포인트. 서버 DerivativePricing.optionDelta와 같이 만기가 지난 계약은 0이다. */
 export function optionDelta(spot, strike, secondsLeft, volatility, call) {
-  if (secondsLeft <= 0) return call ? (spot > strike ? 1 : 0) : (spot < strike ? -1 : 0);
+  if (!(spot > 0) || !(strike > 0) || !(secondsLeft > 0)) return 0;
   const t = Math.max(1, secondsLeft) / YEAR_SECONDS;
   const root = Math.max(0.01, volatility) * Math.sqrt(t);
   const d1 = (Math.log(spot / strike) + 0.5 * root * root) / root;
