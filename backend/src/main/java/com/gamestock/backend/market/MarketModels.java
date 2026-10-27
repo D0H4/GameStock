@@ -19,7 +19,7 @@ public final class MarketModels {
         public Stock(String code, String name, String genre, long price, double changePercent, long volume,
                      TradingRestriction restriction) {
             this(code,name,genre,price,changePercent,volume,restriction,
-                    Math.max(100,Math.round(price / Math.max(.01,1 + changePercent / 100))));
+                    Math.max(PriceLimitPolicy.MIN_PRICE,Math.round(price / Math.max(.01,1 + changePercent / 100))));
         }
 
         public Stock(String code, String name, String genre, long price, double changePercent, long volume,

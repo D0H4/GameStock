@@ -28,6 +28,9 @@ class OrderPipelineIntegrationTest {
         source=new HikariDataSource(config);db=new JdbcTemplate(source);
         String schema=Files.readString(Path.of("../database/schema.sql")).replaceAll("(?m)^--.*$","").replaceAll("(?is)CREATE DATABASE[^;]+;","").replaceAll("(?is)USE gamestock;","");
         for(String statement:schema.split(";"))if(!statement.isBlank())db.execute(statement);
+        // Matching/receipt fixtures intentionally use a fixed 10,000-won reference.
+        StockCatalog.ensureListings(db);
+        db.update("UPDATE stocks SET current_price=10000,previous_price=10000");
         metrics=new MarketMetrics();matching=new MatchingEngine(metrics);
         org.springframework.context.ApplicationEventPublisher events=event->{
             if(TransactionSynchronizationManager.isSynchronizationActive())TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){public void afterCommit(){committed.add(event);}});

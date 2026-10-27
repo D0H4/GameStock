@@ -59,10 +59,15 @@ final class NewsRelevance {
             Map.entry("CRK", new GameProfile(List.of("쿠키런: 킹덤", "쿠키런 킹덤", "쿠키런킹덤", "cookie run: kingdom", "cookie run kingdom"), List.of("데브시스터즈", "왕국", "쿠키"))),
             Map.entry("VR", new GameProfile(List.of("발로란트", "valorant"), List.of("라이엇", "riot", "vct", "이스포츠", "e스포츠", "요원"))),
             Map.entry("ES", new GameProfile(List.of("에픽세븐", "에픽 세븐", "epic seven"), List.of("스마일게이트", "영웅", "월드 아레나"))),
-            Map.entry("KRP", new GameProfile(List.of("카트라이더 러쉬플러스", "카트라이더 러쉬 플러스", "카러플", "kartrider rush+"), List.of("넥슨", "레이싱", "카트"))),
+            Map.entry("KRP", new GameProfile(List.of("카트라이더 러쉬플러스", "카트라이더 러쉬 플러스", "카트라이더러쉬플러스", "카러플", "kartrider rush+", "kartrider rush plus"), List.of("넥슨", "레이싱", "카트"))),
             Map.entry("OW", new GameProfile(List.of("오버워치", "overwatch"), List.of("블리자드", "영웅", "이스포츠", "e스포츠"))),
             Map.entry("PW", new GameProfile(List.of("팰월드", "팔월드", "palworld"), List.of("포켓페어", "pocketpair", "생존", "크래프톤"))),
-            Map.entry("TR", new GameProfile(List.of("트릭컬 리바이브", "트릭컬", "trickcal"), List.of("에피드", "epid", "교주", "사도"))));
+            Map.entry("TR", new GameProfile(List.of("트릭컬 리바이브", "트릭컬", "trickcal"), List.of("에피드", "epid", "교주", "사도"))),
+            Map.entry("GKM", new GameProfile(List.of("학원 아이돌마스터", "학원아이돌마스터", "학마스", "学園アイドルマスター", "gakuen idolmaster"), List.of("반다이", "퀄리아츠", "qualiarts", "아이돌", "프로듀스", "육성"))),
+            Map.entry("KR", new GameProfile(List.of("카트라이더", "kartrider", "popkart"), List.of("넥슨", "nexon", "다오", "배찌", "레이싱", "카트", "아이템전"))),
+            Map.entry("MC", new GameProfile(List.of("마인크래프트", "minecraft"), List.of("모장", "mojang", "바이옴", "블록", "베드락", "자바 에디션"))),
+            Map.entry("KD", new GameProfile(List.of("카트라이더: 드리프트", "카트라이더:드리프트", "카트라이더 드리프트", "카트라이더드리프트", "카드맆", "kartrider: drift", "kartrider:drift", "kartrider drift"), List.of("넥슨", "nexon", "니트로", "nitro", "레이싱", "카트", "크로스플레이"))),
+            Map.entry("MAPLE", new GameProfile(List.of("메이플스토리", "메이플 스토리", "maplestory", "maple story"), List.of("넥슨", "nexon", "메이플 월드", "모험가", "보스", "하이퍼 버닝", "mmorpg"))));
 
     private NewsRelevance() { }
 
@@ -72,7 +77,15 @@ final class NewsRelevance {
 
         String text = normalize(parts);
         if (containsAny(text, UNRELATED_SOURCES)) return false;
-        if (!containsAny(text, profile.aliases())) return false;
+        String mentions = text;
+        if ("KR".equalsIgnoreCase(stockCode)) {
+            // Spin-off names contain the original title. They must not move both
+            // stocks unless the article also mentions the original independently.
+            for (String sibling : List.of("KRP", "KD"))
+                for (String alias : GAME_PROFILES.get(sibling).aliases())
+                    mentions = mentions.replace(alias.toLowerCase(Locale.ROOT), " ");
+        }
+        if (!containsAny(mentions, profile.aliases())) return false;
 
         int commonSignals = countTerms(text, COMMON_GAME_CONTEXT);
         int specificSignals = countTerms(text, profile.contextKeywords());

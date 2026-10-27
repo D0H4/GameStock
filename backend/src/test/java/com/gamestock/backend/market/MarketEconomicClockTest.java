@@ -5,6 +5,18 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MarketEconomicClockTest {
+    @Test void pennyStockConsensusDoesNotPullSubHundredPricesBackToOneHundred() {
+        var stock=new BatchOrderBook.Stock(1,"KD",90,90,90,90,true);
+        var consensus=new MarketConsensusValue(17);
+        assertEquals(80,MarketConsensusValue.target(stock,80,-.1));
+        assertEquals(90,consensus.observe(stock,80,-.1,null,0));
+        double next=consensus.observe(stock,80,-.1,null,60000);
+        assertTrue(next>=1 && next<100);
+        var penny=new BatchOrderBook.Stock(2,"KD",1,1,1,1,true);
+        consensus.observe(penny,1,0,null,0);
+        assertTrue(consensus.observe(penny,1,0,null,60000)>=1);
+    }
+
     @Test void strategyFamiliesDoNotAllFollowOneStochasticConsensus() {
         var metrics=PriceMetricService.calculate(java.util.List.of(),10000,9990,10010,100,100,1000);
         var profiles=BotProfile.activePopulation(17,6020);

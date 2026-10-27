@@ -80,6 +80,31 @@ class LegacyStockStartupIntegrationTest {
         assertEquals("ACTIVE",jdbc.queryForObject("SELECT state FROM admin_stock_state WHERE stock_id=1",String.class));
     }
 
+    @Test void twentyListingsInitializeAndRestartWithoutResettingPricesOrHeldShares() {
+        var market=market(jdbc);
+        market.initializeData();
+        assertEquals(20,jdbc.queryForObject("SELECT COUNT(*) FROM stocks WHERE stock_code<>'VOID'",Integer.class));
+        assertEquals(100,jdbc.queryForObject("SELECT current_price FROM stocks WHERE stock_code='KD'",Long.class));
+        assertEquals(215000,jdbc.queryForObject("SELECT current_price FROM stocks WHERE stock_code='GI'",Long.class));
+        assertEquals(20,jdbc.queryForObject("SELECT COUNT(DISTINCT current_price) FROM stocks WHERE stock_code<>'VOID'",Integer.class));
+        jdbc.query("SELECT stock_code,current_price,previous_price FROM stocks WHERE stock_code<>'VOID'",rs->{
+            long price=rs.getLong("current_price");
+            assertEquals(price,rs.getLong("previous_price"));
+            assertEquals(0,price%PriceLimitPolicy.tickSize(price),rs.getString("stock_code"));
+        });
+        for(String[] listing:List.of(new String[]{"GKM","육성"},new String[]{"KR","레이싱"},
+                new String[]{"MC","생존"},new String[]{"KD","레이싱"},new String[]{"MAPLE","RPG"}))
+            assertEquals(listing[1],jdbc.queryForObject("SELECT g.genre FROM games g JOIN stocks s ON s.game_id=g.id WHERE s.stock_code=?",String.class,listing[0]));
+        long drift=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='KD'",Long.class);
+        jdbc.update("UPDATE stocks SET current_price=123 WHERE id=?",drift);
+        jdbc.update("INSERT INTO portfolios(user_id,stock_id,quantity,settled_quantity,average_price) VALUES(1,?,3,3,110)",drift);
+        market.initializeData();
+        assertEquals(20,jdbc.queryForObject("SELECT COUNT(*) FROM stocks WHERE stock_code<>'VOID'",Integer.class));
+        assertEquals(123,jdbc.queryForObject("SELECT current_price FROM stocks WHERE id=?",Long.class,drift));
+        assertEquals(3,jdbc.queryForObject("SELECT quantity FROM portfolios WHERE user_id=1 AND stock_id=?",Integer.class,drift));
+        assertHistoryPreserved();
+    }
+
     @Test void failedRetirementRollsBackRefundAndStateTogetherAndCanBeRetried() {
         AtomicBoolean retiring=new AtomicBoolean();
         JdbcTemplate failing=new JdbcTemplate(source) {

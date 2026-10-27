@@ -5,6 +5,7 @@ package com.gamestock.backend.market;
  * the same previous-close +/-30% upper/lower limit.
  */
 final class PriceLimitPolicy {
+    static final long MIN_PRICE = 1;
     static final double DAILY_LIMIT_RATE = 0.30;
     static final double BOT_DAILY_LIMIT_RATE = 0.20;
     static final double MARKET_EXECUTION_RATE = 0.10;
@@ -54,7 +55,7 @@ final class PriceLimitPolicy {
         long referenceTick = tickSize(referencePrice);
         long down = Math.max(referenceTick, (long)Math.floor(referencePrice * downRate / referenceTick) * referenceTick);
         long up = Math.max(referenceTick, (long)Math.floor(referencePrice * upRate / referenceTick) * referenceTick);
-        long lower = ceilToTick(Math.max(100, referencePrice - down));
+        long lower = ceilToTick(Math.max(MIN_PRICE, referencePrice - down));
         long upper = floorToTick(Math.addExact(referencePrice, up));
         return new PriceBand(referencePrice, lower, upper);
     }

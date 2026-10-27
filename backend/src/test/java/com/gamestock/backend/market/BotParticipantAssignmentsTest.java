@@ -13,12 +13,12 @@ class BotParticipantAssignmentsTest {
             ids.put(profiles.get(i).username(),(long)i+1);
             holdings.put((long)i+1,Set.of((long)(i%15)+1));
         }
-        List<Long> stocks=java.util.stream.LongStream.rangeClosed(1,17).boxed().toList();
+        List<Long> stocks=java.util.stream.LongStream.rangeClosed(1,20).boxed().toList();
         var assigned=BotParticipantAssignments.assign(profiles,ids,stocks,holdings);
         Set<String> pairs=new HashSet<>();
         for(var p:assigned)assertTrue(pairs.add(p.id()+":"+p.stock()),"No duplicate decisions for a position");
         for(int i=0;i<profiles.size();i++) {
-            long user=i+1,oldStock=i%15+1,newStock=i%17+1;
+            long user=i+1,oldStock=i%15+1,newStock=i%20+1;
             assertTrue(pairs.contains(user+":"+oldStock),"Legacy shares must not be stranded");
             assertTrue(pairs.contains(user+":"+newStock),"New listings retain their participants");
         }

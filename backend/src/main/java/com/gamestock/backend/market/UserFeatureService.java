@@ -80,6 +80,11 @@ public class UserFeatureService {
         insertDefault("BA", "학원"); insertDefault("BA", "수집형"); insertDefault("BA", "라이브서비스");
         insertDefault("GOV", "RPG"); insertDefault("GOV", "수집형"); insertDefault("GOV", "액션");
         insertDefault("ZZZ", "액션"); insertDefault("ZZZ", "서브컬처"); insertDefault("ZZZ", "라이브서비스");
+        insertDefault("GKM", "육성"); insertDefault("GKM", "아이돌"); insertDefault("GKM", "서브컬처");
+        insertDefault("KR", "레이싱"); insertDefault("KR", "아이템전");
+        insertDefault("MC", "생존"); insertDefault("MC", "샌드박스");
+        insertDefault("KD", "레이싱"); insertDefault("KD", "멀티플레이");
+        insertDefault("MAPLE", "RPG"); insertDefault("MAPLE", "MMORPG"); insertDefault("MAPLE", "라이브서비스");
     }
 
     private void insertDefault(String code, String tag) {

@@ -118,7 +118,7 @@ final class BotLedgerJournal {
     }
     List<PriceMetricService.Trade> observations(long stock,long cutoff) {
         return db.query("SELECT last_at,close_price,quantity,notional,high_price,low_price,last_sequence FROM bot_trade_seconds WHERE stock_id=? AND bucket_at>=? AND bucket_at<=? AND last_at<=? ORDER BY last_at",
-                (rs,n)->new PriceMetricService.Trade(rs.getLong(1),rs.getDouble(2),rs.getLong(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6),rs.getLong(7)),stock,(cutoff-600000)/1000,cutoff/1000,cutoff);
+                (rs,n)->new PriceMetricService.Trade(rs.getLong(1),rs.getDouble(2),rs.getDouble(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6),rs.getLong(7)),stock,(cutoff-600000)/1000,cutoff/1000,cutoff);
     }
     List<Print> recent(long stock) {
         return db.query("SELECT payload FROM bot_trade_tape WHERE stock_id=?",(rs,n)->decodeTape(rs.getBytes(1)),stock).stream().findFirst().orElse(List.of());

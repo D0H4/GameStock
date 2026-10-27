@@ -19,8 +19,9 @@ class NewsFeedCatalogTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         doAnswer(invocation -> {
             RowMapper<?> mapper = invocation.getArgument(1);
-            List<String> codes = List.of("BA", "AK", "VR");
-            List<String> names = List.of("블루 아카이브", "명일방주: 엔드필드", "발로란트");
+            List<String> codes = List.of("BA", "AK", "VR", "KR", "KD", "KRP");
+            List<String> names = List.of("블루 아카이브", "명일방주: 엔드필드", "발로란트",
+                    "카트라이더", "카트라이더: 드리프트", "카트라이더 러쉬플러스");
             for (int index = 0; index < codes.size(); index++) {
                 ResultSet rs = mock(ResultSet.class);
                 when(rs.getString("stock_code")).thenReturn(codes.get(index));
@@ -33,10 +34,13 @@ class NewsFeedCatalogTest {
         NewsFeedService service = new NewsFeedService(jdbc);
         service.setFeeds(List.of("BA|https://example.com/custom-rss", "REMOVED|https://example.com/old", "invalid"));
         List<String> feeds = service.resolveFeeds();
-        assertEquals(3, feeds.size());
+        assertEquals(6, feeds.size());
         assertEquals("BA|https://example.com/custom-rss", feeds.get(0));
         assertTrue(URLDecoder.decode(feeds.get(1), StandardCharsets.UTF_8).contains("q=명일방주: 엔드필드&"));
         assertTrue(URLDecoder.decode(feeds.get(2), StandardCharsets.UTF_8).contains("q=발로란트&"));
+        assertTrue(URLDecoder.decode(feeds.get(3), StandardCharsets.UTF_8).contains("q=카트라이더&"));
+        assertTrue(URLDecoder.decode(feeds.get(4), StandardCharsets.UTF_8).contains("q=카트라이더: 드리프트&"));
+        assertTrue(URLDecoder.decode(feeds.get(5), StandardCharsets.UTF_8).contains("q=카트라이더 러쉬플러스&"));
         assertFalse(feeds.stream().anyMatch(feed -> feed.startsWith("REMOVED|")));
         assertEquals(feeds, service.resolveFeeds(), "refresh must not accumulate duplicate feeds");
     }

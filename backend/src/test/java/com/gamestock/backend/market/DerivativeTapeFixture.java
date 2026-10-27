@@ -18,6 +18,6 @@ public final class DerivativeTapeFixture {
         }
         jdbc.batchUpdate("INSERT INTO bot_trade_seconds(stock_id,bucket_at,first_at,last_at,open_price,high_price,low_price,close_price,quantity,notional,fills) VALUES(?,?,?,?,?,?,?,?,?,?,?)",rows);
         new DerivativePriceOracle(jdbc).refresh(at);
-        new DerivativeBaskets(jdbc).rebalance();
+        new DerivativeBaskets(jdbc).rebalance(at);
     }
 }

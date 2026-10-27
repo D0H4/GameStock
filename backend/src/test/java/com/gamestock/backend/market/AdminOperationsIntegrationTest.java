@@ -259,6 +259,9 @@ class AdminOperationsIntegrationTest {
             long tr=db.queryForObject("SELECT id FROM stocks WHERE stock_code='TR'",Long.class);
             db.update("DELETE FROM market_events WHERE stock_id=? AND event_type='NEWS'",tr);
             db.update("UPDATE market_price_metrics SET anchor_price=10000,hidden_fundamental=10000 WHERE stock_id=?",tr);
+            db.update("DELETE FROM market_news_valuation WHERE stock_id=?",tr);
+            db.update("DELETE FROM market_fundamental_state WHERE stock_id=?",tr);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
             for(int i=0;i<10;i++) {
                 db.update("INSERT INTO market_events(stock_id,event_type,title,description,impact,source,created_at,published_at) VALUES(?,'NEWS','트릭컬 업데이트','트릭컬 신규 콘텐츠',10,'regression',?,?)",tr,java.sql.Timestamp.from(now),java.sql.Timestamp.from(now));
                 org.springframework.test.util.ReflectionTestUtils.invokeMethod(market,"updateFundamentalFromNews","TR");
@@ -401,6 +404,20 @@ class AdminOperationsIntegrationTest {
         assertEquals(100,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,seller,stock));
         assertEquals(0,db.queryForObject("SELECT quantity FROM portfolios WHERE user_id=? AND stock_id=?",Integer.class,buyer,stock));
         assertThrows(IllegalArgumentException.class,()->tx(()->{operations.reverse(admin,settlement,"중복 취소");return null;}));
+    }
+    @Test void preConversionSettlementCannotRestoreSnapshotsInTheOldShareUnits() {
+        tx(()->market.order(new OrderRequest("UMA","SELL",3,"LIMIT",10000L),seller));
+        tx(()->market.order(new OrderRequest("UMA","BUY",3,"MARKET",null),buyer));
+        long settlement=db.queryForObject("SELECT id FROM settlements",Long.class);
+        long trade=db.queryForObject("SELECT id FROM trades",Long.class);
+        pause();
+        db.update("INSERT INTO stock_denominations VALUES(?,'UMA',10000,20000,10000,20000,?,CURRENT_TIMESTAMP(3))",stock,trade);
+        try {
+            var failure=assertThrows(IllegalArgumentException.class,()->tx(()->{operations.reverse(admin,settlement,"환산 이전 체결 취소");return null;}));
+            assertTrue(failure.getMessage().contains("환산 이전"));
+            assertEquals(969970,cash(buyer));assertEquals(1029970,cash(seller));
+            assertEquals("SETTLED",db.queryForObject("SELECT status FROM settlements WHERE id=?",String.class,settlement));
+        } finally { db.update("DELETE FROM stock_denominations WHERE stock_id=?",stock); }
     }
     @Test void contentOnlyPublishesDuringItsVisibilityWindow(){
         tx(()->content.save(admin,null,new AdminContentService.Content("NOTICE","점검 안내","안내 본문",null,false,null,null,"초안")));

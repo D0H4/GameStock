@@ -203,7 +203,9 @@ public class DerivativeService {
     private DerivativeBaskets.Values loadPrices() { return baskets.load(); }
 
     private boolean fresh(DerivativeBaskets.Values prices, String symbol, Instant now) {
-        return prices.basket(symbol).fresh(now);
+        var basket = prices.basket(symbol);
+        // An empty sector ETF can hold cash; a tradable index needs an underlying market.
+        return basket.fresh(now) && (!"ETFIDX".equals(symbol) || !basket.members().isEmpty());
     }
 
     private void requireFresh(DerivativeBaskets.Values prices, String symbol) {
@@ -625,7 +627,7 @@ public class DerivativeService {
             baskets.lock();
             indexHistory.initializeBases();
             oracle.refresh(now);
-            baskets.rebalance();
+            baskets.rebalance(now);
             baskets.advanceValuationVersion();
             // Current reads keep a rejected oracle CAS from promoting its old MVCC snapshot
             // into a fresh index sample or position mark. Reference locks last through commit.

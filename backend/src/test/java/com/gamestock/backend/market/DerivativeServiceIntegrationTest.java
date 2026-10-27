@@ -538,6 +538,55 @@ class DerivativeServiceIntegrationTest {
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_trades WHERE user_id=?",Integer.class,user));
     }
 
+    @Test void anEmptyIndexCannotTradeWhileItsFirstListingsAreWarmingUp() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        jdbc.update("DELETE FROM derivative_basket_members");
+        jdbc.update("UPDATE derivative_baskets SET cash_value=1000,initialized=TRUE");
+        jdbc.update("UPDATE derivative_reference_prices SET observed_at=NULL");
+        new DerivativeBaskets(jdbc).rebalance(now);
+        var future=new OrderRequest("FUTURE","LONG",1,"FUTIDX",5,null,null,null);
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,future));
+        marketAt(now.plusSeconds(3));
+        assertDoesNotThrow(()->derivatives.open(user,future));
+    }
+
+    @Test void newListingsWarmUpWithoutBlockingExistingDerivativesAndRemainMembersWhenInvalidated() {
+        moveIndex(1.1);
+        Instant now=Instant.parse("2030-01-01T10:00:01Z");
+        double before=derivatives.snapshot().indexValue();
+        for(String[] listing:List.of(new String[]{"GKM","육성"},new String[]{"KR","레이싱"},
+                new String[]{"MC","생존"},new String[]{"KD","레이싱"},new String[]{"MAPLE","RPG"}))
+            addListing(listing[0],listing[1]);
+        var baskets=new DerivativeBaskets(jdbc);
+        baskets.rebalance(now);
+        assertEquals(2,baskets.load().basket("ETFIDX").members().size());
+        assertEquals(before,baskets.load().index(),1e-8);
+        var future=new OrderRequest("FUTURE","LONG",1,"FUTIDX",5,null,null,null);
+        long position=derivatives.open(user,future).account().positions().get(0).id();
+        assertDoesNotThrow(()->derivatives.close(user,position,1));
+
+        // A stale or future timestamp is not sufficient to admit a new listing.
+        jdbc.update("UPDATE derivative_reference_prices SET observed_at=? WHERE stock_id=(SELECT id FROM stocks WHERE stock_code='KD')",
+                Timestamp.from(now.minusSeconds(91)));
+        jdbc.update("UPDATE derivative_reference_prices SET observed_at=? WHERE stock_id=(SELECT id FROM stocks WHERE stock_code='MAPLE')",
+                Timestamp.from(now.plusSeconds(1)));
+        baskets.rebalance(now);
+        assertEquals(2,baskets.load().basket("ETFIDX").members().size());
+
+        marketAt(now.plusSeconds(3));
+        assertEquals(7,baskets.load().basket("ETFIDX").members().size());
+        assertEquals(4,baskets.load().basket("ETFALT").members().size());
+        assertEquals(2,baskets.load().basket("ETFRPG").members().size());
+        assertEquals(before,baskets.load().index(),1e-8,"Admission must preserve the value of existing positions");
+        assertDoesNotThrow(()->derivatives.open(user,future));
+
+        long drift=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='KD'",Long.class);
+        new DerivativePriceOracle(jdbc).invalidate(drift,now);
+        baskets.rebalance(now.plusSeconds(3));
+        assertEquals(7,baskets.load().basket("ETFIDX").members().size(),"Invalidation must not remove an existing risk constituent");
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,future));
+    }
+
     @Test void reconstitutionPreservesIndexEtfHoldingsAndRestartPrices() {
         moveIndex(1.1);
         var before=derivatives.snapshot();

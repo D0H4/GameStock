@@ -54,6 +54,7 @@ final class MarketSchema {
         DerivativeBotService.ensureTables(jdbc);
         AdminSchema.ensure(jdbc);
         com.gamestock.backend.openapi.OpenApiSchema.ensureTables(jdbc);
+        StockDenominationMigration.ensureTables(jdbc);
     }
 
     private void ensureOrderTimestampPrecision() {

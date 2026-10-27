@@ -7,9 +7,9 @@ import static com.gamestock.backend.market.MarketEnvironment.clamp;
 /** Reads executed trades only. Sparse history returns neutral indicators, never synthetic candles. */
 public final class PriceMetricService {
     /** A print or an observed one-second bucket; notional/extremes retain every real fill. */
-    public record Trade(long time, double price, long quantity, double notional, double high, double low, long sequence) {
-        public Trade(long time,double price,long quantity,double notional,double high,double low) { this(time,price,quantity,notional,high,low,0); }
-        public Trade(long time,double price,long quantity) { this(time,price,quantity,price*quantity,price,price); }
+    public record Trade(long time, double price, double quantity, double notional, double high, double low, long sequence) {
+        public Trade(long time,double price,double quantity,double notional,double high,double low) { this(time,price,quantity,notional,high,low,0); }
+        public Trade(long time,double price,double quantity) { this(time,price,quantity,price*quantity,price,price); }
     }
     public record Metrics(double lastPrice, double midPrice, double microPrice, double vwap, double markPrice,
             double bestBid, double bestAsk, long bidDepth, long askDepth, double imbalance,
@@ -21,7 +21,8 @@ public final class PriceMetricService {
     private final JdbcTemplate jdbc;
     public PriceMetricService(JdbcTemplate jdbc) { this.jdbc=jdbc; }
     void ensureTables() {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS market_trade_buckets (stock_id BIGINT NOT NULL,created_at TIMESTAMP(3) NOT NULL,last_id BIGINT NOT NULL,quantity BIGINT NOT NULL,notional DOUBLE NOT NULL,high BIGINT NOT NULL,low BIGINT NOT NULL,PRIMARY KEY(stock_id,created_at))");
+        StockDenominationMigration.ensureTradePriceScale(jdbc);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS market_trade_buckets (stock_id BIGINT NOT NULL,created_at TIMESTAMP(3) NOT NULL,last_id BIGINT NOT NULL,quantity DECIMAL(38,18) NOT NULL,notional DOUBLE NOT NULL,high BIGINT NOT NULL,low BIGINT NOT NULL,PRIMARY KEY(stock_id,created_at))");
         if(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='market_trade_buckets' AND index_name='ix_retention_time'",Integer.class)==0)
             jdbc.execute("CREATE INDEX ix_retention_time ON market_trade_buckets(created_at)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS market_metric_cursors (stock_id BIGINT PRIMARY KEY,last_id BIGINT NOT NULL DEFAULT 0)");
@@ -37,7 +38,7 @@ public final class PriceMetricService {
         if(end<=cursor)return;
         jdbc.update("""
                 INSERT INTO market_trade_buckets(stock_id,created_at,last_id,quantity,notional,high,low)
-                SELECT stock_id,created_at,MAX(id),SUM(quantity),SUM(price*quantity),MAX(price),MIN(price)
+                SELECT stock_id,created_at,MAX(id),SUM(quantity/price_scale),SUM(price*quantity),MAX(price*price_scale),MIN(price*price_scale)
                 FROM trades t WHERE stock_id=? AND id>? AND id<=? AND created_at>=?
                   AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.trade_id=t.id AND s.status='CANCELLED')
                 GROUP BY stock_id,created_at
@@ -53,20 +54,20 @@ public final class PriceMetricService {
     public Metrics read(long stockId, long last, long now, long latency) {
         long cutoff=now-latency;
         List<Trade> trades=jdbc.query("""
-                SELECT b.created_at,last.price,b.quantity,b.notional,b.high,b.low,last.execution_sequence
+                SELECT b.created_at,last.price*last.price_scale,b.quantity,b.notional,b.high,b.low,last.execution_sequence
                 FROM (
                   SELECT created_at,MAX(last_id) last_id,SUM(quantity) quantity,SUM(notional) notional,MAX(high) high,MIN(low) low
                   FROM (
                     SELECT created_at,last_id,quantity,notional,high,low FROM market_trade_buckets
                     WHERE stock_id=? AND created_at>=? AND created_at<=?
                     UNION ALL
-                    SELECT t.created_at,t.id,t.quantity,t.price*t.quantity,t.price,t.price FROM trades t
+                    SELECT t.created_at,t.id,t.quantity/t.price_scale,t.price*t.quantity,t.price*t.price_scale,t.price*t.price_scale FROM trades t
                     WHERE t.stock_id=? AND t.id>(SELECT last_id FROM market_metric_cursors WHERE stock_id=?)
                       AND t.created_at>=? AND t.created_at<=?
                       AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.trade_id=t.id AND s.status='CANCELLED')
                   ) observed GROUP BY created_at
                 ) b JOIN trades last ON last.id=b.last_id ORDER BY b.created_at
-                """, (rs,n)->new Trade(rs.getTimestamp(1).getTime(),rs.getDouble(2),rs.getLong(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6),rs.getLong(7)),
+                """, (rs,n)->new Trade(rs.getTimestamp(1).getTime(),rs.getDouble(2),rs.getDouble(3),rs.getDouble(4),rs.getDouble(5),rs.getDouble(6),rs.getLong(7)),
                 stockId,new java.sql.Timestamp(cutoff-600_000),new java.sql.Timestamp(cutoff),stockId,stockId,new java.sql.Timestamp(cutoff-600_000),new java.sql.Timestamp(cutoff));
         trades=new ArrayList<>(trades);
         trades.addAll(new BotLedgerJournal(jdbc).observations(stockId,cutoff));
@@ -86,11 +87,11 @@ public final class PriceMetricService {
         double last=trades.isEmpty()?fallback:trades.get(trades.size()-1).price;
         double mid=bd>0&&ad>0?(bid+ask)/2:last;
         double micro=bd>0&&ad>0?(ask*bd+bid*ad)/(bd+ad):mid;
-        double executionNotional=0; long executionVolume=0;
+        double executionNotional=0,executionVolume=0;
         double notional=0, referenceNotional=0, mean=0, sq=0, gain=0, loss=0;
         double high=Double.NEGATIVE_INFINITY, low=Double.POSITIVE_INFINITY, p5=last, p20=last, retSq=0;
         double p60=last,p300=last;
-        long volume=0, referenceVolume=0, recentVol=0, priorVol=0;
+        double volume=0, referenceVolume=0, recentVol=0, priorVol=0;
         for(Trade t:trades) {
             if(t.time>=now-600_000 && t.time<=now) {
                 referenceNotional+=t.notional; referenceVolume+=t.quantity;
@@ -139,8 +140,8 @@ public final class PriceMetricService {
                 priorVol==0?0:clamp(recentVol/(double)priorVol-1,-1,3),
                 (last/Math.max(1,p5)-1)-(last/Math.max(1,p20)-1)/4,
                 gain+loss==0?50:100*gain/(gain+loss),sd<.001?0:(last-mean)/sd,
-                executionVolatility(retSq,lagProduct,n-1),volume,last/Math.max(1,p60)-1,last/Math.max(1,p300)-1,
-                referenceVolume==0?last:referenceNotional/referenceVolume,recentVol,
+                executionVolatility(retSq,lagProduct,n-1),Math.round(volume),last/Math.max(1,p60)-1,last/Math.max(1,p300)-1,
+                referenceVolume==0?last:referenceNotional/referenceVolume,Math.round(recentVol),
                 executionVolume==0?last:executionNotional/executionVolume);
     }
 

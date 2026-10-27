@@ -79,6 +79,8 @@ public class AdminOperationsService {
         var rows=db.queryForList("SELECT * FROM settlements WHERE id=? AND status IN ('PENDING','SETTLED') FOR UPDATE",id);
         if(rows.isEmpty())throw new IllegalArgumentException("취소할 정산 거래가 없습니다.");
         var row=rows.get(0);long buyer=((Number)row.get("buyer_id")).longValue(),seller=((Number)row.get("seller_id")).longValue(),stock=((Number)row.get("stock_id")).longValue();
+        if(count("SELECT COUNT(*) FROM stock_denominations WHERE stock_id=? AND last_trade_id>=?",stock,row.get("trade_id"))>0)
+            throw new IllegalArgumentException("가격 환산 이전 체결은 원래 단위로 자동 취소할 수 없습니다.");
         if(buyer==seller)throw new IllegalArgumentException("자전 거래는 개별 자산 복구로 처리해 주세요.");
         // Compact bot history cannot prove that saved snapshots are still reversible.
         human(db,Math.min(buyer,seller));human(db,Math.max(buyer,seller));

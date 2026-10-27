@@ -9,7 +9,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * shared in-memory book. Only funded matching moves prices; the harness never assigns a path.
  */
 final class MarketSimulationHarness {
-    static final String[] CODES={"UMA","BA","GOV","ZZZ","GI","SR","AK","WH","CRK","VR","ES","KRP","OW","PW","TR"};
+    static final String[] CODES={"UMA","BA","GOV","ZZZ","GI","SR","AK","WH","CRK","VR","ES","KRP","OW","PW","TR",
+            "GKM","KR","MC","KD","MAPLE"};
     static final long REFERENCE=10000,LP=100000;
 
     /** Per-symbol tape statistics measured after the warm-up minute. */
@@ -23,6 +24,7 @@ final class MarketSimulationHarness {
 
     static final class Setup {
         Set<String> broke=Set.of();
+        boolean seedAllTraderHoldings;
         Map<String,Double> startPct=Map.of();
         /** Hidden fundamental as a multiple of the listing reference. */
         Map<String,Double> fundamental=Map.of();
@@ -55,7 +57,11 @@ final class MarketSimulationHarness {
         for(int i=0;i<profiles.size();i++) {
             long id=i+1,stock=i%CODES.length+1;String code=CODES[(int)stock-1];
             if(!stocks.containsKey(stock))continue;
-            boolean broke=setup.broke.contains(code),holds=code.equals("AK")&&broke||!broke&&i%2==0;
+            // Alternate holders within each symbol as well as across symbols. With an
+            // even listing count, i%2 would give a symbol either all holders or none.
+            boolean broke=setup.broke.contains(code);
+            boolean holds=code.equals("AK")&&broke||!broke
+                    &&(setup.seedAllTraderHoldings||(i/CODES.length+i%CODES.length)%2==0);
             accounts.put(id,new Account(id,broke?0:1_000_000,false,true));
             if(holds){holdings.put(new PositionKey(id,stock),new Holding(10,10,reference,0));stocks.get(stock).circulatingShares+=10;}
             participants.add(new BotActivityEngine.Participant(id,profiles.get(i),stock));

@@ -49,7 +49,8 @@ final class DerivativeBaskets {
             return new Values(Map.copyOf(result), version);
         }
     }
-    private record Stock(long id, String code, String genre, double price, long reference, long base, boolean listed) { }
+    private record Stock(long id, String code, String genre, double price, long reference, long base,
+                         boolean listed, Instant observedAt) { }
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
 
@@ -130,7 +131,9 @@ final class DerivativeBaskets {
     }
 
     /** Joins a catalog mutation's transaction, or owns a short transaction during startup/refresh. */
-    void rebalance() {
+    void rebalance() { rebalance(Instant.now()); }
+
+    void rebalance(Instant now) {
         transactions.executeWithoutResult(status -> {
             lock();
             var dates = jdbc.queryForList("SELECT trading_date FROM market_protection_state WHERE id=1 FOR SHARE", java.sql.Date.class);
@@ -139,21 +142,30 @@ final class DerivativeBaskets {
             new DerivativePriceOracle(jdbc).initialize();
             List<Stock> stocks = jdbc.query("""
                     SELECT s.id,s.stock_code,g.genre,r.price,b.reference_price,COALESCE(p.day_reference,s.current_price) AS day_reference,
-                           COALESCE(a.state,'ACTIVE')<>'DELISTED' AS listed
+                           COALESCE(a.state,'ACTIVE')<>'DELISTED' AS listed,r.observed_at
                     FROM stocks s JOIN games g ON g.id=s.game_id
                     JOIN derivative_index_bases b ON b.stock_id=s.id
                     JOIN derivative_reference_prices r ON r.stock_id=s.id
                     LEFT JOIN stock_protection_state p ON p.stock_id=s.id
                     LEFT JOIN admin_stock_state a ON a.stock_id=s.id ORDER BY s.id FOR SHARE
                     """, (rs,n) -> new Stock(rs.getLong("id"), rs.getString("stock_code"), rs.getString("genre"),
-                    rs.getDouble("price"), rs.getLong("day_reference"), rs.getLong("reference_price"), rs.getBoolean("listed")));
+                    rs.getDouble("price"), rs.getLong("day_reference"), rs.getLong("reference_price"), rs.getBoolean("listed"),
+                    rs.getTimestamp("observed_at") == null ? null : rs.getTimestamp("observed_at").toInstant()));
             // Current reads are essential when an admin transaction already owns an older
             // repeatable-read snapshot: both sides of the exchange must use the same prices.
             Values before = load(true);
+            Set<Long> admitted = new HashSet<>();
+            before.baskets().values().forEach(b -> b.members().forEach(m -> admitted.add(m.stock())));
             for (Definition definition : DEFINITIONS) {
-                List<Stock> next = stocks.stream().filter(s -> s.listed()
-                        && (definition.genres().isEmpty() || definition.genres().contains(s.genre()))).toList();
                 Basket old = before.basket(definition.code());
+                // An added listing warms up on its own tape before joining a running
+                // basket. Existing members stay admitted when stale or invalidated:
+                // freshness must still block trading rather than silently drop risk.
+                List<Stock> next = stocks.stream().filter(s -> s.listed()
+                        && (!old.initialized() || admitted.contains(s.id())
+                            || s.observedAt() != null && !s.observedAt().isAfter(now)
+                                && !s.observedAt().isBefore(now.minusSeconds(DerivativePriceOracle.MAX_AGE_SECONDS)))
+                        && (definition.genres().isEmpty() || definition.genres().contains(s.genre()))).toList();
                 double weightSum = next.stream().mapToDouble(s -> weight(definition, s)).sum();
                 boolean unchanged = old.initialized() && old.members().size() == next.size();
                 if (unchanged) for (int i=0; i<next.size(); i++) {

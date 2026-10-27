@@ -1,0 +1,32 @@
+[
+  {
+    "code": "GKM",
+    "file": "gkm.png",
+    "sourcePage": "https://play.google.com/store/apps/details?id=com.bandainamcoent.idolmaster_gakuen&hl=ja",
+    "sourceImage": "https://play-lh.googleusercontent.com/ch_SGwCMoLElrzColmSthRPYxzv608YoyBx4tXY3ciM8Bg4fLxKhRHdeoqPSbygFruy62D9p5EdGAwLW8KGTfwI=s0-br30"
+  },
+  {
+    "code": "KR",
+    "file": "kr.jpg",
+    "sourcePage": "https://kart.nexon.com/",
+    "sourceImage": "https://pvi.dn.nexoncdn.co.kr/kart/brand/common/meta.jpg"
+  },
+  {
+    "code": "MC",
+    "file": "mc.png",
+    "sourcePage": "https://play.google.com/store/apps/details?id=com.mojang.minecraftpe&hl=ko",
+    "sourceImage": "https://play-lh.googleusercontent.com/tI4StRSPVhpGJH5R013naszLUawOjao1ya8FvyaNO7XY_cJFHFqo1EFaEJv_7zz3rRJ5lEpLiw14ZqQLCOYc=s0-br30"
+  },
+  {
+    "code": "KD",
+    "file": "kd.jpg",
+    "sourcePage": "https://store.steampowered.com/app/1184140/KartRider_Drift/",
+    "sourceImage": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1184140/header.jpg?t=1740678930"
+  },
+  {
+    "code": "MAPLE",
+    "file": "maple.png",
+    "sourcePage": "https://maplestory.nexon.com/home/main",
+    "sourceImage": "https://lwi.nexon.com/maplestory/common/meta.png"
+  }
+]

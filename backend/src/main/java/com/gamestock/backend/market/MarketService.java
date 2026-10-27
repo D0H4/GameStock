@@ -246,6 +246,7 @@ public class MarketService {
 
         StockCatalog.ensureListings(jdbc);
         AdminSchema.restoreStockMetadata(jdbc);
+        new StockDenominationMigration(jdbc).apply(StockCatalog.initialPrices(),this::settleDuePayments,clock.instant());
         new DerivativeBaskets(jdbc).rebalance();
         MarketBookCache.seedRevisions(jdbc);
         botJournal=new BotLedgerJournal(jdbc,ledgerDetail);
@@ -988,7 +989,7 @@ public class MarketService {
                 JOIN stocks s ON s.id = t.stock_id
                 JOIN orders taker ON taker.id = t.taker_order_id
                 LEFT JOIN settlements st ON st.trade_id = t.id
-                WHERE s.stock_code = ? AND (st.id IS NULL OR st.status <> 'CANCELLED')
+                WHERE s.stock_code = ? AND t.price_scale=1 AND (st.id IS NULL OR st.status <> 'CANCELLED')
                 ORDER BY t.created_at DESC, t.id DESC LIMIT 10
                 """, (rs, row) -> new PublicTrade(rs.getString("side"), rs.getInt("quantity"),
                 rs.getLong("price"), rs.getString("order_type"), databaseInstant(rs.getTimestamp("created_at")).toString()),
@@ -1148,10 +1149,10 @@ public class MarketService {
                 """, Integer.class, id);
         VolumeBreakdown volumes = jdbc.queryForObject("""
                 SELECT
-                  COALESCE(SUM(CASE WHEN buyer.password_hash NOT IN ('BOT','TRADER') THEN t.quantity ELSE 0 END), 0) AS user_buy,
-                  COALESCE(SUM(CASE WHEN seller.password_hash NOT IN ('BOT','TRADER') THEN t.quantity ELSE 0 END), 0) AS user_sell,
-                  COALESCE(SUM(CASE WHEN buyer.password_hash IN ('BOT','TRADER') THEN t.quantity ELSE 0 END), 0) AS bot_buy,
-                  COALESCE(SUM(CASE WHEN seller.password_hash IN ('BOT','TRADER') THEN t.quantity ELSE 0 END), 0) AS bot_sell
+                  COALESCE(SUM(CASE WHEN buyer.password_hash NOT IN ('BOT','TRADER') THEN t.quantity/t.price_scale ELSE 0 END), 0) AS user_buy,
+                  COALESCE(SUM(CASE WHEN seller.password_hash NOT IN ('BOT','TRADER') THEN t.quantity/t.price_scale ELSE 0 END), 0) AS user_sell,
+                  COALESCE(SUM(CASE WHEN buyer.password_hash IN ('BOT','TRADER') THEN t.quantity/t.price_scale ELSE 0 END), 0) AS bot_buy,
+                  COALESCE(SUM(CASE WHEN seller.password_hash IN ('BOT','TRADER') THEN t.quantity/t.price_scale ELSE 0 END), 0) AS bot_sell
                 FROM trades t
                 JOIN users buyer ON buyer.id = t.buyer_id
                 JOIN users seller ON seller.id = t.seller_id
@@ -2472,7 +2473,7 @@ public class MarketService {
 
     private void moveToPrice(String code, long price, long volume) {
         PriceBand dailyBand = dailyPriceBand(code);
-        long next = dailyBand.clamp(Math.max(100, price));
+        long next = dailyBand.clamp(Math.max(PriceLimitPolicy.MIN_PRICE, price));
         jdbc.update("UPDATE stocks SET previous_price = current_price, current_price = ?, total_volume = total_volume + ? WHERE stock_code = ?", next, volume, code);
         jdbc.update("INSERT INTO stock_price_history (stock_id, price) SELECT id, ? FROM stocks WHERE stock_code = ?", next, code);
         recordDailyTrade(code, next, volume);
