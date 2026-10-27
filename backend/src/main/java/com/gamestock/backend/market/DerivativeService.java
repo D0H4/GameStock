@@ -64,6 +64,10 @@ public class DerivativeService {
     private final DerivativePriceOracle oracle;
     private final DerivativeBaskets baskets;
     private final Map<String, Deque<Double>> series = new ConcurrentHashMap<>();
+    private DerivativeMarketImpact marketImpact;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureMarketImpact(DerivativeMarketImpact impact) { this.marketImpact = impact; }
 
     public DerivativeService(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
@@ -639,6 +643,15 @@ public class DerivativeService {
                 navs.getOrDefault(definition.code(), 1000.0));
         double volatility = currentVolatility();
         Long highWater = jdbc.queryForObject("SELECT COALESCE(MAX(id),0) FROM derivative_positions", Long.class);
+        DerivativeMarketImpact.Accumulator impact = null;
+        if (marketImpact != null) {
+            List<Double> prior = jdbc.queryForList("""
+                    SELECT index_value FROM derivative_index_observations
+                    WHERE observed_at BETWEEN ? AND ? AND settleable=TRUE AND invalidated=FALSE
+                    ORDER BY observed_at DESC LIMIT 1
+                    """, Double.class, Timestamp.from(now.minusSeconds(60)), Timestamp.from(now.minusSeconds(30)));
+            impact = new DerivativeMarketImpact.Accumulator(index, prior.isEmpty() ? index : prior.get(0), volatility);
+        }
         long cursor = 0;
         while (cursor < highWater) {
             List<OpenRow> rows = jdbc.query("""
@@ -697,7 +710,28 @@ public class DerivativeService {
                         UPDATE derivative_positions SET mark_price = ?, mark_value = ?, mark_version = ?
                         WHERE id = ? AND status = 'OPEN' AND quantity = ? AND mark_version < ?
                         """, mark, value, prices.version(), row.id(), row.quantity(), prices.version());
+                if (impact != null) {
+                    if ("FUTURE".equals(row.kind())) impact.future(row.side(), row.quantity(), row.entryPrice(), row.margin());
+                    else if ("OPTION".equals(row.kind())) impact.option("CALL".equals(row.optionType()), row.quantity(),
+                            row.strike(), DerivativePricing.yearsLeft(row.expiryAt().toInstant(), now));
+                }
             }
+        }
+        if (impact != null) {
+            // A bounded, indexed trailing window; older covering/forced selling fades out linearly.
+            Instant flowAt = clock.instant();
+            var accumulator = impact;
+            jdbc.query("""
+                    SELECT side, SUM(price * quantity * 1000 *
+                      GREATEST(0, 1 - TIMESTAMPDIFF(MICROSECOND,created_at,?) / 30000000.0)) AS notional
+                    FROM derivative_trades WHERE kind='FUTURE' AND action IN ('CLOSE','LIQUIDATE')
+                      AND created_at BETWEEN ? AND ? GROUP BY side
+                    """, rs -> { accumulator.closedFuture(rs.getString("side"), rs.getDouble("notional")); },
+                    Timestamp.from(flowAt), Timestamp.from(flowAt.minusSeconds(30)), Timestamp.from(flowAt));
+            var constituents = fresh(prices, "ETFIDX", flowAt)
+                    ? prices.basket("ETFIDX").members().stream().map(DerivativeBaskets.Member::code)
+                        .collect(java.util.stream.Collectors.toSet()) : java.util.Set.<String>of();
+            marketImpact.publish(impact.snapshot(prices.version(), now, constituents));
         }
     }
 
@@ -839,9 +873,9 @@ public class DerivativeService {
                              String side, int quantity, double price, long cashFlow, long fee) {
         jdbc.update("""
                 INSERT INTO derivative_trades
-                  (user_id, position_id, action, kind, symbol, side, quantity, price, cash_flow, fee, cash_flow_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2)
-                """, userId, positionId, action, kind, symbol, side, quantity, price, cashFlow, fee);
+                  (user_id, position_id, action, kind, symbol, side, quantity, price, cash_flow, fee, cash_flow_version, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, ?)
+                """, userId, positionId, action, kind, symbol, side, quantity, price, cashFlow, fee, Timestamp.from(clock.instant()));
     }
 
     private static long portion(long total, int quantity, int originalQuantity) {

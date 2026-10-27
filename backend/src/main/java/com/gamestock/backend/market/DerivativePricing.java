@@ -56,6 +56,15 @@ final class DerivativePricing {
         return Math.max(0, value);
     }
 
+    /** Delta uses the same zero-rate model as premiums; expired contracts have no live hedge. */
+    static double optionDelta(double spot, double strike, double years, double volatility, boolean call) {
+        if (!(spot > 0) || !(strike > 0) || !(years > 0)) return 0;
+        double t = Math.max(1.0, years * YEAR_SECONDS) / YEAR_SECONDS;
+        double vol = Math.max(.01, volatility);
+        double d1 = (Math.log(spot / strike) + .5 * vol * vol * t) / (vol * Math.sqrt(t));
+        return normalCdf(d1) - (call ? 0 : 1);
+    }
+
     /** 만기 시점의 내재가치(지수 포인트). */
     static double intrinsic(double spot, double strike, boolean call) {
         return call ? Math.max(0, spot - strike) : Math.max(0, strike - spot);

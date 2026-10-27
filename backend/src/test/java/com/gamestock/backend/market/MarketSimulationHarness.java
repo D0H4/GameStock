@@ -31,6 +31,7 @@ final class MarketSimulationHarness {
         Set<String> symbols=Set.of(CODES);
         java.util.function.BiConsumer<Long,Fill> onFill=(time,fill) -> {};
         java.util.function.BiConsumer<Long,Map<Long,MarketConsensusValue.Checkpoint>> onConsensus;
+        java.util.function.BiFunction<String,Long,MarketEnvironment> extraEnvironment = (code,time) -> MarketEnvironment.neutral();
     }
 
     static Map<String,Path> run(Setup setup) {
@@ -90,7 +91,8 @@ final class MarketSimulationHarness {
                 if(elapsed%setup.observationMillis!=0)continue;
                 double[] depth=book.depth(symbol.id);
                 var metrics=PriceMetricService.calculate(trades,symbol.last,depth[0],depth[1],(long)depth[2],(long)depth[3],now);
-                var environment=StockMarketProfile.applyTo(symbol.code,regimes.environment(symbol.code,"RPG").combine(patterns.environment(symbol.code,now)));
+                var environment=StockMarketProfile.applyTo(symbol.code,regimes.environment(symbol.code,"RPG")
+                        .combine(patterns.environment(symbol.code,now)).combine(setup.extraEnvironment.apply(symbol.code,now)));
                 double fundamental=reference*setup.fundamental.getOrDefault(symbol.code,1.0);
                 observations.put(symbol.id,new BotActivityEngine.Observation(metrics,environment,fundamental,0,StockMarketProfile.liquidityScale(symbol.code,.65)));
             }

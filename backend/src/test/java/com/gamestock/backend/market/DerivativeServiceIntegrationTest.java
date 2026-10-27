@@ -420,6 +420,45 @@ class DerivativeServiceIntegrationTest {
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE settleable=FALSE",Integer.class));
     }
 
+    @Test void sparseRecentConstituentTapeAllowsFuturesAndOptionsWithActualObservationTime() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        long stock=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='GI'",Long.class);
+        jdbc.update("DELETE FROM bot_trade_seconds WHERE stock_id=?",stock);
+        var rows=new java.util.ArrayList<Object[]>();
+        for(int i=0;i<20;i++) {
+            long second=now.getEpochSecond()-40-(19-i)*20L;
+            rows.add(new Object[]{stock,second,second*1000,second*1000,10000,10000,10000,10000,1,10000,1});
+        }
+        jdbc.batchUpdate("INSERT INTO bot_trade_seconds(stock_id,bucket_at,first_at,last_at,open_price,high_price,low_price,close_price,quantity,notional,fills) VALUES(?,?,?,?,?,?,?,?,?,?,?)",rows);
+        new DerivativePriceOracle(jdbc).invalidate(stock,now.minusSeconds(40));
+        var future=new OrderRequest("FUTURE","LONG",1,"FUTIDX",5,null,null,null);
+        assertThrows(IllegalArgumentException.class,()->derivatives.open(user,future));
+
+        derivatives.refreshMarks();
+
+        assertEquals(Timestamp.from(now.minusSeconds(40)),jdbc.queryForObject(
+                "SELECT observed_at FROM derivative_reference_prices WHERE stock_id=?",Timestamp.class,stock));
+        assertEquals(10000,referencePrice(stock),1e-8);
+        assertDoesNotThrow(()->derivatives.open(user,future));
+        assertDoesNotThrow(()->derivatives.open(user,new OrderRequest("OPTION","CALL",1,null,null,"10M",1000.0,null)));
+        assertDoesNotThrow(()->derivatives.open(user,new OrderRequest("OPTION","PUT",1,null,null,"10M",1000.0,null)));
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_positions WHERE user_id=? AND status='OPEN'",Integer.class,user));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM derivative_index_observations WHERE settleable=TRUE",Integer.class));
+        for(var position:derivatives.account(user).positions())
+            assertDoesNotThrow(()->derivatives.close(user,position.id(),1));
+    }
+
+    @Test void cancellationInvalidatesSamplesWhoseSparseReferenceUsesOlderExecutions() {
+        Instant now=Instant.parse("2030-01-01T10:00:00Z");
+        long stock=jdbc.queryForObject("SELECT id FROM stocks WHERE stock_code='GI'",Long.class);
+        var history=new DerivativeIndexHistory(jdbc);
+        history.observe(1000,now);
+        new DerivativePriceOracle(jdbc).invalidate(stock,now.minusSeconds(400));
+        assertTrue(jdbc.queryForObject("SELECT invalidated FROM derivative_index_observations WHERE observed_at=?",
+                Boolean.class,Timestamp.from(now)));
+        assertThrows(IllegalStateException.class,()->history.fixing(now));
+    }
+
     @Test void chartOnlySamplesNeverBecomeExpiryFixings() {
         var history=new DerivativeIndexHistory(jdbc);
         Instant expiry=Instant.parse("2030-04-01T10:00:00Z");
