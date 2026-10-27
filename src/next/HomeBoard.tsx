@@ -15,6 +15,7 @@ import { LISTING_BY_CODE } from "../market/universe";
 import { useSteadySnapshot } from "../market/useSteadySnapshot";
 import { MARKET_PATH } from "../router";
 import { AnimatedNav } from "./AnimatedNav";
+import { HomeBillboard } from "./BillboardStrip";
 
 type IndexCandle = { recordedAt: string; closePrice: number };
 
@@ -235,6 +236,7 @@ export function HomeBoard() {
   return (
     <div className="nx-home">
       <h1 className="vh">슈엔증권 홈</h1>
+      <HomeBillboard />
       <section className="nx-panel nx-home-index" aria-labelledby="nx-index-title">
         <header className="nx-index-head">
           <div>

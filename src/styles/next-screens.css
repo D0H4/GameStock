@@ -590,3 +590,50 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
   .nx-att-cal td { height: 48px; padding: 4px; }
   .nx-att-cell-reward { font-size: 10px; }
 }
+
+/* ───────── 전광판 ───────── */
+/* 데이터가 아닌 틀이라 무채색 돋움 면이고, 움직임은 두지 않는다(DESIGN.md 움직임 규칙). */
+.nx-billboard {
+  display: flex;
+  align-items: center;
+  gap: 4px 16px;
+  min-height: 52px;
+  padding: 4px 16px;
+  border-radius: 8px;
+  background: var(--nx-raised);
+}
+.nx-billboard-line { display: flex; flex: 1; align-items: baseline; gap: 4px 12px; min-width: 0; margin: 0; }
+.nx-billboard-author { flex: none; color: var(--ink-muted); font-size: 13px; }
+.nx-billboard-body { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 15px; line-height: 1.45; }
+.nx-billboard-body.is-placeholder { color: var(--ink-muted); }
+/* 홈 구획 사이(56px)보다 지수에 붙여서, 지수 머리의 한 부분이 아니라 그 위에 걸린 띠로 읽히게 한다. */
+.nx-home > .nx-billboard-slot { margin-bottom: calc(24px - var(--nx-gap)); }
+
+.nx-billboard-page { max-width: 760px; }
+.nx-billboard-compose { display: grid; gap: 24px; }
+.nx-billboard-compose > .nx-panel-head { margin-bottom: 0; }
+.nx-billboard-preview { display: grid; gap: 8px; }
+.nx-field-label { color: var(--ink-muted); font-size: 13px; }
+.nx-field-note.is-over { color: var(--up-deep); }
+.nx-billboard-hours { justify-self: start; }
+/* 밝은 테마의 세그먼트 바깥 괘선(next.css)을 이 묶음에서만 뺀다. */
+html[data-nx][data-nx-theme="light"] .nx-billboard-hours { box-shadow: none; }
+.nx-billboard-hours button { min-height: 38px; min-width: 72px; }
+/* 무채 선택 규칙: 고른 칸은 잉크 테두리와 옅은 바탕. 돋움 면 위에서 두 테마 모두 구분된다. */
+.nx-billboard-hours button.is-active { background: var(--nx-tint); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); }
+.nx-billboard-figures { padding: 4px 0 8px; }
+/* 문구 표는 글이 주인공이라 숫자 표처럼 오른쪽에 붙이지 않고 모두 왼쪽에 맞춘다. 문구 칸이 남는 폭을 가진다. */
+.nx-grid-table.nx-billboard-table :is(thead th, tbody th, tbody td) { text-align: left; }
+.nx-grid-table.nx-billboard-table .nx-billboard-cell { width: 100%; min-width: 200px; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
+.nx-billboard-refund { display: block; color: var(--ink-muted); font-size: 11px; }
+.nx-billboard-state { color: var(--ink-muted); white-space: normal; }
+.nx-billboard-state.is-live,
+.nx-billboard-state.is-upcoming { color: var(--ink); }
+.nx-billboard-report { margin-top: 16px; }
+.nx-billboard-report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+@media (max-width: 520px) {
+  .nx-billboard { flex-wrap: wrap; padding: 10px 14px; }
+  .nx-billboard-line { flex-basis: 100%; flex-direction: column; gap: 2px; }
+  .nx-home > .nx-billboard-slot { margin-bottom: calc(16px - var(--nx-gap)); }
+}

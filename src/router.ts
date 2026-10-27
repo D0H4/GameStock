@@ -14,6 +14,7 @@ export type Route =
   | { name: "settings" }
   | { name: "charge" }
   | { name: "loan" }
+  | { name: "billboard" }
   | { name: "titles" }
   | { name: "attendance" }
   | { name: "admin"; section: AdminSection }
@@ -21,13 +22,13 @@ export type Route =
   | { name: "notFound" };
 
 /** 로그인해야 열리는 화면. 로그아웃 상태에서는 본문이 로그인 안내로 바뀐다. */
-export const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "attendance", "charge", "loan", "admin"]);
+export const PRIVATE_ROUTES = new Set<Route["name"]>(["mypage", "settings", "titles", "attendance", "charge", "loan", "billboard", "admin"]);
 
 export type DerivativesTab = "futures" | "options";
 const DERIVATIVE_TABS: readonly DerivativesTab[] = ["futures", "options"];
 
-export type AdminSection = "users" | "orders" | "notices" | "promos" | "audit";
-const ADMIN_SECTIONS: readonly AdminSection[] = ["users", "orders", "notices", "promos", "audit"];
+export type AdminSection = "users" | "orders" | "notices" | "billboard" | "promos" | "audit";
+const ADMIN_SECTIONS: readonly AdminSection[] = ["users", "orders", "notices", "billboard", "promos", "audit"];
 
 export type LoginMethod = "choose" | "google" | "email" | "register" | "reset";
 
@@ -60,6 +61,7 @@ function parse(pathname: string): Route {
   if (parts[0] === "settings") return { name: "settings" };
   if (parts[0] === "charge") return { name: "charge" };
   if (parts[0] === "loan") return { name: "loan" };
+  if (parts[0] === "billboard") return parts.length === 1 ? { name: "billboard" } : { name: "notFound" };
   if (parts[0] === "titles") return { name: "titles" };
   if (parts[0] === "attendance") return { name: "attendance" };
   if (parts[0] === "admin") {

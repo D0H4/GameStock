@@ -2,6 +2,7 @@ import { Link } from "../../components/Link";
 import { useProfile } from "../../lib/profile";
 import { ADMIN_SECTIONS, AdminUsers } from "../../pages/AdminPage";
 import { AdminAudit } from "../../pages/admin/AdminAudit";
+import { AdminBillboard } from "../../pages/admin/AdminBillboard";
 import { AdminNotices } from "../../pages/admin/AdminNotices";
 import { AdminOrders } from "../../pages/admin/AdminOrders";
 import { AdminPromos } from "../../pages/admin/AdminPromos";
@@ -27,7 +28,7 @@ export function NxAdminPage() {
         </div>
       </header>
       <div className="nx-admin-runtime"><AdminRuntime /></div>
-      {/* 구획은 다섯뿐이라 계좌 화면처럼 가로 탭으로 두고, 본문이 화면 폭을 다 쓰게 한다. */}
+      {/* 구획이 몇 개뿐이라 계좌 화면처럼 가로 탭으로 두고, 본문이 화면 폭을 다 쓰게 한다. */}
       <AnimatedNav animationId="admin" activeKey={section} className="nx-tabs nx-admin-nav" aria-label="관리 메뉴">
         {ADMIN_SECTIONS.map((item) => (
           <Link key={item.section} to={item.to} className={item.section === section ? "is-active" : undefined} aria-current={item.section === section ? "page" : undefined}>
@@ -39,6 +40,7 @@ export function NxAdminPage() {
         {section === "users" && <AdminUsers />}
         {section === "orders" && <AdminOrders />}
         {section === "notices" && <AdminNotices />}
+        {section === "billboard" && <AdminBillboard />}
         {section === "promos" && <AdminPromos />}
         {section === "audit" && <AdminAudit />}
       </div>

@@ -13,10 +13,11 @@ const ITEMS = [
   { label: '출석체크', detail: '연속 출석 보상과 이번 달 출석 기록', icon: 'calendar-outline', path: '/attendance' },
   { label: '충전하기', detail: '오늘의 투자 미션과 모의 자금 보상', icon: 'gift-outline', path: '/charge' },
   { label: '대출', detail: '모의 대출과 상환, 한도와 이자', icon: 'cash-outline', path: '/loan' },
+  { label: '전광판', detail: '홈 맨 위에 한 줄 문구 띄우기', icon: 'megaphone-outline', path: '/billboard' },
   { label: '칭호 설정', detail: '칭호 조건과 획득 현황, 장착', icon: 'ribbon-outline', path: '/titles' },
   { label: '프로필·계정 설정', detail: '닉네임, 프로필 사진, 계좌 초기화', icon: 'person-circle-outline', path: '/settings' },
 ];
-const ADMIN = { label: '관리자', detail: '회원 조치, 주문 조회, 공지, 프로모션 코드, 감사 기록', icon: 'shield-checkmark-outline', path: '/admin' };
+const ADMIN = { label: '관리자', detail: '회원 조치, 주문 조회, 공지, 전광판, 프로모션 코드, 감사 기록', icon: 'shield-checkmark-outline', path: '/admin' };
 
 const API_DOCS = { label: 'OpenAPI 문서', detail: '시세·주문 API 사용법과 API 키 발급. 브라우저에서 열려요', icon: 'code-slash-outline' };
 

@@ -21,6 +21,7 @@ const ACTIONS: Record<string, string> = {
   PERMISSIONS: "권한 변경",
   CONTENT_SAVE: "콘텐츠 저장",
   CONTENT_DELETE: "콘텐츠 삭제",
+  BILLBOARD_HIDE: "전광판 문구 내림",
   MISSION_CONFIG: "미션 설정",
   REPORT_RESOLVE: "신고 처리",
   COMMENT_DELETE: "댓글 삭제",
