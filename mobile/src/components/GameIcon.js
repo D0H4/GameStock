@@ -20,6 +20,11 @@ const ICONS = {
   KRP: require('../../assets/game-icons/KRP.png'),
   PW: require('../../assets/game-icons/PW.jpg'),
   TR: require('../../assets/game-icons/TR.png'),
+  GKM: require('../../assets/game-icons/GKM.png'),
+  KR: require('../../assets/game-icons/KR.jpg'),
+  MC: require('../../assets/game-icons/MC.png'),
+  KD: require('../../assets/game-icons/KD.jpg'),
+  MAPLE: require('../../assets/game-icons/MAPLE.png'),
 };
 
 /* 웹 public/game-icons/el-overwatch-symbol.svg의 두 경로. 원본의 그라데이션 정의는 쓰이지 않아 뺐다. */

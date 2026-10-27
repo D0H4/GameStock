@@ -287,7 +287,7 @@ class BotActivityEngineTest {
     @Test void strategyMixSurvivesSeventeenListingsAndOtherPopulationStrides() {
         for(long seed:List.of(7L,91L,20261024L)) {
             var profiles=BotProfile.activePopulation(seed,6020);
-            for(int listings:List.of(15,16,17,18,34)) {
+            for(int listings:List.of(15,16,17,18,20,34)) {
                 for(int symbol=0;symbol<listings;symbol++) {
                     Set<BotProfile.Family> families=EnumSet.noneOf(BotProfile.Family.class);
                     for(int i=symbol;i<profiles.size();i+=listings)families.add(profiles.get(i).strategy().family());

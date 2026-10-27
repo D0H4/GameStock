@@ -16,12 +16,13 @@ final class DerivativePriceOracle {
     // Leave one second for the sub-second part of the refresh clock. The actual
     // execution timestamp must still pass the unchanged 90-second basket guard.
     private static final long SPARSE_LAST_AGE_SECONDS = MAX_AGE_SECONDS - DELAY_SECONDS - 1;
-    record Bucket(long second, long quantity, double notional) { }
+    record Bucket(long second, double quantity, double notional) { }
     private record Reference(double price, long observedSecond) { }
     private final JdbcTemplate jdbc;
     DerivativePriceOracle(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     static void ensureTables(JdbcTemplate jdbc) {
+        StockDenominationMigration.ensureTradePriceScale(jdbc);
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS derivative_reference_prices (
                   stock_id BIGINT PRIMARY KEY, price DOUBLE NOT NULL, observed_at TIMESTAMP(3) NULL,
@@ -48,16 +49,20 @@ final class DerivativePriceOracle {
         initialize();
         long end = now.getEpochSecond() - DELAY_SECONDS;
         List<Long> stocks = jdbc.queryForList("SELECT id FROM stocks ORDER BY id", Long.class);
+        Map<Long,Double> evidenceScales=new HashMap<>();
+        jdbc.query("SELECT stock_id,old_mark,new_mark FROM stock_denominations",rs->{
+            evidenceScales.put(rs.getLong(1),rs.getLong(3)/(double)rs.getLong(2));
+        });
         for (long stock : stocks) {
             long revision = jdbc.queryForObject("SELECT revision FROM derivative_reference_prices WHERE stock_id=?", Long.class, stock);
             Optional<Reference> reference = calculate(executions(stock, end, WINDOW_SECONDS), end,
-                    WINDOW_SECONDS, 10, false);
+                    WINDOW_SECONDS, 10, false,evidenceScales.getOrDefault(stock,1.0));
             if (reference.isEmpty()) {
                 // Small allocation lots need not produce 100 shares in every minute.
                 // A longer, independently sampled tape also supports single-share lots;
                 // never replace the actual last execution time with the refresh time.
                 reference = calculate(executions(stock, end, MAX_LOOKBACK_SECONDS), end,
-                        MAX_LOOKBACK_SECONDS, SPARSE_LAST_AGE_SECONDS, true);
+                        MAX_LOOKBACK_SECONDS, SPARSE_LAST_AGE_SECONDS, true,evidenceScales.getOrDefault(stock,1.0));
             }
             if (reference.isEmpty()) continue;
             Reference observed = reference.get();
@@ -75,14 +80,14 @@ final class DerivativePriceOracle {
     private List<Bucket> executions(long stock, long end, long window) {
         return jdbc.query("""
                     SELECT second,SUM(quantity) AS quantity,SUM(notional) AS notional FROM (
-                      SELECT FLOOR(UNIX_TIMESTAMP(t.created_at)) AS second,t.quantity,t.price*t.quantity AS notional
+                      SELECT FLOOR(UNIX_TIMESTAMP(t.created_at)) AS second,t.quantity/t.price_scale AS quantity,t.price*t.quantity AS notional
                       FROM trades t WHERE t.stock_id=? AND t.created_at>=? AND t.created_at<?
                         AND NOT EXISTS(SELECT 1 FROM settlements s WHERE s.trade_id=t.id AND s.status='CANCELLED')
                       UNION ALL
                       SELECT bucket_at AS second,quantity,notional FROM bot_trade_seconds
                       WHERE stock_id=? AND bucket_at>=? AND bucket_at<?
                     ) executions GROUP BY second ORDER BY second
-                    """, (rs, n) -> new Bucket(rs.getLong("second"), rs.getLong("quantity"), rs.getDouble("notional")),
+                    """, (rs, n) -> new Bucket(rs.getLong("second"), rs.getDouble("quantity"), rs.getDouble("notional")),
                     stock, Timestamp.from(Instant.ofEpochSecond(end - window)), Timestamp.from(Instant.ofEpochSecond(end)),
                     stock, end - window, end);
     }
@@ -107,16 +112,21 @@ final class DerivativePriceOracle {
 
     private static Optional<Reference> calculate(List<Bucket> buckets, long end, long window,
                                                 long maxLastAge, boolean shortestWindow) {
+        return calculate(buckets,end,window,maxLastAge,shortestWindow,1);
+    }
+
+    private static Optional<Reference> calculate(List<Bucket> buckets,long end,long window,
+                                                long maxLastAge,boolean shortestWindow,double evidenceScale) {
         var valid = buckets.stream().filter(b -> b.second() >= end - window && b.second() < end
-                && b.quantity() > 0 && Double.isFinite(b.notional()) && b.notional() > 0)
+                && Double.isFinite(b.quantity()) && b.quantity() > 0 && Double.isFinite(b.notional()) && b.notional() > 0)
                 .sorted(Comparator.comparingLong(Bucket::second)).toList();
         if (valid.size() < 20) return Optional.empty();
         long latest = valid.get(valid.size() - 1).second();
         if (end - latest > maxLastAge) return Optional.empty();
         int first = valid.size();
-        long quantity = 0;
+        double quantity = 0;
         while (first > 0) {
-            quantity += valid.get(--first).quantity();
+            quantity += valid.get(--first).quantity()*evidenceScale;
             if (shortestWindow && sufficientEvidence(valid.size() - first,
                     latest - valid.get(first).second(), quantity, true)) break;
         }
@@ -128,11 +138,11 @@ final class DerivativePriceOracle {
         return Optional.of(new Reference((prices[(prices.length - 1) / 2] + prices[prices.length / 2]) / 2, latest));
     }
 
-    private static boolean sufficientEvidence(int samples, long span, long quantity, boolean sparse) {
+    private static boolean sufficientEvidence(int samples, long span, double quantity, boolean sparse) {
         // Allocation adjustments can be one share. A three-minute tape of at least
         // twenty occupied seconds is persistent price discovery even below 100 shares.
         // The median still gives an isolated large or small print only one vote.
         return samples >= 20 && span >= 45
-                && (quantity >= 100 || sparse && span >= MICRO_LOT_SPAN_SECONDS && quantity >= 20);
+                && (quantity >= 100-1e-8 || sparse && span >= MICRO_LOT_SPAN_SECONDS && quantity >= 20-1e-8);
     }
 }

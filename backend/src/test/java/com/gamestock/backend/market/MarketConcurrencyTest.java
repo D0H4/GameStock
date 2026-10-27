@@ -38,6 +38,9 @@ class MarketConcurrencyTest {
         String ddl=Files.readString(Path.of("../database/schema.sql")).replaceAll("(?m)^--.*$","")
                 .replaceAll("(?is)CREATE DATABASE[^;]+;","").replaceAll("(?is)USE gamestock;","");
         for(String statement:ddl.split(";")) if(!statement.isBlank()) db.execute(statement);
+        // Reservation and contention fixtures explicitly trade around 10,000 won.
+        StockCatalog.ensureListings(db);
+        db.update("UPDATE stocks SET current_price=10000,previous_price=10000");
         var manager=new DataSourceTransactionManager(source);tx=new TransactionTemplate(manager);
         tx.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
         for(int i=0;i<2;i++) {

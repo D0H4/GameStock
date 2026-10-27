@@ -53,9 +53,11 @@ class MarketIdleSimulationTest {
                 market.initializeData();market.maintainScheduledMarket();
                 var tx=new TransactionTemplate(new DataSourceTransactionManager(source));tx.setIsolationLevel(2);
                 long human=db.queryForObject("SELECT id FROM users WHERE username='demo'",Long.class);
+                long restingBid=PriceLimitPolicy.dailyBand("UMA",db.queryForObject(
+                        "SELECT previous_price FROM stocks WHERE stock_code='UMA'",Long.class)).lowerPrice();
                 long cash=totalCash(db),shares=db.queryForObject("SELECT SUM(quantity) FROM portfolios",Long.class);
                 long initialIssuance=db.queryForObject("SELECT COALESCE(SUM(quantity),0) FROM market_inventory_issuance",Long.class);
-                tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",2,"LIMIT",7000L),human));
+                tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",2,"LIMIT",restingBid),human));
                 long expired=db.queryForObject("SELECT MAX(id) FROM orders WHERE user_id=?",Long.class,human);
                 db.update("UPDATE orders SET expires_at=? WHERE id=?",new Timestamp(start+30000),expired);
                 int acquisitionsBefore=source.acquisitions,attempts=0;
@@ -73,11 +75,11 @@ class MarketIdleSimulationTest {
                 assertEquals(100,market.participantCadenceMillis());assertEquals(300,market.currentTargetPerSymbol());
 
                 // Simulate persisted orders left behind by a visitor: one expires, one remains GTC.
-                tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",2,"LIMIT",7000L),human));
+                tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",2,"LIMIT",restingBid),human));
                 long wakeExpired=db.queryForObject("SELECT MAX(id) FROM orders WHERE user_id=?",Long.class,human);
                 long refund=db.queryForObject("SELECT reserved_cash FROM orders WHERE id=?",Long.class,wakeExpired);
                 db.update("UPDATE orders SET expires_at=? WHERE id=?",new Timestamp(clock.now+1000),wakeExpired);
-                tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",1,"LIMIT",7000L),human));
+                tx.executeWithoutResult(s->market.order(new MarketModels.OrderRequest("UMA","BUY",1,"LIMIT",restingBid),human));
                 long gtc=db.queryForObject("SELECT MAX(id) FROM orders WHERE user_id=?",Long.class,human);
                 long beforeWakeCash=db.queryForObject("SELECT cash FROM users WHERE id=?",Long.class,human);
                 clock.now=start+2400000;sqlClock(db,clock);

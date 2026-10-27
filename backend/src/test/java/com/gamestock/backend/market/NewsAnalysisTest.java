@@ -57,6 +57,32 @@ class NewsAnalysisTest {
     }
 
     @Test
+    void newListingsRecognizeTheirOwnNews() {
+        List<String> codes = List.of("GKM", "KR", "MC", "KD", "MAPLE");
+        List<String> names = List.of("학원 아이돌마스터", "카트라이더", "마인크래프트", "카트라이더: 드리프트", "메이플스토리");
+        for (int i = 0; i < codes.size(); i++) {
+            assertTrue(NewsRelevance.isRelevant(codes.get(i), names.get(i) + " 신규 콘텐츠 업데이트"));
+            assertTrue(NewsRelevance.isRelevant(codes.get(i), names.get(i) + " 서버 장애"));
+            assertFalse(NewsRelevance.isRelevant(codes.get(i), "다른 게임 신규 업데이트"));
+        }
+    }
+
+    @Test
+    void kartSeriesNewsDoesNotTreatTheSpinOffsAsTheOriginal() {
+        List<String> codes = List.of("KR", "KD", "KRP");
+        List<String> names = List.of("카트라이더", "카트라이더: 드리프트", "카트라이더 러쉬플러스");
+        for (int i = 0; i < codes.size(); i++) {
+            for (int j = 0; j < codes.size(); j++)
+                assertEquals(i == j, NewsRelevance.isRelevant(codes.get(i), names.get(j) + " 신규 트랙 업데이트"));
+        }
+        for (String sibling : List.of("카트라이더:드리프트", "카트라이더드리프트", "카트라이더러쉬플러스",
+                "KartRider: Drift", "KartRider Rush+", "KartRider Rush Plus"))
+            assertFalse(NewsRelevance.isRelevant("KR", sibling + " 신규 트랙 업데이트"), sibling);
+        assertTrue(NewsRelevance.isRelevant("KR", "카트라이더와 카트라이더: 드리프트 비교 리뷰"));
+        assertTrue(NewsRelevance.isRelevant("KD", "카트라이더와 카트라이더: 드리프트 비교 리뷰"));
+    }
+
+    @Test
     void handLabelledSentimentSamplesHaveExpectedDirection() {
         List<Sample> samples = List.of(
                 new Sample("우마무스메 대규모 업데이트 흥행", "신규 콘텐츠가 좋은 반응을 얻었다", 1),

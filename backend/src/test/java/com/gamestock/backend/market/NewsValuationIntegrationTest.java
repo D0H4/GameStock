@@ -33,6 +33,21 @@ class NewsValuationIntegrationTest {
     }
     private double value() {return jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=1",Double.class);}
 
+    @Test void pennyStockBadNewsCanLowerValueBelowOneHundredAndSurvivesRestart() {
+        jdbc.update("UPDATE stocks SET stock_code='KD' WHERE id=1");
+        jdbc.update("DELETE FROM market_fundamental_state");
+        jdbc.update("UPDATE market_price_metrics SET hidden_fundamental=100");
+        model.project(1,"KD",now);
+        news("카트라이더: 드리프트 서버 장애",-10,now);
+        model.project(1,"KD",now);
+        double lower=value();
+        assertTrue(lower>=1 && lower<100);
+        new NewsValuation(jdbc).project(1,"KD",now);
+        assertEquals(lower,value(),1e-8);
+        model.project(1,"KD",now.plusSeconds(10*86400));
+        assertTrue(value()>lower && value()<100,"The permanent loss must not snap back to 100");
+    }
+
     @Test void restartAndRepeatedProjectionNeverCompoundTheSameNewsAndTheEconomicEffectSurvivesExpiry() {
         news("원신 신규 지역 공개",8,now);model.project(1,"GI",now);double first=value();assertTrue(first>10000);
         for(int i=0;i<20;i++)new NewsValuation(jdbc).project(1,"GI",now);

@@ -54,13 +54,13 @@ final class MarketConsensusValue {
     /** Economic value is independent of the calendar's execution limits, for every listing. */
     static double target(BatchOrderBook.Stock symbol,double fundamental,double news) {
         if(!Double.isFinite(fundamental)||fundamental<=0)throw new IllegalArgumentException("Invalid fundamental");
-        return Math.max(100,fundamental);
+        return Math.max(MIN_PRICE,fundamental);
     }
 
     double observe(BatchOrderBook.Stock symbol,double fundamental,double news,MarketEnvironment environment,long now) {
         double target=target(symbol,fundamental,news);
         // News changes willingness to trade gradually, including when a listing is first observed.
-        State state=states.computeIfAbsent(symbol.id,id->new State(Math.max(100,symbol.last),now,seed^id));
+        State state=states.computeIfAbsent(symbol.id,id->new State(Math.max(MIN_PRICE,symbol.last),now,seed^id));
         double reference=Math.max(1,symbol.reference),limit=BOT_DAILY_LIMIT_RATE;
         double dt=Math.max(0,(double)now-state.at);state.at=Math.max(now,state.at);
         if(dt>0) {
@@ -72,7 +72,7 @@ final class MarketConsensusValue {
             double drift=environment==null?0:MarketEnvironment.clamp(environment.directionBias(),-1,1)
                     *dailyVolatility(symbol.code)*2*pull/(decay*DAY_MS);
             double logValue=Math.log(state.value)+Math.log(target/state.value)*pull+drift+sigma*state.gaussian();
-            state.value=MarketEnvironment.clamp(Math.exp(logValue),reference*(1-limit*EDGE_BAND_SHARE),reference*(1+limit*EDGE_BAND_SHARE));
+            state.value=MarketEnvironment.clamp(Math.exp(logValue),Math.max(MIN_PRICE,reference*(1-limit*EDGE_BAND_SHARE)),reference*(1+limit*EDGE_BAND_SHARE));
         }
         return state.value;
     }

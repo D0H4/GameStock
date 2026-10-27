@@ -58,6 +58,7 @@ CREATE TABLE stocks (
   current_price BIGINT NOT NULL,
   previous_price BIGINT NOT NULL,
   total_volume BIGINT NOT NULL DEFAULT 0,
+  denomination_version INT NOT NULL DEFAULT 1,
   CONSTRAINT fk_stocks_game FOREIGN KEY (game_id) REFERENCES games(id)
 );
 
@@ -134,6 +135,7 @@ CREATE TABLE trades (
   aggressor_side ENUM('BUY', 'SELL') NOT NULL,
   quantity INT NOT NULL,
   price BIGINT NOT NULL,
+  price_scale DOUBLE NOT NULL DEFAULT 1,
   buyer_fee BIGINT NOT NULL DEFAULT 0,
   seller_fee BIGINT NOT NULL DEFAULT 0,
   fee BIGINT NOT NULL DEFAULT 0,

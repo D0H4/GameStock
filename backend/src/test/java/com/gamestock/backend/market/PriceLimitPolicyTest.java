@@ -6,6 +6,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PriceLimitPolicyTest {
+    @Test void hundredWonListingCanTradeBelowItsOpeningPrice() {
+        var daily=PriceLimitPolicy.dailyBand("KD",100);
+        var bots=PriceLimitPolicy.botBand("KD",100);
+        assertEquals(70,daily.lowerPrice());
+        assertEquals(130,daily.upperPrice());
+        assertEquals(80,bots.lowerPrice());
+        assertEquals(120,bots.upperPrice());
+        assertEquals(99,PriceLimitPolicy.previousTickPrice(100));
+        assertEquals(1,PriceLimitPolicy.dailyBand("KD",1).lowerPrice());
+        var quote=new MarketModels.Stock("KD","카트라이더: 드리프트","레이싱",72,-10,1);
+        assertEquals(80,quote.referencePrice());
+        assertEquals(56,quote.limitDown());
+    }
+
     @Test void everyStockUsesTheSameThirtyPercentDailyBand() {
         for(String code:java.util.List.of("AK","VR","KRP","PW","CRK","ES","TR")) {
             var daily=PriceLimitPolicy.dailyBand(code,10000);

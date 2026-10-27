@@ -6,6 +6,22 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.gamestock.backend.market.BatchOrderBook.*;
 
 class BatchOrderBookTest {
+    @Test void pennyStockExecutesOnBothSidesOfOneHundredWithoutCreatingMoney() {
+        var b=book(1000);
+        b.stocks.put(1L,new Stock(1,"KD",100,100,100,100,true));
+        b.accounts.put(1L,new Account(1,1000,false,true));
+        b.accounts.put(2L,new Account(2,1000,false,true));
+        b.holdings.put(new PositionKey(2,1),new Holding(10,10,100,0));
+        for(long price:List.of(99L,101L)) {
+            b.submit(2,1,"SELL","LIMIT",1,price,1000+price,10000);
+            b.submit(1,1,"BUY","LIMIT",1,price,1001+price,10000);
+        }
+        assertEquals(List.of(99L,101L),b.fills.stream().map(Fill::price).toList());
+        assertEquals(2000,b.accounts.get(1L).cash+b.accounts.get(2L).cash);
+        assertEquals(2,b.holding(1,1).quantity());
+        assertEquals(8,b.holding(2,1).quantity());
+    }
+
     @Test void fourDisplayedSingleShareAsksAreFourExecutableShares() {
         var b=book(1_000_000);
         b.stocks.put(1L,new Stock(1,"BA",15630,14790,14790,15630,true));

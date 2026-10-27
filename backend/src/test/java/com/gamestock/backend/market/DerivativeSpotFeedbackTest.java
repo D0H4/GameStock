@@ -12,6 +12,9 @@ class DerivativeSpotFeedbackTest {
         var setup = new MarketSimulationHarness.Setup();
         setup.symbols = Set.of("TR");
         setup.sessionMillis = 120_000;
+        // Forced long selling requires inventory; keep that starting condition
+        // explicit instead of depending on the listing count's even/odd parity.
+        setup.seedAllTraderHoldings = true;
         if (!funded) setup.broke = Set.of("TR");
         var impact = new DerivativeMarketImpact();
         setup.extraEnvironment = (code,time) -> {

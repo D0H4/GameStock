@@ -7,21 +7,26 @@ import { stockMarketProfile } from "./marketCap";
  */
 export const LISTINGS: Listing[] = [
   // Spring Boot/MySQL의 기존 종목 코드와 동일하게 GOV를 사용한다.
-  { code: "GOV", name: "승리의 여신: 니케", publisher: "시프트업", genre: "RPG", prevClose: 25710, activity: 2.6, detail: "2부 12장" },
+  { code: "GOV", name: "승리의 여신: 니케", publisher: "시프트업", genre: "RPG", prevClose: 92000, activity: 2.6, detail: "2부 12장" },
   { code: "UMA", name: "우마무스메 프리티더비", publisher: "사이게임즈", genre: "육성", prevClose: 12600, activity: 2.2, detail: "신규 육성 시나리오" },
-  { code: "BA", name: "블루 아카이브", publisher: "넥슨게임즈", genre: "RPG", prevClose: 9370, activity: 2.4, detail: "메인 스토리 2부" },
-  { code: "GI", name: "원신", publisher: "호요버스", genre: "오픈월드", prevClose: 31900, activity: 3.0, detail: "신규 지역" },
-  { code: "SR", name: "붕괴: 스타레일", publisher: "호요버스", genre: "RPG", prevClose: 22480, activity: 2.7, detail: "개척 임무" },
-  { code: "ZZZ", name: "젠레스 존 제로", publisher: "호요버스", genre: "액션", prevClose: 27150, activity: 2.1, detail: "신규 요원" },
-  { code: "AK", name: "명일방주: 엔드필드", publisher: "하이퍼그리프", genre: "전략 RPG", prevClose: 18240, activity: 1.8, detail: "신규 오퍼레이터" },
-  { code: "WH", name: "명조: 워더링 웨이브", publisher: "쿠로게임즈", genre: "액션", prevClose: 13700, activity: 1.7, detail: "공명자 에코" },
-  { code: "CRK", name: "쿠키런: 킹덤", publisher: "데브시스터즈", genre: "RPG", prevClose: 15300, activity: 1.4, detail: "신규 쿠키" },
-  { code: "VR", name: "발로란트", publisher: "라이엇 게임즈", genre: "FPS", prevClose: 7860, activity: 1.3, detail: "신규 요원" },
-  { code: "ES", name: "에픽세븐", publisher: "스마일게이트", genre: "RPG", prevClose: 6480, activity: 1.2, detail: "월광 영웅" },
-  { code: "KRP", name: "카트라이더 러쉬플러스", publisher: "넥슨", genre: "레이싱", prevClose: 38500, activity: 2.5, detail: "신규 카트" },
-  { code: "OW", name: "오버워치", publisher: "블리자드", genre: "FPS", prevClose: 42000, activity: 2.0, detail: "영웅 밸런스" },
-  { code: "PW", name: "팰월드", publisher: "포켓페어", genre: "생존", prevClose: 19800, activity: 1.9, detail: "신규 팰" },
-  { code: "TR", name: "트릭컬 리바이브", publisher: "에피드게임즈", genre: "RPG", prevClose: 5600, activity: 0.9, detail: "신규 사도" },
+  { code: "BA", name: "블루 아카이브", publisher: "넥슨게임즈", genre: "RPG", prevClose: 48000, activity: 2.4, detail: "메인 스토리 2부" },
+  { code: "GI", name: "원신", publisher: "호요버스", genre: "오픈월드", prevClose: 215000, activity: 3.0, detail: "신규 지역" },
+  { code: "SR", name: "붕괴: 스타레일", publisher: "호요버스", genre: "RPG", prevClose: 128000, activity: 2.7, detail: "개척 임무" },
+  { code: "ZZZ", name: "젠레스 존 제로", publisher: "호요버스", genre: "액션", prevClose: 78000, activity: 2.1, detail: "신규 요원" },
+  { code: "AK", name: "명일방주: 엔드필드", publisher: "하이퍼그리프", genre: "전략 RPG", prevClose: 12000, activity: 1.8, detail: "신규 오퍼레이터" },
+  { code: "WH", name: "명조: 워더링 웨이브", publisher: "쿠로게임즈", genre: "액션", prevClose: 64000, activity: 1.7, detail: "공명자 에코" },
+  { code: "CRK", name: "쿠키런: 킹덤", publisher: "데브시스터즈", genre: "RPG", prevClose: 3200, activity: 1.4, detail: "신규 쿠키" },
+  { code: "VR", name: "발로란트", publisher: "라이엇 게임즈", genre: "FPS", prevClose: 28000, activity: 1.3, detail: "신규 요원" },
+  { code: "ES", name: "에픽세븐", publisher: "스마일게이트", genre: "RPG", prevClose: 1600, activity: 1.2, detail: "월광 영웅" },
+  { code: "KRP", name: "카트라이더 러쉬플러스", publisher: "넥슨", genre: "레이싱", prevClose: 4800, activity: 2.5, detail: "신규 카트" },
+  { code: "OW", name: "오버워치", publisher: "블리자드", genre: "FPS", prevClose: 105000, activity: 2.0, detail: "영웅 밸런스" },
+  { code: "PW", name: "팰월드", publisher: "포켓페어", genre: "생존", prevClose: 8200, activity: 1.9, detail: "신규 팰" },
+  { code: "TR", name: "트릭컬 리바이브", publisher: "에피드게임즈", genre: "RPG", prevClose: 900, activity: 0.9, detail: "신규 사도" },
+  { code: "GKM", name: "학원 아이돌마스터", publisher: "반다이 남코", genre: "육성", prevClose: 18500, activity: 1.9, detail: "신규 프로듀스" },
+  { code: "KR", name: "카트라이더", publisher: "넥슨", genre: "레이싱", prevClose: 650, activity: 1.6, detail: "신규 카트" },
+  { code: "MC", name: "마인크래프트", publisher: "모장 스튜디오", genre: "생존", prevClose: 158000, activity: 2.2, detail: "신규 바이옴" },
+  { code: "KD", name: "카트라이더: 드리프트", publisher: "넥슨", genre: "레이싱", prevClose: 100, activity: 1.8, detail: "신규 트랙" },
+  { code: "MAPLE", name: "메이플스토리", publisher: "넥슨", genre: "RPG", prevClose: 56000, activity: 2.0, detail: "신규 보스" },
 ];
 
 export const LISTING_BY_CODE: Record<string, Listing> = Object.fromEntries(
@@ -45,6 +50,11 @@ const GAME_ICON_BY_CODE: Record<string, string> = {
   OW: "/game-icons/el.jpg",
   PW: "/game-icons/pw.jpg",
   TR: "/game-icons/sd.jpg",
+  GKM: "/game-icons/gkm.png",
+  KR: "/game-icons/kr.jpg",
+  MC: "/game-icons/mc.png",
+  KD: "/game-icons/kd.jpg",
+  MAPLE: "/game-icons/maple.png",
 };
 
 export function gameIcon(code: string): string | null {
@@ -70,7 +80,7 @@ export function dailyPriceBand(code: string, reference: number): { limitUp: numb
   const tick = tickSize(reference);
   const down = Math.max(tick, Math.floor(reference * profile.dailyDownRate / tick) * tick);
   const up = Math.max(tick, Math.floor(reference * profile.dailyUpRate / tick) * tick);
-  const low = Math.max(100, reference - down);
+  const low = Math.max(1, reference - down);
   const high = reference + up;
   return {
     limitDown: Math.ceil(low / tickSize(low)) * tickSize(low),

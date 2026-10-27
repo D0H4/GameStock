@@ -37,6 +37,10 @@ class MarketSimulationIntegrationTest {
         String schema=Files.readString(Path.of("../database/schema.sql"));
         schema=schema.replaceAll("(?m)^--.*$","").replaceAll("(?is)CREATE DATABASE[^;]+;","").replaceAll("(?is)USE gamestock;","");
         for(String statement:schema.split(";")) if(!statement.isBlank()) jdbc.execute(statement);
+        // These order/protection scenarios use a fixed 10,000-won reference,
+        // independently of the production catalog's varied opening prices.
+        StockCatalog.ensureListings(jdbc);
+        jdbc.update("UPDATE stocks SET current_price=10000,previous_price=10000");
         market=new MarketService(event->{},jdbc,new UserFeatureService(jdbc),new TradingProtectionService(jdbc));
         ReflectionTestUtils.setField(market,"configuredSeed","12345");
         market.initializeData();

@@ -23,12 +23,12 @@ const ACTIVE_USERS: Record<string, number> = {
   WH: 7_000_000, GOV: 6_000_000, BA: 4_000_000, UMA: 3_000_000,
   AK: 600_000, VR: 500_000, KRP: 400_000, PW: 200_000,
   CRK: 150_000, ES: 100_000, TR: 50_000,
+  GKM: 300_000, KR: 350_000, MC: 900_000, KD: 180_000, MAPLE: 800_000,
 };
 
 export function stockMarketProfile(code: string): StockMarketProfile {
   const normalized = code.toUpperCase();
   const largeCap = LARGE_CAP_CODES.has(normalized);
-  const speculative = Object.hasOwn(ACTIVE_USERS, normalized) && !largeCap;
   const activeUsers = ACTIVE_USERS[normalized] ?? SMALL_CAP_ACTIVE_USERS;
   const size = Math.sqrt(activeUsers / SMALL_CAP_ACTIVE_USERS);
   return {
@@ -36,7 +36,7 @@ export function stockMarketProfile(code: string): StockMarketProfile {
     marketCap: activeUsers * VALUE_PER_ACTIVE_USER,
     movementWeight: largeCap ? Math.max(0.10, 0.45 / size) : Math.min(2.5, 1 / size),
     liquidityWeight: largeCap ? Math.min(10, 2 * size) : Math.max(0.35, size * 0.65),
-    dailyUpRate: speculative ? 2 : 0.3,
-    dailyDownRate: speculative ? 0.8 : 0.3,
+    dailyUpRate: 0.3,
+    dailyDownRate: 0.3,
   };
 }

@@ -97,13 +97,13 @@ final class NewsValuation {
         if (saved.isEmpty()) {
             // Upgrade without a price jump or replaying already reflected headlines.
             double existing = jdbc.queryForObject("SELECT hidden_fundamental FROM market_price_metrics WHERE stock_id=?", Double.class, stock);
-            permanentLog = Math.log(Math.max(100, existing)) - transientLog;
+            permanentLog = Math.log(Math.max(PriceLimitPolicy.MIN_PRICE, existing)) - transientLog;
             jdbc.update("INSERT INTO market_fundamental_state(stock_id,log_value) VALUES(?,?)", stock, permanentLog);
         } else {
             permanentLog = saved.get(0) + PERMANENT_SHARE * (contribution(afterEvents, weight, now, false)
                     - contribution(beforeEvents, weight, now, false));
             // Keep numeric limits explicit even after years of simulated news.
-            permanentLog = Math.max(Math.log(100), Math.min(Math.log(1_000_000_000), permanentLog));
+            permanentLog = Math.max(Math.log(PriceLimitPolicy.MIN_PRICE), Math.min(Math.log(1_000_000_000), permanentLog));
             if (Double.compare(permanentLog, saved.get(0)) != 0)
                 jdbc.update("UPDATE market_fundamental_state SET log_value=? WHERE stock_id=?", permanentLog, stock);
         }
@@ -119,7 +119,7 @@ final class NewsValuation {
         List<Object[]> removed = before.stream().filter(a -> !a.published().isBefore(cutoff) && !ids.contains(a.id()))
                 .map(a -> new Object[]{a.id()}).toList();
         if (!removed.isEmpty()) jdbc.batchUpdate("DELETE FROM market_news_valuation WHERE news_id=?", removed);
-        double value = Math.max(100, Math.min(1_000_000_000, Math.exp(permanentLog + transientLog)));
+        double value = Math.max(PriceLimitPolicy.MIN_PRICE, Math.min(1_000_000_000, Math.exp(permanentLog + transientLog)));
         jdbc.update("UPDATE market_price_metrics SET hidden_fundamental=? WHERE stock_id=?", value, stock);
     }
 

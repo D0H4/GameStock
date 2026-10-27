@@ -27,7 +27,9 @@ public final class StockMarketProfile {
             Map.entry("BA", 4_000_000L), Map.entry("UMA", 3_000_000L),
             Map.entry("AK", 600_000L), Map.entry("VR", 500_000L),
             Map.entry("KRP", 400_000L), Map.entry("PW", 200_000L),
-            Map.entry("CRK", 150_000L), Map.entry("ES", 100_000L), Map.entry("TR", 50_000L));
+            Map.entry("CRK", 150_000L), Map.entry("ES", 100_000L), Map.entry("TR", 50_000L),
+            Map.entry("GKM", 300_000L), Map.entry("KR", 350_000L),
+            Map.entry("MC", 900_000L), Map.entry("KD", 180_000L), Map.entry("MAPLE", 800_000L));
 
     public record Profile(String code, long activeUsers, long marketCap,
                           double movementWeight, double liquidityWeight) { }
