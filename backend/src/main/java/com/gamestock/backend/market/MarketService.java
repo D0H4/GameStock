@@ -88,6 +88,9 @@ public class MarketService {
     }
     private TitleService titles;
     private AdminRuntimeControl adminRuntime;
+    private DerivativeMarketImpact derivativeImpact;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void configureDerivativeImpact(DerivativeMarketImpact impact){this.derivativeImpact=impact;}
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     void configureAdminRuntime(AdminRuntimeControl controls){this.adminRuntime=controls;}
     @org.springframework.beans.factory.annotation.Autowired(required=false)
@@ -1584,7 +1587,12 @@ public class MarketService {
         return priceMetrics.read(stockId(code), findStock(code).price(), clock.millis(), latency);
     }
 
-    private MarketEnvironment environment(String code) { return environments.getOrDefault(code, MarketEnvironment.neutral()); }
+    private MarketEnvironment environment(String code) {
+        MarketEnvironment base = environments.getOrDefault(code, MarketEnvironment.neutral());
+        if (derivativeImpact == null) return base;
+        MarketEnvironment derivative = derivativeImpact.environment(code, clock.instant());
+        return derivative.equals(MarketEnvironment.neutral()) ? base : base.combine(StockMarketProfile.applyTo(code, derivative));
+    }
 
     private void cancelBotOrders(long userId, Long stockId) {
         List<Long> ids = stockId == null

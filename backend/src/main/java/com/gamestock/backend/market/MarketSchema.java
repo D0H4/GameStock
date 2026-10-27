@@ -51,6 +51,7 @@ final class MarketSchema {
         jdbc.execute("CREATE TABLE IF NOT EXISTS market_consensus_state(stock_id BIGINT PRIMARY KEY,value DOUBLE NOT NULL,observed_at BIGINT NOT NULL,random_state BIGINT NOT NULL)");
         ensureNewsPriceState();
         DerivativeService.ensureTables(jdbc);
+        DerivativeBotService.ensureTables(jdbc);
         AdminSchema.ensure(jdbc);
         com.gamestock.backend.openapi.OpenApiSchema.ensureTables(jdbc);
     }

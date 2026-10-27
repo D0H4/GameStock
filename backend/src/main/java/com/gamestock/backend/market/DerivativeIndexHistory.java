@@ -58,15 +58,15 @@ final class DerivativeIndexHistory {
 
     /** Invalidate potential descendants of a cancelled execution, including held last-good quotes. */
     void invalidate(Instant executionAt) {
-        // A reference uses the preceding 60 seconds with a five-second delay and may then
-        // be held for 90 seconds. This conservative interval also covers legacy samples
+        // A sparse reference can use ten minutes of executions with a five-second delay
+        // and then be held for 90 seconds. This interval also covers legacy samples
         // without per-constituent provenance. Already fixed expiries remain immutable.
         Instant second = Instant.ofEpochSecond(executionAt.getEpochSecond());
         jdbc.update("""
                 UPDATE derivative_index_observations SET invalidated=TRUE
                 WHERE observed_at>=? AND observed_at<? AND invalidated=FALSE
                 """, Timestamp.from(second), Timestamp.from(second.plusSeconds(
-                DerivativePriceOracle.WINDOW_SECONDS + DerivativePriceOracle.DELAY_SECONDS
+                DerivativePriceOracle.MAX_LOOKBACK_SECONDS + DerivativePriceOracle.DELAY_SECONDS
                         + DerivativePriceOracle.MAX_AGE_SECONDS + 1)));
     }
 
