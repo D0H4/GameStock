@@ -11,8 +11,6 @@ import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -20,8 +18,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * 홈 상단 전광판. 투자자가 모의 자금을 내고 한 줄 문구를 정해진 시간 동안 띄운다.
- * 값은 admin_cash_adjustments에 음수로 남겨 수익률·주간 랭킹 계산에서 뺀다.
+ * 홈 상단 전광판. 투자자가 모의 자금을 내고 한 줄 문구를 산 즉시 정해진 시간 동안 띄운다.
+ * 동시에 떠 있는 문구는 화면이 번갈아 보여 주고, 값은 admin_cash_adjustments에 음수로 남겨 수익률·주간 랭킹에서 뺀다.
  */
 @Service
 public class BillboardService {
@@ -29,17 +27,16 @@ public class BillboardService {
     public static final List<Integer> DURATIONS = List.of(1, 3, 6);
     public static final int MIN_LENGTH = 2;
     public static final int MAX_LENGTH = 40;
-    /** 너무 먼 미래까지 줄이 차지 않게, 이보다 늦게 시작하는 예약은 받지 않는다. */
-    static final Duration MAX_AHEAD = Duration.ofHours(48);
+    /** 10초씩 번갈아 보여도 한 바퀴가 너무 길어지지 않게 동시에 떠 있는 문구 수를 묶는다. */
+    public static final int MAX_LIVE = 10;
     private static final Pattern LINK = Pattern.compile("(?i)(https?://|www\\.|[a-z0-9-]+\\.(com|net|org|kr|io|gg|me|ly|co|xyz|site|app)\\b)");
     /** 공백·기호를 지운 뒤 찾는다. 막는 단어는 최소한만 두고, 나머지는 신고와 관리자 내림으로 다룬다. */
     private static final List<String> BLOCKED = List.of("시발", "씨발", "ㅅㅂ", "병신", "ㅂㅅ", "좆", "개새끼", "니미", "fuck", "shit");
     private static final Set<String> OPEN = Set.of("BOOKED");
 
-    public record Slot(Instant startsAt, Instant endsAt) { }
     public record Showing(long id, String nickname, String body, String startsAt, String endsAt) { }
-    public record Board(Showing current, List<Showing> upcoming, long pricePerHour, List<Integer> durations,
-                        int minLength, int maxLength, Map<Integer, String> nextStarts) { }
+    public record Board(List<Showing> live, long pricePerHour, List<Integer> durations, int minLength, int maxLength,
+                        int maxLive, String nextOpening) { }
     public record Booking(long id, String body, int hours, long price, String startsAt, String endsAt,
                           String state, String hiddenReason, long refunded, String createdAt) { }
     public record Purchase(String body, Integer hours) { }
@@ -78,7 +75,7 @@ public class BillboardService {
               INDEX ix_billboard_time(status, ends_at), INDEX ix_billboard_user(user_id, id),
               FOREIGN KEY(user_id) REFERENCES users(id))
             """);
-        // 예약 순서를 한 줄로 세우는 잠금. 체결 잠금(market_locks)을 막지 않으려고 따로 둔다.
+        // 동시 노출 수 검사를 한 줄로 세우는 잠금. 체결 잠금(market_locks)을 막지 않으려고 따로 둔다.
         db.execute("CREATE TABLE IF NOT EXISTS billboard_lock (id INT PRIMARY KEY)");
         db.update("INSERT IGNORE INTO billboard_lock(id) VALUES(1)");
     }
@@ -97,42 +94,21 @@ public class BillboardService {
         return text;
     }
 
-    /**
-     * {@code hours}시간이 들어갈 가장 이른 빈자리. {@code taken}은 시작 시각 순서이고 끝난 예약은 없다고 본다.
-     * 앞 예약과 다음 예약 사이 틈이 충분하면 그 틈을, 아니면 마지막 예약 뒤를 쓴다.
-     */
-    static Slot nextSlot(List<Slot> taken, Instant now, int hours) {
-        Duration length = Duration.ofHours(hours);
-        Instant cursor = now;
-        for (Slot slot : taken) {
-            if (!slot.endsAt().isAfter(cursor)) continue;
-            if (!slot.startsAt().isBefore(cursor.plus(length))) break;
-            cursor = slot.endsAt();
-        }
-        return new Slot(cursor, cursor.plus(length));
-    }
-
     public Board board() {
         Instant now = clock.instant();
-        List<Map<String, Object>> rows = db.queryForList(
-                "SELECT id, nickname, body, starts_at, ends_at FROM billboard_messages WHERE status = 'BOOKED' AND ends_at > ? ORDER BY starts_at LIMIT 60",
-                Timestamp.from(now));
-        Showing current = null;
-        List<Showing> upcoming = new ArrayList<>();
-        List<Slot> taken = new ArrayList<>();
-        for (var row : rows) {
-            Instant start = instant(row.get("starts_at")), end = instant(row.get("ends_at"));
-            taken.add(new Slot(start, end));
-            Showing showing = new Showing(((Number) row.get("id")).longValue(), (String) row.get("nickname"),
-                    (String) row.get("body"), start.toString(), end.toString());
-            if (!start.isAfter(now)) current = showing; else upcoming.add(showing);
-        }
-        Map<Integer, String> nextStarts = new LinkedHashMap<>();
-        for (int hours : DURATIONS) {
-            Slot slot = nextSlot(taken, now, hours);
-            nextStarts.put(hours, slot.startsAt().isAfter(now.plus(MAX_AHEAD)) ? null : slot.startsAt().toString());
-        }
-        return new Board(current, upcoming, PRICE_PER_HOUR, DURATIONS, MIN_LENGTH, MAX_LENGTH, nextStarts);
+        List<Showing> live = db.query(
+                "SELECT id, nickname, body, starts_at, ends_at FROM billboard_messages WHERE status = 'BOOKED' AND starts_at <= ? AND ends_at > ? ORDER BY starts_at, id LIMIT 60",
+                (rs, row) -> new Showing(rs.getLong(1), rs.getString(2), rs.getString(3),
+                        rs.getTimestamp(4).toInstant().toString(), rs.getTimestamp(5).toInstant().toString()),
+                Timestamp.from(now), Timestamp.from(now));
+        Instant opening = live.size() < MAX_LIVE ? null : nextOpening(now);
+        return new Board(live, PRICE_PER_HOUR, DURATIONS, MIN_LENGTH, MAX_LENGTH, MAX_LIVE, opening == null ? null : opening.toString());
+    }
+
+    /** 가득 찼을 때 가장 먼저 자리가 나는 시각. */
+    private Instant nextOpening(Instant now) {
+        Timestamp end = db.queryForObject("SELECT MIN(ends_at) FROM billboard_messages WHERE status = 'BOOKED' AND ends_at > ?", Timestamp.class, Timestamp.from(now));
+        return end == null ? null : end.toInstant();
     }
 
     public List<Booking> mine(long userId) {
@@ -155,14 +131,13 @@ public class BillboardService {
             db.queryForObject("SELECT id FROM billboard_lock WHERE id = 1 FOR UPDATE", Integer.class);
             Integer open = db.queryForObject("SELECT COUNT(*) FROM billboard_messages WHERE user_id = ? AND status = 'BOOKED' AND ends_at > ?",
                     Integer.class, userId, Timestamp.from(now));
-            if (open != null && open > 0) throw new IllegalArgumentException("예약했거나 보이고 있는 문구가 끝난 뒤에 새로 올릴 수 있어요.");
+            if (open != null && open > 0) throw new IllegalArgumentException("올린 문구가 끝난 뒤에 새로 올릴 수 있어요.");
             if (cash < price) throw new IllegalArgumentException("보유 현금이 부족해요. " + String.format("%,d", price) + "원이 필요해요.");
-            List<Slot> taken = db.query("SELECT starts_at, ends_at FROM billboard_messages WHERE status = 'BOOKED' AND ends_at > ? ORDER BY starts_at",
-                    (rs, row) -> new Slot(rs.getTimestamp(1).toInstant(), rs.getTimestamp(2).toInstant()), Timestamp.from(now));
-            Slot slot = nextSlot(taken, now, hours);
-            if (slot.startsAt().isAfter(now.plus(MAX_AHEAD))) throw new IllegalArgumentException("이틀 뒤까지 예약이 모두 찼어요. 조금 뒤에 다시 시도해 주세요.");
+            Integer live = db.queryForObject("SELECT COUNT(*) FROM billboard_messages WHERE status = 'BOOKED' AND ends_at > ?",
+                    Integer.class, Timestamp.from(now));
+            if (live != null && live >= MAX_LIVE) throw new IllegalArgumentException("전광판에 문구가 가득 찼어요. 앞 문구가 끝나면 다시 올릴 수 있어요.");
             db.update("INSERT INTO billboard_messages (user_id, nickname, body, hours, price, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    userId, nickname, body, hours, price, Timestamp.from(slot.startsAt()), Timestamp.from(slot.endsAt()));
+                    userId, nickname, body, hours, price, Timestamp.from(now), Timestamp.from(now.plus(Duration.ofHours(hours))));
             long created = db.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
             if (db.update("UPDATE users SET cash = cash - ? WHERE id = ? AND cash >= ?", price, userId, price) != 1)
                 throw new IllegalArgumentException("보유 현금이 방금 바뀌었어요. 다시 시도해 주세요.");
@@ -170,27 +145,7 @@ public class BillboardService {
             return created;
         });
         Booking booking = mine(userId).stream().filter(item -> item.id() == id).findFirst().orElseThrow();
-        String when = "LIVE".equals(booking.state()) ? "지금부터" : "예약한 시간부터";
-        return new ActionResult(when + " " + hours + "시간 동안 홈에 문구가 보여요.", booking, market.portfolio(userId));
-    }
-
-    /** 시작 전 예약만 본인이 취소한다. 낸 값은 전부 돌려준다. */
-    public ActionResult cancel(long userId, long id) {
-        transaction.executeWithoutResult(state -> {
-            db.queryForObject("SELECT id FROM users WHERE id = ? FOR UPDATE", Long.class, userId);
-            db.queryForObject("SELECT id FROM billboard_lock WHERE id = 1 FOR UPDATE", Integer.class);
-            var rows = db.queryForList("SELECT * FROM billboard_messages WHERE id = ? AND user_id = ? FOR UPDATE", id, userId);
-            if (rows.isEmpty()) throw new IllegalArgumentException("취소할 예약을 찾을 수 없어요.");
-            var row = rows.get(0);
-            if (!OPEN.contains((String) row.get("status"))) throw new IllegalArgumentException("이미 취소했거나 내려간 문구예요.");
-            if (!instant(row.get("starts_at")).isAfter(clock.instant())) throw new IllegalArgumentException("이미 보이기 시작한 문구는 취소할 수 없어요.");
-            long price = ((Number) row.get("price")).longValue();
-            db.update("UPDATE billboard_messages SET status = 'CANCELLED', refunded = ? WHERE id = ?", price, id);
-            db.update("UPDATE users SET cash = cash + ? WHERE id = ?", price, userId);
-            ledger("billboard-refund:" + id, 0L, userId, price, "전광판 문구 #" + id + " 취소");
-        });
-        Booking booking = mine(userId).stream().filter(item -> item.id() == id).findFirst().orElse(null);
-        return new ActionResult("예약을 취소하고 " + String.format("%,d", booking == null ? 0 : booking.refunded()) + "원을 돌려받았어요.", booking, market.portfolio(userId));
+        return new ActionResult("지금부터 " + hours + "시간 동안 홈에 문구가 보여요.", booking, market.portfolio(userId));
     }
 
     /** 신고는 기존 사용자 신고함으로 보낸다. 대상은 문구를 올린 사람이다. */
@@ -249,10 +204,5 @@ public class BillboardService {
                                    String hiddenReason, long refunded, Instant created, Instant now) {
         return new Booking(id, body, hours, price, start.toString(), end.toString(), state(status, start, end, now),
                 hiddenReason, refunded, created.toString());
-    }
-
-    private static Instant instant(Object value) {
-        return value instanceof Timestamp stamp ? stamp.toInstant() : value instanceof java.time.LocalDateTime local
-                ? Timestamp.valueOf(local).toInstant() : (Instant) value;
     }
 }

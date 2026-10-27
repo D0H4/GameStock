@@ -37,12 +37,6 @@ public class BillboardController {
         return billboard.buy(user.id(), user.requiresNickname() ? null : user.nickname(), request);
     }
 
-    @DeleteMapping("/api/billboard/{id}")
-    public BillboardService.ActionResult cancel(@PathVariable long id,
-                                                @RequestHeader(value = "Authorization", required = false) String authorization) {
-        return billboard.cancel(auth.requireUser(authorization).id(), id);
-    }
-
     @PostMapping("/api/billboard/{id}/report")
     public Map<String, Object> report(@PathVariable long id, @RequestBody(required = false) BillboardService.ReportRequest request,
                                       @RequestHeader(value = "Authorization", required = false) String authorization) {

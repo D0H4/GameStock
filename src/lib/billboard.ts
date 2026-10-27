@@ -8,14 +8,15 @@ import { dayLabel, minutes, serverTimestamp } from "../market/format";
  */
 export type BillboardShowing = { id: number; nickname: string; body: string; startsAt: string; endsAt: string };
 export type BillboardBoard = {
-  current: BillboardShowing | null;
-  upcoming: BillboardShowing[];
+  /** 지금 떠 있는 문구. 홈 띠가 10초마다 번갈아 보여 준다. */
+  live: BillboardShowing[];
   pricePerHour: number;
   durations: number[];
   minLength: number;
   maxLength: number;
-  /** 시간별로 지금 사면 시작하는 시각. 이틀 안에 자리가 없으면 null. */
-  nextStarts: Record<string, string | null>;
+  maxLive: number;
+  /** 가득 찼을 때 가장 먼저 자리가 나는 시각. 자리가 있으면 null. */
+  nextOpening: string | null;
 };
 export type BillboardState = "UPCOMING" | "LIVE" | "ENDED" | "HIDDEN" | "CANCELLED";
 export type BillboardBooking = {
@@ -43,10 +44,10 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-/** 보이던 문구가 끝나는 순간에 맞춰 한 번 더 받는다. 1분 주기를 기다리면 끝난 문구가 남아 있다. */
+/** 가장 먼저 끝나는 문구의 끝에 맞춰 한 번 더 받는다. 1분 주기를 기다리면 끝난 문구가 남아 있다. */
 function scheduleEnd() {
   window.clearTimeout(endTimer);
-  const end = board?.current ? serverTimestamp(board.current.endsAt) : Number.NaN;
+  const end = board?.live.length ? Math.min(...board.live.map((item) => serverTimestamp(item.endsAt))) : Number.NaN;
   if (Number.isFinite(end)) endTimer = window.setTimeout(() => void refreshBillboard(), Math.max(0, end - Date.now()) + 500);
 }
 
@@ -115,10 +116,6 @@ export function slotTime(at: string, now: number): string {
 
 export function buyBillboard(body: string, hours: number) {
   return apiFetch<BillboardResult>("/api/billboard", { method: "POST", body: JSON.stringify({ body, hours }) });
-}
-
-export function cancelBillboard(id: number) {
-  return apiFetch<BillboardResult>(`/api/billboard/${id}`, { method: "DELETE" });
 }
 
 export function reportBillboard(id: number, detail: string) {

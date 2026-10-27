@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameIcon } from '../components/GameIcon';
@@ -225,19 +225,52 @@ export function HomeScreen({ market, onOpen }) {
   );
 }
 
-/** 홈 맨 위 전광판 한 줄. 보이는 문구가 있을 때만 그려서, 비어 있으면 홈은 띠가 없던 모습 그대로다. */
+/** 여러 문구가 떠 있을 때 다음 문구로 넘어가는 간격. 웹 홈 띠와 같다. */
+const BILLBOARD_ROTATE_MS = 10_000;
+
+/**
+ * 홈 맨 위 전광판 한 줄. 보이는 문구가 있을 때만 그려서, 비어 있으면 홈은 띠가 없던 모습 그대로다.
+ * 문구는 아래에서 올라오고, 둘 이상이면 10초마다 다음 문구로 바뀐다.
+ */
 function Billboard() {
   const theme = useTheme();
   const { board } = useBillboard();
-  const current = board?.current;
+  const live = board?.live ?? [];
+  const [step, setStep] = useState(0);
+  const rise = useRef(new Animated.Value(0)).current;
+  const count = live.length;
+  const current = count ? live[step % count] : null;
+
+  useEffect(() => {
+    if (count < 2) return undefined;
+    const timer = setInterval(() => setStep(value => value + 1), BILLBOARD_ROTATE_MS);
+    return () => clearInterval(timer);
+  }, [count]);
+
+  useEffect(() => {
+    if (!current) return undefined;
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(reduce => {
+      if (!alive) return;
+      if (reduce) { rise.setValue(0); return; }
+      rise.setValue(1);
+      Animated.timing(rise, { toValue: 0, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    });
+    return () => { alive = false; };
+  }, [step, current?.id, rise]);
+
   if (!current) return null;
+  const motion = {
+    opacity: rise.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+    transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [0, 28] }) }],
+  };
   return (
     <View accessible accessibilityLabel={`전광판, ${current.nickname}: ${current.body}`}
       style={[styles.billboard, styles.billboardRow, { backgroundColor: theme.card }]}>
-      <View style={styles.billboardText}>
+      <Animated.View style={[styles.billboardText, motion]}>
         <Txt variant="micro" tone="inkSoft">{current.nickname}</Txt>
         <Txt variant="callout" style={{ marginTop: 2 }}>{current.body}</Txt>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -281,7 +314,7 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, marginBottom: SPACE.sm },
   logo: { width: 87, height: 22 },
-  billboard: { minHeight: 56, borderRadius: RADIUS, marginBottom: SPACE.lg },
+  billboard: { minHeight: 56, borderRadius: RADIUS, marginBottom: SPACE.lg, overflow: 'hidden' },
   billboardRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.md, paddingLeft: SPACE.lg + 2, paddingRight: SPACE.md },
   billboardText: { flex: 1, minWidth: 0 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, borderWidth: 1, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },

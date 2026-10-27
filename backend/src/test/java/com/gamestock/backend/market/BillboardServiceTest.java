@@ -10,30 +10,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class BillboardServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-27T03:00:00Z");
 
-    private static BillboardService.Slot slot(int fromHour, int toHour) {
-        return new BillboardService.Slot(NOW.plusSeconds(fromHour * 3600L), NOW.plusSeconds(toHour * 3600L));
-    }
-
-    @Test
-    void emptyBoardStartsNow() {
-        assertEquals(slot(0, 3), BillboardService.nextSlot(List.of(), NOW, 3));
-    }
-
-    @Test
-    void queuesAfterTheShowingMessage() {
-        var taken = List.of(new BillboardService.Slot(NOW.minusSeconds(1800), NOW.plusSeconds(1800)));
-        assertEquals(new BillboardService.Slot(NOW.plusSeconds(1800), NOW.plusSeconds(1800 + 3600)),
-                BillboardService.nextSlot(taken, NOW, 1));
-    }
-
-    @Test
-    void fillsAGapLeftByACancelledBooking() {
-        var taken = List.of(slot(0, 1), slot(2, 3), slot(6, 7));
-        assertEquals(slot(1, 2), BillboardService.nextSlot(taken, NOW, 1));
-        assertEquals(slot(3, 6), BillboardService.nextSlot(taken, NOW, 3));
-        assertEquals(slot(7, 13), BillboardService.nextSlot(taken, NOW, 6));
-    }
-
     @Test
     void cleansWhitespaceAndKeepsTheText() {
         assertEquals("우마무스메 화이팅 !", BillboardService.cleanBody("  우마무스메\n  화이팅\t!  "));
