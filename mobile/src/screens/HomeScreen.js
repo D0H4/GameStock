@@ -7,6 +7,7 @@ import { PriceTrail } from '../components/PriceTrail';
 import { cleanTitle, indexValue, price, relativeTime, signedPercent } from '../format';
 import { newsWithIds, sessionRate, useIndexToday, usePriceHistory } from '../market';
 import { useDerivatives } from '../derivatives';
+import { useBillboard } from '../billboard';
 import { RADIUS, RADIUS_XS, SPACE, Txt, toneOf, useTheme } from '../theme';
 
 const MOVER_COUNT = 5;
@@ -109,6 +110,8 @@ export function HomeScreen({ market, onOpen }) {
           <Txt variant="caption" style={{ color: theme.guardText, flex: 1 }}>{`${restriction.label} · ${restriction.effect || restriction.reason}`}</Txt>
         </View>
       ) : null}
+
+      <Billboard />
 
       {/* 지수는 화면의 중심이라 카드에 넣지 않고 바탕 위에 둔다. 좌우 여백은 카드 안쪽 여백과 같아서
           그래프가 아래 종목 줄 추이선과 같은 세로줄에 선다. */}
@@ -222,6 +225,23 @@ export function HomeScreen({ market, onOpen }) {
   );
 }
 
+/** 홈 맨 위 전광판 한 줄. 보이는 문구가 있을 때만 그려서, 비어 있으면 홈은 띠가 없던 모습 그대로다. */
+function Billboard() {
+  const theme = useTheme();
+  const { board } = useBillboard();
+  const current = board?.current;
+  if (!current) return null;
+  return (
+    <View accessible accessibilityLabel={`전광판, ${current.nickname}: ${current.body}`}
+      style={[styles.billboard, styles.billboardRow, { backgroundColor: theme.card }]}>
+      <View style={styles.billboardText}>
+        <Txt variant="micro" tone="inkSoft">{current.nickname}</Txt>
+        <Txt variant="callout" style={{ marginTop: 2 }}>{current.body}</Txt>
+      </View>
+    </View>
+  );
+}
+
 function Card({ children, padded = true }) {
   const theme = useTheme();
   return <View style={[styles.card, { backgroundColor: theme.card }, padded && styles.cardPadded]}>{children}</View>;
@@ -261,6 +281,9 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 48, marginBottom: SPACE.sm },
   logo: { width: 87, height: 22 },
+  billboard: { minHeight: 56, borderRadius: RADIUS, marginBottom: SPACE.lg },
+  billboardRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.md, paddingLeft: SPACE.lg + 2, paddingRight: SPACE.md },
+  billboardText: { flex: 1, minWidth: 0 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderRadius: RADIUS, borderWidth: 1, paddingVertical: SPACE.md, paddingHorizontal: SPACE.md, marginBottom: SPACE.md },
   card: { borderRadius: RADIUS, marginBottom: SPACE.md, overflow: 'hidden' },
   cardPadded: { padding: SPACE.lg + 2 },

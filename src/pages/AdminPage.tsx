@@ -22,6 +22,7 @@ export const ADMIN_SECTIONS: { section: AdminSection; label: string; to: string 
   { section: "users", label: "회원", to: "/admin" },
   { section: "orders", label: "주문", to: "/admin/orders" },
   { section: "notices", label: "공지", to: "/admin/notices" },
+  { section: "billboard", label: "전광판", to: "/admin/billboard" },
   { section: "promos", label: "프로모션 코드", to: "/admin/promos" },
   { section: "audit", label: "감사 기록", to: "/admin/audit" },
 ];
