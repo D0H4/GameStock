@@ -592,7 +592,7 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
 }
 
 /* ───────── 전광판 ───────── */
-/* 데이터가 아닌 틀이라 무채색 돋움 면이고, 움직임은 두지 않는다(DESIGN.md 움직임 규칙). */
+/* 데이터가 아닌 틀이라 무채색 돋움 면이다. 홈 띠의 올라오는 움직임은 사용자 요청(2026-10-27)으로 넣었다. */
 .nx-billboard {
   display: flex;
   align-items: center;
@@ -603,6 +603,17 @@ html[data-nx] .nx-admin .account-form .promo-title-option input { width: 16px; h
   background: var(--nx-raised);
 }
 .nx-billboard-line { display: flex; flex: 1; align-items: baseline; gap: 4px 12px; min-width: 0; margin: 0; }
+/* 홈 띠: 들어오는 줄과 나가는 줄을 한 칸에 겹치고, 띠 밖으로 나간 부분은 자른다. */
+.nx-billboard.is-rotating { display: grid; align-items: center; overflow: hidden; }
+.nx-billboard.is-rotating > .nx-billboard-line { grid-area: 1 / 1; }
+.nx-billboard-line.is-entering { animation: nx-billboard-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.nx-billboard-line.is-leaving { animation: nx-billboard-out 520ms cubic-bezier(0.22, 1, 0.36, 1) both; pointer-events: none; }
+@keyframes nx-billboard-in { from { opacity: 0; transform: translateY(160%); } to { opacity: 1; transform: none; } }
+@keyframes nx-billboard-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-160%); } }
+@media (prefers-reduced-motion: reduce) {
+  .nx-billboard-line.is-entering,
+  .nx-billboard-line.is-leaving { animation: none; }
+}
 .nx-billboard-author { flex: none; color: var(--ink-muted); font-size: 13px; }
 .nx-billboard-body { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 15px; line-height: 1.45; }
 .nx-billboard-body.is-placeholder { color: var(--ink-muted); }
@@ -630,6 +641,9 @@ html[data-nx][data-nx-theme="light"] .nx-billboard-hours { box-shadow: none; }
 .nx-billboard-state.is-live,
 .nx-billboard-state.is-upcoming { color: var(--ink); }
 .nx-billboard-report { margin-top: 16px; }
+.nx-billboard-live { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.nx-billboard-live-row { display: flex; align-items: center; gap: 8px; }
+.nx-billboard-live-row > .nx-billboard { flex: 1; min-width: 0; }
 .nx-billboard-report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 @media (max-width: 520px) {

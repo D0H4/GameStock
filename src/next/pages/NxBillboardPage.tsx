@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { useAuthUser } from "../../lib/auth";
 import {
-  buyBillboard, cancelBillboard, myBillboard, refreshBillboard, reportBillboard, slotTime, useBillboard, useMinuteClock,
+  buyBillboard, myBillboard, refreshBillboard, reportBillboard, slotTime, useBillboard, useMinuteClock,
   type BillboardBooking, type BillboardShowing, type BillboardState,
 } from "../../lib/billboard";
 import { useProfile } from "../../lib/profile";
@@ -32,7 +32,7 @@ export function NxBillboardPage() {
   const [hours, setHours] = useState(1);
   const [mine, setMine] = useState<BillboardBooking[] | null>(null);
   const [mineError, setMineError] = useState(false);
-  const [pending, setPending] = useState<"buy" | number | null>(null);
+  const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
   const loadMine = useCallback(async (signal?: AbortSignal) => {
@@ -59,14 +59,14 @@ export function NxBillboardPage() {
   const max = board?.maxLength ?? 40;
   const min = board?.minLength ?? 2;
   const price = (board?.pricePerHour ?? 100_000) * hours;
-  const start = board?.nextStarts[String(hours)] ?? null;
+  const ends = new Date(now + hours * 3_600_000).toISOString();
   const open = mine?.find((item) => item.state === "UPCOMING" || item.state === "LIVE") ?? null;
 
   const bodyError = body === "" ? "" : length(text) < min ? `${min}자 이상 적어 주세요.` : length(text) > max ? `${max}자까지 적을 수 있어요.` : "";
-  const blocked = open ? "올린 문구가 끝나면 새로 올릴 수 있어요. 시작 전이면 아래 내 문구에서 취소할 수 있어요."
-    : board && start === null ? "이틀 뒤까지 예약이 모두 찼어요. 더 짧은 시간을 고르거나 조금 뒤에 다시 와 주세요."
+  const blocked = open ? "올린 문구가 끝나면 새로 올릴 수 있어요."
+    : board?.nextOpening ? `전광판에 문구가 가득 찼어요. ${slotTime(board.nextOpening, now)}에 자리가 나요.`
     : cash < price ? `보유 현금이 ${won(price - cash)} 모자라요.` : "";
-  const ready = Boolean(board) && text !== "" && !bodyError && !blocked && pending === null;
+  const ready = Boolean(board) && text !== "" && !bodyError && !blocked && !pending;
 
   const finish = async (note: string) => {
     setMessage({ text: note, ok: true });
@@ -76,7 +76,7 @@ export function NxBillboardPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!ready) return;
-    setPending("buy");
+    setPending(true);
     setMessage(null);
     try {
       const result = await buyBillboard(text, hours);
@@ -85,22 +85,7 @@ export function NxBillboardPage() {
     } catch (cause) {
       setMessage({ text: cause instanceof Error ? cause.message : "문구를 올리지 못했어요.", ok: false });
     } finally {
-      setPending(null);
-    }
-  };
-
-  const cancel = async (booking: BillboardBooking) => {
-    if (pending !== null) return;
-    if (!window.confirm(`"${booking.body}" 예약을 취소할까요?\n낸 ${won(booking.price)}을 모두 돌려받아요.`)) return;
-    setPending(booking.id);
-    setMessage(null);
-    try {
-      const result = await cancelBillboard(booking.id);
-      await finish(result.message);
-    } catch (cause) {
-      setMessage({ text: cause instanceof Error ? cause.message : "예약을 취소하지 못했어요.", ok: false });
-    } finally {
-      setPending(null);
+      setPending(false);
     }
   };
 
@@ -149,7 +134,7 @@ export function NxBillboardPage() {
 
           <dl className="nx-figures nx-billboard-figures">
             <div><dt>값</dt><dd className="nx-num">{won(price)}</dd></div>
-            <div><dt>보이기 시작</dt><dd className="nx-num">{board ? (start ? slotTime(start, now) : "자리 없음") : "확인 중"}</dd></div>
+            <div><dt>끝나는 시각</dt><dd className="nx-num">{slotTime(ends, now)}</dd></div>
             <div><dt>낸 뒤 현금</dt><dd className="nx-num">{won(Math.max(0, cash - price))}</dd></div>
           </dl>
 
@@ -157,42 +142,27 @@ export function NxBillboardPage() {
           {message && <p className={`nx-msg ${message.ok ? "is-success" : "is-error"}`} role={message.ok ? "status" : "alert"}>{message.text}</p>}
 
           <button type="submit" className="nx-btn is-primary is-wide" disabled={!ready}>
-            {pending === "buy" ? "올리는 중…" : `${won(price)} 내고 올리기`}
+            {pending ? "올리는 중…" : `${won(price)} 내고 올리기`}
           </button>
         </form>
 
         <ul className="nx-loan-rules">
-          <li>한 번에 한 문구만 보이고, 먼저 산 순서대로 이어서 보여요.</li>
-          <li>보이기 전이면 언제든 취소하고 전부 돌려받을 수 있어요.</li>
+          <li>사는 즉시 홈에 보여요. 여러 문구가 떠 있으면 10초마다 번갈아 보여요.</li>
           <li>문구에 쓴 돈은 수익률과 주간 랭킹 계산에서 빠져요. 순자산은 그만큼 줄어요.</li>
           <li>신고가 들어온 문구는 운영자가 내릴 수 있어요.</li>
         </ul>
       </section>
 
-      {board?.current && <NowShowing current={board.current} mine={mine?.some((item) => item.id === board.current?.id) ?? false} />}
-
-      <section className="nx-panel" aria-labelledby="nx-billboard-queue-title">
+      <section className="nx-panel" aria-labelledby="nx-billboard-now-title">
         <header className="nx-panel-head">
-          <h2 id="nx-billboard-queue-title" className="nx-panel-title">다음 차례</h2>
-          <span className="nx-muted nx-num">{board ? `${board.upcoming.length}건` : ""}</span>
+          <h2 id="nx-billboard-now-title" className="nx-panel-title">지금 보이는 문구</h2>
+          <span className="nx-muted nx-num">{board ? `${board.live.length}/${board.maxLive}개` : ""}</span>
         </header>
-        {!board ? <div className="nx-skeleton" role="status" aria-label="예약을 불러오는 중"><span /><span /></div>
-          : board.upcoming.length === 0 ? <p className="nx-empty-state">기다리는 문구가 없어요. 지금 올리면 바로 보여요.</p> : (
-          <div className="nx-scroll-x">
-            <table className="nx-grid-table nx-billboard-table">
-              <caption className="vh">예약된 전광판 문구</caption>
-              <thead><tr><th scope="col">시작</th><th scope="col">올린 사람</th><th scope="col">문구</th></tr></thead>
-              <tbody>
-                {board.upcoming.map((item) => (
-                  <tr key={item.id}>
-                    <th scope="row" className="nx-num">{slotTime(item.startsAt, now)}</th>
-                    <td>{item.nickname}</td>
-                    <td className="nx-billboard-cell">{item.body}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {!board ? <div className="nx-skeleton" role="status" aria-label="문구를 불러오는 중"><span /><span /></div>
+          : board.live.length === 0 ? <p className="nx-empty-state">지금 떠 있는 문구가 없어요. 올리면 바로 홈에 보여요.</p> : (
+          <ul className="nx-billboard-live">
+            {board.live.map((item) => <LiveItem key={item.id} item={item} mine={mine?.some((row) => row.id === item.id) ?? false} />)}
+          </ul>
         )}
       </section>
 
@@ -207,7 +177,7 @@ export function NxBillboardPage() {
           <div className="nx-scroll-x">
             <table className="nx-grid-table nx-billboard-table">
               <caption className="vh">내가 올린 전광판 문구</caption>
-              <thead><tr><th scope="col">문구</th><th scope="col">보이는 시간</th><th scope="col">값</th><th scope="col">상태</th><th scope="col"><span className="vh">취소</span></th></tr></thead>
+              <thead><tr><th scope="col">문구</th><th scope="col">보이는 시간</th><th scope="col">값</th><th scope="col">상태</th></tr></thead>
               <tbody>
                 {mine.map((item) => (
                   <tr key={item.id}>
@@ -217,13 +187,6 @@ export function NxBillboardPage() {
                     <td className={`nx-billboard-state is-${item.state.toLowerCase()}`}>
                       {STATE_LABEL[item.state]}
                       {item.hiddenReason && <small className="nx-billboard-refund">{item.hiddenReason}</small>}
-                    </td>
-                    <td>
-                      {item.state === "UPCOMING" && (
-                        <button type="button" className="nx-link-button" disabled={pending !== null} onClick={() => void cancel(item)}>
-                          {pending === item.id ? "취소하는 중…" : "예약 취소"}
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -236,21 +199,19 @@ export function NxBillboardPage() {
   );
 }
 
-/** 지금 홈에 보이는 문구와 신고. 신고는 기존 신고함으로 가고 운영자가 확인한다. */
-function NowShowing({ current, mine }: { current: BillboardShowing; mine: boolean }) {
+/** 지금 홈에 떠 있는 문구 하나와 신고. 신고는 기존 신고함으로 가고 운영자가 확인한다. */
+function LiveItem({ item, mine }: { item: BillboardShowing; mine: boolean }) {
   const detailId = useId();
   const [reporting, setReporting] = useState(false);
   const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
 
-  useEffect(() => { setReporting(false); setResult(null); }, [current.id]);
-
   const report = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     try {
-      await reportBillboard(current.id, detail.trim());
+      await reportBillboard(item.id, detail.trim());
       setResult({ text: "신고했어요. 운영자가 확인할게요.", ok: true });
       setReporting(false);
       setDetail("");
@@ -262,12 +223,11 @@ function NowShowing({ current, mine }: { current: BillboardShowing; mine: boolea
   };
 
   return (
-    <section className="nx-panel" aria-labelledby="nx-billboard-now-title">
-      <header className="nx-panel-head">
-        <h2 id="nx-billboard-now-title" className="nx-panel-title">지금 보이는 문구</h2>
+    <li className="nx-billboard-live-item">
+      <div className="nx-billboard-live-row">
+        <BillboardLine nickname={item.nickname} body={item.body} />
         {!mine && !reporting && !result?.ok && <button type="button" className="nx-link-button" onClick={() => setReporting(true)}>신고하기</button>}
-      </header>
-      <BillboardLine nickname={current.nickname} body={current.body} />
+      </div>
       {reporting && (
         <form className="nx-form nx-billboard-report" onSubmit={report}>
           <div className="nx-field">
@@ -281,6 +241,6 @@ function NowShowing({ current, mine }: { current: BillboardShowing; mine: boolea
         </form>
       )}
       {result && <p className={`nx-msg ${result.ok ? "is-success" : "is-error"}`} role={result.ok ? "status" : "alert"}>{result.text}</p>}
-    </section>
+    </li>
   );
 }
