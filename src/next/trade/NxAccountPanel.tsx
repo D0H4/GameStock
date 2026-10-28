@@ -5,17 +5,46 @@ import { useAuthUser } from "../../lib/auth";
 import { fillTime, won } from "../../market/format";
 import { useMarket } from "../../market/MarketProvider";
 import { LISTING_BY_CODE } from "../../market/universe";
+import type { Fill } from "../../market/types";
 import { TRADE_PATH } from "../../router";
 import { AnimatedNav } from "../AnimatedNav";
+import { StopOrders } from "./StopOrders";
 
-export type NxAccountTab = "holdings" | "fills" | "orders";
+export type NxAccountTab = "holdings" | "fills" | "orders" | "stops";
 
 type ActiveOrder = {
   id: number; stockCode: string; side: string; quantity: number;
   remainingQuantity: number; price: number; status: string; orderType: string;
 };
 
-const TABS = [["holdings", "보유 잔고"], ["fills", "체결 내역"], ["orders", "미체결"]] as const;
+const TABS = [["holdings", "보유 잔고"], ["fills", "체결 내역"], ["orders", "미체결"], ["stops", "자동 매도"]] as const;
+
+/**
+ * 이 종목 체결의 복기 줄. 서버는 다 판 종목의 실현 손익을 종목별로 남기지 않으므로,
+ * 지금 받은 체결만으로 평균 매수가·매도가와 그 차이를 보인다.
+ */
+function FillReview({ fills, price, avgCost, qty }: { fills: Fill[]; price: number; avgCost: number; qty: number }) {
+  const side = (which: Fill["side"]) => {
+    const rows = fills.filter((fill) => fill.side === which);
+    const total = rows.reduce((sum, fill) => sum + fill.qty, 0);
+    const amount = rows.reduce((sum, fill) => sum + fill.qty * fill.price, 0);
+    return { count: rows.length, total, average: total > 0 ? amount / total : 0 };
+  };
+  const buys = side("buy");
+  const sells = side("sell");
+  const spread = buys.total > 0 && sells.total > 0 ? (sells.average - buys.average) / buys.average : null;
+  const open = qty > 0 && avgCost > 0 ? (price - avgCost) / avgCost : null;
+  const tone = (value: number) => value > 0 ? "is-up" : value < 0 ? "is-down" : "";
+  const pct = (value: number) => `${value > 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
+  return (
+    <dl className="nx-review">
+      <div><dt>매수 <span className="nx-num">{buys.count}</span>번</dt><dd className="nx-num">{buys.total > 0 ? `평균 ${won(Math.round(buys.average))}` : "-"}</dd></div>
+      <div><dt>매도 <span className="nx-num">{sells.count}</span>번</dt><dd className="nx-num">{sells.total > 0 ? `평균 ${won(Math.round(sells.average))}` : "-"}</dd></div>
+      <div><dt>매도가 − 매수가</dt><dd className={`nx-num ${spread === null ? "" : tone(spread)}`}>{spread === null ? "사고팔면 보여요" : pct(spread)}</dd></div>
+      <div><dt>남은 잔고 평가</dt><dd className={`nx-num ${open === null ? "" : tone(open)}`}>{open === null ? "잔고 없음" : pct(open)}</dd></div>
+    </dl>
+  );
+}
 
 /** 거래창 아래 줄. 지금 보고 있는 종목의 잔고·체결·미체결만 보여준다. */
 export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
@@ -89,7 +118,7 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
   const positions = user ? Object.values(snapshot.portfolio.positions).filter((position) => position.qty > 0 && position.code === code) : [];
   const fills = user ? snapshot.portfolio.fills.filter((fill) => fill.code === code) : [];
   const visibleOrders = user ? orders.filter((order) => order.stockCode === code) : [];
-  const count = tab === "holdings" ? positions.length : tab === "fills" ? fills.length : visibleOrders.length;
+  const count = tab === "holdings" ? positions.length : tab === "fills" ? fills.length : tab === "orders" ? visibleOrders.length : 0;
   const signed = (amount: number) => `${amount > 0 ? "+" : ""}${won(amount)}`;
   const tone = (amount: number) => amount > 0 ? "is-up" : amount < 0 ? "is-down" : "";
   const name = (stock: string) => LISTING_BY_CODE[stock]?.name ?? stock;
@@ -99,8 +128,7 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
     : tab === "orders" && loading ? "미체결 주문을 조회하고 있어요."
     : tab === "orders" && error ? "조회에 실패했어요. 아래 다시 시도를 눌러 주세요."
     : tab === "holdings" ? "이 종목을 아직 갖고 있지 않아요."
-    : tab === "fills" ? "이 종목에서 체결된 주문이 아직 없어요."
-    : "이 종목에 걸려 있는 미체결 주문이 없어요.";
+    : tab === "fills" ? "이 종목에서 체결된 주문이 아직 없어요."    : "이 종목에 걸려 있는 미체결 주문이 없어요.";
 
   return (
     <div className="nx-acct">
@@ -115,6 +143,12 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
         </AnimatedNav>
       </div>
 
+      {tab === "fills" && fills.length > 0 && (
+        <FillReview fills={fills} price={snapshot.quotes[code]?.price ?? 0}
+          avgCost={snapshot.portfolio.positions[code]?.avgCost ?? 0} qty={snapshot.portfolio.positions[code]?.qty ?? 0} />
+      )}
+
+      {tab === "stops" && user ? <StopOrders code={code} uid={user.uid} /> : (
       <div className="nx-acct-scroll" tabIndex={0} role="region" aria-label="계좌 내역 표" aria-busy={tab === "orders" && loading}>
         {count === 0 ? (
           <div className="nx-acct-empty">
@@ -163,6 +197,7 @@ export function NxAccountPanel({ code, tab, onTabChange, onFocusTicket }: {
           </table>
         )}
       </div>
+      )}
 
       {/* 미체결 탭에서만 취소 결과와 조회 실패를 알린다. 잔고·체결 탭은 표만 둔다. */}
       {tab === "orders" && user && (

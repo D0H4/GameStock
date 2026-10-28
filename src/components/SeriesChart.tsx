@@ -12,7 +12,8 @@ import { AnimatedNav } from "../next/AnimatedNav";
 
 export type ChartRange = "1h" | "6h" | "12h" | "1d" | "3d" | "2w" | "1m" | "1y";
 type PricePoint = { recordedAt: string; price: number };
-type Marker = { at: number; label: string };
+/** 뉴스 점(기본)과 내 체결 삼각형. 체결은 체결가 높이에, 매수는 위로 매도는 아래로 향한다. */
+export type Marker = { at: number; label: string; kind?: "news" | "buy" | "sell"; price?: number };
 type Inspection = { at: number; y: number };
 const NO_MARKERS: Marker[] = [];
 const NO_SAMPLES: ChartSample[] = [];
@@ -76,7 +77,13 @@ const ChartDrawing = memo(function ChartDrawing({ samples, geometry: g, mode, ma
       {samples.length > 0 && <line className={`market-chart-live-line is-${tone}`} x1={0} x2={g.plotWidth} y1={g.y(currentPrice)} y2={g.y(currentPrice)} />}
       {samples.length > 0 && markers.filter(marker => marker.at >= firstAt).map(marker => {
         const index = nearestSampleIndex(samples, marker.at);
-        return <circle key={`${marker.at}-${marker.label}`} className="market-chart-news" cx={g.xAtIndex(index)}
+        const x = g.xAtIndex(index);
+        if (marker.kind === "buy" || marker.kind === "sell") {
+          const y = g.y(marker.price ?? samples[index].price);
+          const points = marker.kind === "buy" ? `${x},${y + 3} ${x - 5},${y + 11} ${x + 5},${y + 11}` : `${x},${y - 3} ${x - 5},${y - 11} ${x + 5},${y - 11}`;
+          return <polygon key={`${marker.kind}-${marker.at}-${marker.label}`} className={`market-chart-fill is-${marker.kind}`} points={points}><title>{marker.label}</title></polygon>;
+        }
+        return <circle key={`${marker.at}-${marker.label}`} className="market-chart-news" cx={x}
           cy={g.y(marker.at > lastAt ? currentPrice : samples[index].price)} r={3.5}><title>{marker.label}</title></circle>;
       })}
     </g>
@@ -231,7 +238,8 @@ export function SeriesChart({ code, tone, markers = NO_MARKERS, fitMarkers = fal
   const chartTone = tone ?? (ratio > 0 ? "up" : ratio < 0 ? "down" : "flat");
   const selectedTone = selectedBar ? (selectedBar.closePrice >= selectedBar.openPrice ? "up" : "down") : chartTone;
   const rangeOption = rangeOptions.find(option => option.value === range)!;
-  const markerOutside = markers.length > 0 && samples.length > 1 && markers.every(marker => marker.at < samples[0].at);
+  const newsMarkers = markers.filter(marker => !marker.kind || marker.kind === "news");
+  const markerOutside = newsMarkers.length > 0 && samples.length > 1 && newsMarkers.every(marker => marker.at < samples[0].at);
   const crossY = inspection ? clamp(inspection.y * geometry.plotHeight, 0, geometry.plotHeight) : 0;
   const crossX = hovered ? geometry.xAtIndex(hoveredIndex) : 0;
   const status = loading ? "차트 불러오는 중…" : failed ? (samples.length ? "갱신 지연 · 마지막 기록을 표시합니다." : "가격 기록을 불러오지 못했습니다.")

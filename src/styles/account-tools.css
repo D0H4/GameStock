@@ -1,0 +1,87 @@
+/*
+ * 가격 근거·거래 복기·자동 매도·자산 추이. 모두 상자 없이 무대 위에 놓이는 구획이고,
+ * 색은 값이 있는 곳(매수 적, 매도 청)에만 켠다.
+ */
+
+/* 움직임 근거 */
+.nx-drivers > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.nx-drivers h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.nx-drivers > header .nx-muted, .nx-drivers > p.nx-muted { font-size: 12px; }
+.nx-drivers-reason { max-width: 60ch; margin: 0 0 24px; font-size: 15px; line-height: 1.6; }
+.nx-drivers-grid { display: grid; gap: 0; margin: 0; }
+.nx-drivers-grid > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--nx-line); }
+.nx-drivers-grid > div:last-child { border-bottom: 1px solid var(--nx-line); }
+.nx-drivers-grid dt { color: var(--ink-muted); font-size: 12px; }
+.nx-drivers-grid dd { margin: 0; min-width: 0; }
+.nx-drivers-foot { margin: 14px 0 0; font-size: 12px; line-height: 1.6; }
+
+.nx-tug dd { display: grid; grid-template-columns: max-content minmax(48px, 1fr) max-content; align-items: center; gap: 12px; }
+.nx-tug-side { font-size: 12px; white-space: nowrap; }
+.nx-tug-side.is-buy { color: var(--up-deep); }
+.nx-tug-side.is-sell { color: var(--down-deep); text-align: right; }
+.nx-tug-bar { position: relative; display: flex; height: 8px; overflow: hidden; border-radius: 3px; background: var(--nx-line); }
+.nx-tug-bar > i { display: block; min-width: 0; transition: flex-grow 280ms cubic-bezier(0.16, 1, 0.3, 1); }
+.nx-tug-bar > .is-buy { background: var(--up); }
+.nx-tug-bar > .is-sell { background: var(--down); }
+.nx-tug-bar > .is-empty { flex: 1; }
+/* 반반 지점. 막대 위를 가로질러 어느 쪽이 더 긴지 바로 읽히게 한다. */
+.nx-tug-bar::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; background: var(--nx-stage); }
+
+.nx-impact dd { display: grid; gap: 8px; }
+.nx-impact dd > .nx-muted { font-size: 12px; }
+.nx-impact-track { position: relative; height: 8px; border-radius: 3px; background: linear-gradient(to right, var(--down-wash) 50%, var(--up-wash) 50%); }
+.nx-impact-track::before { content: ""; position: absolute; top: -3px; bottom: -3px; left: calc(50% - 0.5px); width: 1px; background: var(--nx-guide); }
+.nx-impact-tick { position: absolute; top: -5px; width: 4px; height: 18px; margin-left: -2px; border-radius: 2px; background: var(--ink); transition: left 280ms cubic-bezier(0.16, 1, 0.3, 1); }
+.nx-impact-legend { display: flex; justify-content: space-between; color: var(--ink-muted); font-size: 12px; }
+.nx-impact-legend > .nx-num { color: var(--ink); }
+
+/* 체결 내역 위의 복기 줄 */
+.nx-review { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 24px; margin: 20px 0 24px; }
+.nx-review > div { display: grid; gap: 6px; min-width: 0; }
+.nx-review dt { color: var(--ink-muted); font-size: 12px; }
+.nx-review dd { margin: 0; font-size: 14px; }
+
+/* 자동 매도 */
+.nx-stops { padding-top: 20px; }
+.nx-stops-form { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px 16px; }
+.nx-stops-form .nx-seg { align-self: end; height: 44px; box-sizing: border-box; }
+.nx-stops-form .nx-seg button { min-width: 56px; }
+.nx-stops-form label { display: grid; gap: 6px; min-width: 0; color: var(--ink-muted); font-size: 12px; }
+.nx-stops-form input { box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--trade-field); color: var(--ink); font-size: 14px; }
+.nx-stops-form input::placeholder { color: var(--ink-muted); }
+.nx-stops-form input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nx-stops-form .nx-btn { height: 44px; }
+.nx-stops-hint { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 1.6; }
+.nx-stops > .nx-acct-status { margin: 0; }
+.nx-stops .nx-grid-table { margin-top: 20px; }
+.nx-stops .nx-grid-table :is(th, td):first-child { padding-left: 0; text-align: left; }
+.nx-stops .nx-grid-table :is(th, td):last-child { padding-right: 0; }
+.nx-stops-message { display: block; max-width: 34ch; margin-top: 4px; color: var(--ink-muted); font-size: 12px; line-height: 1.5; white-space: normal; }
+
+/* 자산 추이 (내 계좌) */
+.nx-asset-history > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+.nx-asset-history h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.nx-asset-change { margin: 0 0 16px; font-size: 16px; }
+.nx-asset-change.is-up { color: var(--up-deep); }
+.nx-asset-change.is-down { color: var(--down-deep); }
+.nx-asset-change .nx-muted { font-size: 12px; }
+.nx-asset-plot { margin: 0; }
+.nx-asset-plot svg { display: block; width: 100%; height: 160px; overflow: visible; }
+.nx-asset-base { stroke: var(--nx-guide); stroke-width: 1; stroke-dasharray: 2 3; }
+.nx-asset-line { fill: none; stroke: var(--ink-muted); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.nx-asset-line.is-up { stroke: var(--up); }
+.nx-asset-line.is-down { stroke: var(--down); }
+.nx-asset-axis { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--nx-line); color: var(--ink-muted); font-size: 12px; }
+
+@media (max-width: 1150px) {
+  .nx-review { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nx-stops-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .nx-stops-form .nx-seg { grid-column: 1 / -1; justify-self: start; }
+  .nx-stops-form .nx-btn { grid-column: 1 / -1; }
+}
+
+@media (max-width: 600px) {
+  .nx-drivers-grid > div { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .nx-tug dd { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .nx-tug-bar { grid-column: 1 / -1; grid-row: 1; }
+}

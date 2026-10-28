@@ -51,6 +51,10 @@ html[data-nx-theme="light"] .market-chart { --chart-label-bg: #625b70; }
 .market-chart-line.is-flat, .market-chart-live-line.is-flat { color: var(--ink-muted); }
 .market-chart-live-line { stroke: currentColor; stroke-width: 1; stroke-dasharray: 2 3; opacity: .85; }
 .market-chart-news { fill: var(--ink); stroke: var(--nx-stage); stroke-width: 1.5; }
+/* 내 체결. 캔들과 겹쳐도 보이도록 무대색 테두리를 두른다. */
+.market-chart-fill { stroke: var(--nx-stage); stroke-width: 1.5; stroke-linejoin: round; }
+.market-chart-fill.is-buy { fill: var(--up); }
+.market-chart-fill.is-sell { fill: var(--down); }
 .market-chart-price-tag, .market-chart-cross-price {
   position: absolute; right: 0; display: flex; align-items: center; min-height: 22px;
   padding: 2px 6px; box-sizing: border-box; transform: translateY(-50%);
