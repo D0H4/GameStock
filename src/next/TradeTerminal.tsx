@@ -6,7 +6,7 @@ import { Link } from "../components/Link";
 import { PriceCell } from "../components/PriceCell";
 import { ProfileMenu } from "../components/ProfileMenu";
 import { RestrictionBadge } from "../components/RestrictionBadge";
-import { SeriesChart } from "../components/SeriesChart";
+import { SeriesChart, type Marker } from "../components/SeriesChart";
 import { useMarket, useMarketApi } from "../market/MarketProvider";
 import { rate, shares, since, won } from "../market/format";
 import { marketOpinion, newsEffect, sessionRate, strengthRatio, type OpinionTone } from "../market/selectors";
@@ -17,6 +17,7 @@ import { toggleNxTheme, useNxTheme } from "./uiMode";
 import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
 import { OrderDock } from "./trade/OrderDock";
+import { PriceDrivers } from "./trade/PriceDrivers";
 import { MarketTabs } from "./MarketTabs";
 import { AnimatedNav } from "./AnimatedNav";
 
@@ -391,7 +392,14 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
   const code = ticker?.toUpperCase() ?? snapshot.codes[0] ?? null;
   const listing = code ? LISTING_BY_CODE[code] : undefined;
   const quote = code ? snapshot.quotes[code] : undefined;
-  const markers = useMemo(() => snapshot.news.filter((item) => item.code === code).map((item) => ({ at: item.at, label: item.title })), [snapshot.news, code]);
+  const fills = snapshot.portfolio.fills;
+  const markers = useMemo<Marker[]>(() => [
+    ...snapshot.news.filter((item) => item.code === code).map((item) => ({ at: item.at, label: item.title })),
+    ...fills.filter((fill) => fill.code === code).map((fill) => ({
+      at: fill.at, price: fill.price, kind: fill.side,
+      label: `내 ${fill.side === "buy" ? "매수" : "매도"} ${fill.qty.toLocaleString("ko-KR")}주 · ${won(fill.price)}`,
+    })),
+  ], [snapshot.news, fills, code]);
 
   useEffect(() => { setOrderOpen(false); }, [code]);
 
@@ -440,6 +448,7 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
           </div>
         </section>
         <StockStats quote={quote} />
+        <PriceDrivers code={code} />
         <section className="nx-panel nx-account" aria-label="내 잔고와 주문 내역" tabIndex={-1}>
           <NxAccountPanel code={code} tab={accountTab} onTabChange={setAccountTab}
             onFocusTicket={focusTicket} />

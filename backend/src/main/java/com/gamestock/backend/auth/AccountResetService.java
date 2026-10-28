@@ -54,6 +54,9 @@ public class AccountResetService {
         jdbc.update("DELETE FROM stock_comments WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM stock_tags WHERE created_by = ?", userId);
         jdbc.update("DELETE FROM user_watchlists WHERE user_id = ?", userId);
+        // 리셋 전 잔고에 걸어 둔 자동 매도와 이전 자산 곡선은 새 출발과 이어지지 않는다.
+        jdbc.update("DELETE FROM stop_orders WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM asset_snapshots WHERE user_id = ?", userId);
         // 리셋 닉네임을 바로 바꿀 수 있도록 이전 닉네임 변경 제한도 지운다.
         jdbc.update("""
                 UPDATE users

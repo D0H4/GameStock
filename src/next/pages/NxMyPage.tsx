@@ -4,11 +4,12 @@ import { Link } from "../../components/Link";
 import { PriceCell } from "../../components/PriceCell";
 import { RestrictionBadge } from "../../components/RestrictionBadge";
 import { apiFetch } from "../../lib/api";
-import { fillTime, rate, serverTimestamp, signedWon, won } from "../../market/format";
+import { fillTime, rate, serverTimestamp, shares, signedWon, won } from "../../market/format";
 import { useMarket, useMarketApi } from "../../market/MarketProvider";
 import { holdings, sessionRate, totals } from "../../market/selectors";
 import { LISTING_BY_CODE } from "../../market/universe";
 import { TRADE_PATH } from "../../router";
+import { AssetHistory } from "../AssetHistory";
 
 type ActiveOrder = {
   id: number; stockCode: string; side: string; quantity: number; remainingQuantity: number;
@@ -106,6 +107,8 @@ export function NxMyPage() {
       </section>
 
       <Allocation cash={money.cash} derivative={money.derivativeValue} rows={rows.map((row) => ({ code: row.listing.code, value: row.value }))} total={money.total} />
+
+      <AssetHistory />
 
       {message && <p className="nx-msg" role="status">{message}</p>}
 
@@ -207,20 +210,30 @@ export function NxMyPage() {
             <Link to="/market" className="nx-more">종목 찾기</Link>
           </header>
           {snapshot.watch.length === 0 ? <p className="nx-empty-state">시장 목록에서 별을 눌러 관심 종목을 담아 보세요.</p> : (
-            <ul className="nx-watch-list">
-              {snapshot.watch.map((code) => {
-                const quote = snapshot.quotes[code];
-                const ratio = quote ? sessionRate(quote) : 0;
-                return (
-                  <li key={code}>
-                    <Link to={TRADE_PATH(code)} className="nx-cell-name"><GameIcon code={code} size="small" />{name(code)}</Link>
-                    <span className="nx-num">{quote ? won(quote.price) : "-"}</span>
-                    <span className={`nx-num ${tone(ratio)}`}>{rate(ratio)}</span>
-                    <button type="button" className="nx-link-button" aria-label={`${name(code)} 관심 종목 해제`} onClick={() => api.toggleWatch(code)}>해제</button>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="nx-scroll-x">
+              <table className="nx-grid-table">
+                <caption className="vh">관심 종목 시세</caption>
+                <thead><tr><th scope="col">종목</th><th scope="col">현재가</th><th scope="col">등락률</th><th scope="col">거래량</th><th scope="col"><span className="vh">해제</span></th></tr></thead>
+                <tbody>
+                  {snapshot.watch.map((code) => {
+                    const quote = snapshot.quotes[code];
+                    const ratio = quote ? sessionRate(quote) : 0;
+                    return (
+                      <tr key={code}>
+                        <th scope="row">
+                          <Link to={TRADE_PATH(code)} className="nx-cell-name"><GameIcon code={code} size="small" />{name(code)}</Link>
+                          <RestrictionBadge code={code} />
+                        </th>
+                        <td className="nx-num">{quote ? won(quote.price) : "-"}</td>
+                        <td className={`nx-num ${tone(ratio)}`}>{quote ? rate(ratio) : "-"}</td>
+                        <td className="nx-num">{quote ? shares(quote.volume) : "-"}</td>
+                        <td><button type="button" className="nx-btn is-small" aria-label={`${name(code)} 관심 종목 해제`} onClick={() => api.toggleWatch(code)}>해제</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       </div>
