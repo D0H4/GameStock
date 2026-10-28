@@ -214,13 +214,6 @@ html[data-nx-theme="light"] .nx-alloc .is-4 { background: #cfcadb; }
 .nx-mypage-fills { grid-column: 2; grid-row: 1 / 3; }
 .nx-mypage-watch { grid-column: 1 / -1; }
 
-.nx-watch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
-.nx-watch-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 14px; padding: 16px 18px; border-radius: var(--nx-radius); background: var(--nx-raised); font-size: 14px; }
-html[data-nx][data-nx-theme="light"] .nx-watch-list li { background: var(--nx-tint); }
-.nx-watch-list a { color: var(--ink); text-decoration: none; }
-.nx-watch-list .is-up { color: var(--up-deep); }
-.nx-watch-list .is-down { color: var(--down-deep); }
-
 /* ───────── 대출 ───────── */
 
 .nx-loan-gauge { display: grid; gap: 24px; }
