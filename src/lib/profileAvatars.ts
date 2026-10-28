@@ -1,3 +1,5 @@
+import { apiBaseUrl } from "./api";
+
 export type ProfileAvatar = {
   id: string;
   name: string;
@@ -58,4 +60,16 @@ export const DEFAULT_PROFILE_AVATAR = PROFILE_AVATARS[0].src;
 
 export function isProfileAvatar(value: string | null | undefined): boolean {
   return Boolean(value && PROFILE_AVATARS.some((avatar) => avatar.src === value));
+}
+
+const UPLOADED_PHOTO = /^\/api\/profile-photos\/[0-9a-f]{32}\.jpg$/;
+
+/** 직접 올린 사진은 API 서버가 주므로 API 주소를 붙여 보여 준다. */
+export function profileImageSrc(value: string | null | undefined): string {
+  if (!value) return DEFAULT_PROFILE_AVATAR;
+  return UPLOADED_PHOTO.test(value) ? `${apiBaseUrl}${value}` : value;
+}
+
+export function isUploadedPhoto(value: string | null | undefined): boolean {
+  return Boolean(value && UPLOADED_PHOTO.test(value));
 }

@@ -5,7 +5,7 @@ import { Link } from "./Link";
 import { firebaseAuth } from "../lib/firebase";
 import { openLoginPrompt, useAuthUser } from "../lib/auth";
 import { useProfile } from "../lib/profile";
-import { DEFAULT_PROFILE_AVATAR } from "../lib/profileAvatars";
+import { DEFAULT_PROFILE_AVATAR, profileImageSrc } from "../lib/profileAvatars";
 import { PRIVATE_ROUTES, navigate, type Route } from "../router";
 
 const ITEMS = [
@@ -112,7 +112,7 @@ export function ProfileMenu({ route }: { route: Route }) {
   }
 
   const nickname = profile?.nickname ?? auth.user.displayName ?? "내 계정";
-  const avatar = profile?.profileImageUrl || DEFAULT_PROFILE_AVATAR;
+  const avatar = profileImageSrc(profile?.profileImageUrl);
   const current = route.name === "mypage" || route.name === "settings" || route.name === "titles" || route.name === "attendance" || route.name === "charge" || route.name === "loan" || route.name === "billboard" || route.name === "admin";
   const items = profile?.admin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
 

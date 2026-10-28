@@ -113,6 +113,7 @@ final class MarketSchema {
         addUserColumnIfMissing("email", "VARCHAR(255) NULL");
         addUserColumnIfMissing("profile_image_url", "VARCHAR(500) NULL");
         addUserColumnIfMissing("profile_completed", "BOOLEAN NOT NULL DEFAULT FALSE");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS profile_photos (user_id BIGINT PRIMARY KEY, id CHAR(32) NOT NULL UNIQUE, data MEDIUMBLOB NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)");
         addUserColumnIfMissing("role", "VARCHAR(20) NOT NULL DEFAULT 'USER'");
         addUserColumnIfMissing("account_reset_at", "TIMESTAMP(3) NULL");
         Integer resetPrecision=jdbc.queryForObject("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='users' AND column_name='account_reset_at'",Integer.class);

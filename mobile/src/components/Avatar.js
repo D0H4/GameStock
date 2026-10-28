@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Image, View } from 'react-native';
+import { API_BASE_URL } from '../config';
 import { useTheme } from '../theme';
 
 // 웹 public/profile-avatars의 기본 프로필 그림. 서버에는 웹 경로(/profile-avatars/...)로 저장돼 있다.
@@ -26,13 +27,17 @@ export const PROFILE_AVATARS = [
   { src: '/profile-avatars/rose-earmuffs-384.png', name: '로즈 이어머프' },
 ];
 export const isProfileAvatar = url => PROFILE_AVATARS.some(avatar => avatar.src === url);
+// 직접 올린 사진은 API 서버가 준다. 웹 src/lib/profileAvatars.ts의 profileImageSrc와 같은 규칙이다.
+const UPLOADED_PHOTO = /^\/api\/profile-photos\/[0-9a-f]{32}\.jpg$/;
+export const isUploadedPhoto = url => UPLOADED_PHOTO.test(String(url ?? ''));
 
 /** 프로필 사진. 기본 그림은 앱에 든 파일을, 외부 사진(Google 계정 등)은 주소로 불러오고 실패하면 기본 그림으로 바꾼다. */
 export function Avatar({ url, size = 36 }) {
   const theme = useTheme();
   const [failed, setFailed] = useState(false);
   const bundled = url ? AVATARS[String(url).replace(/^https?:\/\/[^/]+/, '')] : null;
-  const source = bundled ?? (url && /^https?:\/\//.test(url) && !failed ? { uri: url } : DEFAULT_AVATAR);
+  const remote = isUploadedPhoto(url) ? `${API_BASE_URL.replace(/\/$/, '')}${url}` : url;
+  const source = bundled ?? (remote && /^https?:\/\//.test(remote) && !failed ? { uri: remote } : DEFAULT_AVATAR);
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', backgroundColor: theme.line }}>
       <Image source={source} style={{ width: size, height: size }} onError={() => setFailed(true)} accessibilityIgnoresInvertColors />
