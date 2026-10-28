@@ -211,7 +211,11 @@ public class AuthService {
                 : update.profileImageUrl().trim();
         if (image.length() > 500) throw new IllegalArgumentException("프로필 이미지 주소가 너무 깁니다.");
         if (!ProfileImages.allowed(image))
-            throw new IllegalArgumentException("제공된 캐릭터 이미지나 Google 프로필 사진만 사용할 수 있습니다.");
+            throw new IllegalArgumentException("제공된 캐릭터 이미지, 직접 올린 사진, Google 프로필 사진만 사용할 수 있습니다.");
+        // 다른 사람이 올린 사진 주소를 자기 프로필로 가져가지 못하게 한다.
+        String photoId = ProfileImages.uploadedPhotoId(image);
+        if (photoId != null && !image.equals(current.profileImageUrl()) && !ownsPhoto(userId, photoId))
+            throw new IllegalArgumentException("직접 올린 사진만 사용할 수 있습니다.");
         if (changed && !current.nicknameChangeAvailable())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "닉네임은 3일에 한 번 변경할 수 있습니다.");
         try {
@@ -226,6 +230,11 @@ public class AuthService {
         }
         return profile(userId);
     }
+    private boolean ownsPhoto(long userId, String photoId) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM profile_photos WHERE id = ? AND user_id = ?", Integer.class, photoId, userId);
+        return count != null && count > 0;
+    }
+
     private LoginUser findOrCreate(FirebaseToken token) {
         // The existing google_uid column stores the Firebase UID for both providers.
         // Keep that key so existing Google accounts retain their assets and history.

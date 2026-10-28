@@ -210,6 +210,29 @@ class AuthServiceTest {
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
+    @Test void ownUploadedPhotoCanBeSelectedAgain() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        AuthService auth = service(jdbc, null);
+        String photo = "/api/profile-photos/0123456789abcdef0123456789abcdef.jpg";
+        when(jdbc.queryForObject(contains("FROM profile_photos"), eq(Integer.class), eq("0123456789abcdef0123456789abcdef"), eq(7L))).thenReturn(1);
+
+        auth.updateProfile(7L, new AuthService.ProfileUpdate("원래닉네임", photo));
+
+        verify(jdbc).update("UPDATE users SET profile_image_url = ?, profile_completed = TRUE WHERE id = ?", photo, 7L);
+    }
+
+    @Test void someoneElsesUploadedPhotoIsRejected() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        AuthService auth = service(jdbc, null);
+        when(jdbc.queryForObject(contains("FROM profile_photos"), eq(Integer.class), anyString(), eq(7L))).thenReturn(0);
+
+        var error = assertThrows(IllegalArgumentException.class, () -> auth.updateProfile(7L,
+                new AuthService.ProfileUpdate("원래닉네임", "/api/profile-photos/0123456789abcdef0123456789abcdef.jpg")));
+
+        assertTrue(error.getMessage().contains("직접 올린"));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
     @Test void legacyExternalImageIsDroppedOnNicknameOnlyUpdate() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ResultSet rs = mock(ResultSet.class);

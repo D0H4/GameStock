@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useAccount } from '../../account';
 import { request, useAuth } from '../../auth';
-import { Avatar, PROFILE_AVATARS, isProfileAvatar } from '../../components/Avatar';
+import { Avatar, PROFILE_AVATARS, isProfileAvatar, isUploadedPhoto } from '../../components/Avatar';
 import { AccountFrame, Button, Card, CardHead, Empty, Field, Notice } from '../../components/Kit';
 import { RADIUS, SPACE, Txt, useTheme } from '../../theme';
 
@@ -156,7 +156,7 @@ export function ProfileScreen({ onBack }) {
         {profile.profileImageUrl && !isProfileAvatar(profile.profileImageUrl) ? (
           <View style={styles.current}>
             <Avatar url={profile.profileImageUrl} size={28} />
-            <Txt variant="caption" tone="inkSoft">지금은 로그인 계정 사진을 쓰고 있어요</Txt>
+            <Txt variant="caption" tone="inkSoft">{isUploadedPhoto(profile.profileImageUrl) ? '지금은 웹에서 올린 내 사진을 쓰고 있어요' : '지금은 로그인 계정 사진을 쓰고 있어요'}</Txt>
           </View>
         ) : null}
         <View style={styles.avatars} accessibilityRole="radiogroup" accessibilityLabel="프로필 사진 선택">

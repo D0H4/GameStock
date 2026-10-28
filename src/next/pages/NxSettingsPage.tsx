@@ -1,10 +1,34 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { openLoginPrompt } from "../../lib/auth";
 import { firebaseAuth } from "../../lib/firebase";
 import { setProfile as shareProfile, type Profile } from "../../lib/profile";
-import { DEFAULT_PROFILE_AVATAR, isProfileAvatar, PROFILE_AVATARS } from "../../lib/profileAvatars";
+import { DEFAULT_PROFILE_AVATAR, isProfileAvatar, isUploadedPhoto, PROFILE_AVATARS, profileImageSrc } from "../../lib/profileAvatars";
+
+const PHOTO_ACCEPT = ["image/jpeg", "image/png", "image/webp"];
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const PHOTO_SIZE = 384;
+// 아직 저장하지 않은 내 사진을 고른 상태. 서버 주소가 아니므로 다른 값과 겹치지 않는다.
+const PHOTO_DRAFT = "photo:draft";
+
+type PhotoDraft = { preview: string; blob: Blob };
+
+/* 가운데를 정사각형으로 잘라 캐릭터 프사와 같은 384px로 줄인다. 서버는 JPG·PNG만 받는다. */
+async function preparePhoto(file: File): Promise<PhotoDraft> {
+  if (!PHOTO_ACCEPT.includes(file.type)) throw new Error("JPG, PNG, WebP 사진만 올릴 수 있어요.");
+  if (file.size > PHOTO_MAX_BYTES) throw new Error("10MB 이하 사진을 골라 주세요.");
+  const bitmap = await createImageBitmap(file).catch(() => { throw new Error("사진을 읽지 못했어요. 다른 파일을 골라 주세요."); });
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = PHOTO_SIZE;
+  canvas.height = PHOTO_SIZE;
+  canvas.getContext("2d")?.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob) throw new Error("사진을 읽지 못했어요. 다른 파일을 골라 주세요.");
+  return { preview: canvas.toDataURL("image/jpeg", 0.9), blob };
+}
 
 /* 프로필 조회·저장·계좌 초기화 규칙은 기존 설정 화면(AccountSettings)과 같다. */
 export function NxSettingsPage() {
@@ -17,6 +41,12 @@ export function NxSettingsPage() {
   const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState("");
   const [now, setNow] = useState(Date.now());
+  const [draft, setDraft] = useState<PhotoDraft | null>(null);
+  const [ownPhoto, setOwnPhoto] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -42,6 +72,7 @@ export function NxSettingsPage() {
         setProfile(next);
         setNickname(next.nickname ?? "");
         setSelectedAvatar(next.profileImageUrl ?? "");
+        if (isUploadedPhoto(next.profileImageUrl)) setOwnPhoto(next.profileImageUrl ?? "");
       })
       .catch((error) => { if (active) setMessage(error instanceof Error ? error.message : "계정 정보를 불러오지 못했습니다."); })
       .finally(() => { if (active) setLoading(false); });
@@ -53,6 +84,7 @@ export function NxSettingsPage() {
     shareProfile(next);
     setNickname(next.nickname);
     setSelectedAvatar(next.profileImageUrl ?? "");
+    if (isUploadedPhoto(next.profileImageUrl)) setOwnPhoto(next.profileImageUrl ?? "");
   };
 
   const saveNickname = async () => {
@@ -78,7 +110,12 @@ export function NxSettingsPage() {
     setSaving(true);
     setMessage("");
     try {
-      applyProfile(await apiFetch<Profile>("/api/profile", { method: "PATCH", body: JSON.stringify({ nickname: profile.nickname, profileImageUrl: selectedAvatar }) }));
+      if (selectedAvatar === PHOTO_DRAFT && draft) {
+        applyProfile(await apiFetch<Profile>("/api/profile/photo", { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: draft.blob }));
+        setDraft(null);
+      } else {
+        applyProfile(await apiFetch<Profile>("/api/profile", { method: "PATCH", body: JSON.stringify({ nickname: profile.nickname, profileImageUrl: selectedAvatar }) }));
+      }
       setMessage("프로필 사진을 저장했어요.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "프로필 사진 저장에 실패했습니다.");
@@ -101,13 +138,38 @@ export function NxSettingsPage() {
     }
   };
 
+  const takePhoto = async (file: File | undefined) => {
+    if (!file || preparing) return;
+    setUploadError("");
+    setPreparing(true);
+    try {
+      setDraft(await preparePhoto(file));
+      setSelectedAvatar(PHOTO_DRAFT);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "사진을 읽지 못했어요.");
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  const removeDraft = () => {
+    if (selectedAvatar === PHOTO_DRAFT) setSelectedAvatar(profile?.profileImageUrl ?? "");
+    setDraft(null);
+    setUploadError("");
+  };
+
+  const photoThumb = draft?.preview ?? (ownPhoto ? profileImageSrc(ownPhoto) : "");
+  const photoChoice = draft ? PHOTO_DRAFT : ownPhoto;
+  const photoSelected = selectedAvatar === PHOTO_DRAFT || isUploadedPhoto(selectedAvatar);
   const chosenAvatar = PROFILE_AVATARS.find((avatar) => avatar.src === selectedAvatar);
   const avatarSaved = selectedAvatar !== "" && selectedAvatar === (profile?.profileImageUrl ?? "");
-  const avatarStatus = chosenAvatar
+  const avatarStatus = photoSelected
+    ? avatarSaved ? "내 사진 사용 중" : "내 사진 선택됨. 저장하면 바뀌어요."
+    : chosenAvatar
     ? avatarSaved ? `${chosenAvatar.name} 사용 중` : `${chosenAvatar.name} 선택됨. 저장하면 바뀌어요.`
     : selectedAvatar ? "지금은 로그인 계정 사진을 쓰고 있어요. 바꾸려면 캐릭터를 골라 주세요."
     : "캐릭터를 하나 골라 주세요.";
-  const preview = selectedAvatar || profile?.profileImageUrl || DEFAULT_PROFILE_AVATAR;
+  const preview = selectedAvatar === PHOTO_DRAFT && draft ? draft.preview : profileImageSrc(selectedAvatar || profile?.profileImageUrl);
 
   return (
     <div className="nx-screen nx-settings">
@@ -157,12 +219,38 @@ export function NxSettingsPage() {
               {loading ? <div className="nx-skeleton"><span /><span /></div> : (
                 <fieldset className="nx-avatar-picker">
                   <legend className="vh">프로필 사진 선택</legend>
-                  {profile?.profileImageUrl && !isProfileAvatar(profile.profileImageUrl) && (
+                  {profile?.profileImageUrl && !isProfileAvatar(profile.profileImageUrl) && !isUploadedPhoto(profile.profileImageUrl) && (
                     <p className="nx-muted nx-avatar-current">
                       <img src={profile.profileImageUrl} alt="" onError={(event) => { event.currentTarget.src = DEFAULT_PROFILE_AVATAR; }} />
                       현재 계정 사진을 쓰고 있어요
                     </p>
                   )}
+                  <div className={`nx-photo-drop${dragging ? " is-dragging" : ""}${photoSelected ? " is-active" : ""}`}
+                    onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+                    onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
+                    onDrop={(event) => { event.preventDefault(); setDragging(false); void takePhoto(event.dataTransfer.files[0]); }}>
+                    {photoThumb ? (
+                      <button type="button" className="nx-photo-thumb" aria-pressed={photoSelected} aria-label="내 사진을 프로필 사진으로 선택" onClick={() => setSelectedAvatar(photoChoice)}>
+                        <img src={photoThumb} alt="" onError={(event) => { event.currentTarget.src = DEFAULT_PROFILE_AVATAR; }} />
+                      </button>
+                    ) : (
+                      <span className="nx-photo-thumb is-empty" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                      </span>
+                    )}
+                    <div className="nx-photo-copy">
+                      <p className="nx-photo-title">{photoThumb ? "내 사진" : "내 사진 올리기"}</p>
+                      <p className={`nx-field-hint${uploadError ? " is-error" : ""}`} role={uploadError ? "alert" : undefined}>
+                        {uploadError || (preparing ? "사진을 맞추는 중…" : dragging ? "여기에 놓으면 올라가요" : "끌어다 놓거나 골라 주세요. JPG, PNG, WebP, 10MB 이하")}
+                      </p>
+                    </div>
+                    <div className="nx-photo-actions">
+                      <button type="button" className="nx-btn" disabled={preparing} onClick={() => photoInput.current?.click()}>{photoThumb ? "다른 사진" : "사진 고르기"}</button>
+                      {draft && <button type="button" className="nx-btn" disabled={preparing || saving} onClick={removeDraft}>지우기</button>}
+                    </div>
+                    <input ref={photoInput} type="file" accept={PHOTO_ACCEPT.join(",")} className="vh" tabIndex={-1} aria-hidden="true"
+                      onChange={(event) => { void takePhoto(event.target.files?.[0]); event.target.value = ""; }} />
+                  </div>
                   <div className="nx-avatar-grid" role="group" aria-label="프로필 사진 선택">
                     {PROFILE_AVATARS.map((avatar) => {
                       const selected = selectedAvatar === avatar.src;
@@ -177,7 +265,7 @@ export function NxSettingsPage() {
                   </div>
                   <div className="nx-avatar-footer">
                     <span className="nx-muted">{avatarStatus}</span>
-                    <button type="button" className="nx-btn is-primary" disabled={saving || !profile || !selectedAvatar || selectedAvatar === (profile.profileImageUrl ?? "")} onClick={() => void saveAvatar()}>
+                    <button type="button" className="nx-btn is-primary" disabled={saving || preparing || !profile || !selectedAvatar || selectedAvatar === (profile.profileImageUrl ?? "")} onClick={() => void saveAvatar()}>
                       {saving ? "저장 중…" : "프로필 사진 저장"}
                     </button>
                   </div>

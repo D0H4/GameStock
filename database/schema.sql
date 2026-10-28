@@ -21,6 +21,14 @@ CREATE TABLE users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 직접 올린 프로필 사진. 384px JPEG로 다시 그린 것만 한 사람당 하나 둔다.
+CREATE TABLE profile_photos (
+  user_id BIGINT PRIMARY KEY,
+  id CHAR(32) NOT NULL UNIQUE,
+  data MEDIUMBLOB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE attendance_rewards (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,

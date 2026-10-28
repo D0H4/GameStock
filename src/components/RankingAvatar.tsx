@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE_AVATAR } from "../lib/profileAvatars";
+import { DEFAULT_PROFILE_AVATAR, profileImageSrc } from "../lib/profileAvatars";
 import "./RankingAvatar.css";
 
 const frames: Record<number, string> = {
@@ -14,7 +14,7 @@ export function RankingAvatar({ rank, src }: { rank: number; src?: string | null
 
   return (
     <span className="ranking-medal-avatar" aria-hidden="true">
-      <img className="ranking-medal-photo" src={src || DEFAULT_PROFILE_AVATAR} alt="" width={40} height={40}
+      <img className="ranking-medal-photo" src={profileImageSrc(src)} alt="" width={40} height={40}
         decoding="async" onError={(event) => {
           if (event.currentTarget.src.endsWith(DEFAULT_PROFILE_AVATAR)) return;
           event.currentTarget.src = DEFAULT_PROFILE_AVATAR;

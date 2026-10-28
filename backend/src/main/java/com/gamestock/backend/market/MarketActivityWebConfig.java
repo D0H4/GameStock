@@ -17,6 +17,6 @@ class MarketActivityWebConfig implements WebMvcConfigurer {
             @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
                 market.recordHumanActivity();return true;
             }
-        }).addPathPatterns("/api/**").excludePathPatterns("/api/health","/api/health/**","/api/market-metrics");
+        }).addPathPatterns("/api/**").excludePathPatterns("/api/health","/api/health/**","/api/market-metrics","/api/profile-photos/**");
     }
 }
