@@ -62,6 +62,8 @@ export function PriceDrivers({ code }: { code: string }) {
 
   const now = Date.now();
   const ago = (value: string) => since(serverTimestamp(value), now);
+  // "방금"은 부사라 조사를 붙이면 "방금에"처럼 어색해진다.
+  const lastTrade = (when: string) => (when === "방금" ? when : `${when}에`);
 
   return (
     <section className="nx-drivers" aria-labelledby="nx-drivers-title" aria-busy={!drivers && !failed}>
@@ -91,7 +93,7 @@ export function PriceDrivers({ code }: { code: string }) {
             <Tug label="체결" buy={drivers.userBuyVolume + drivers.botBuyVolume} sell={drivers.userSellVolume + drivers.botSellVolume} />
             <Tug label="대기 주문" buy={drivers.openBuyVolume} sell={drivers.openSellVolume} />
           </dl>
-          <p className="nx-drivers-foot nx-muted">전일보다 <span className="nx-num">{rate(drivers.changePercent / 100)}</span> 움직였어요. {drivers.latestTradeAt ? `마지막 체결은 ${ago(drivers.latestTradeAt)}에 있었어요.` : "아직 체결이 없어요."} 지표는 지난 흐름이고 다음 가격을 알려 주지 않아요.</p>
+          <p className="nx-drivers-foot nx-muted">전일보다 <span className="nx-num">{rate(drivers.changePercent / 100)}</span> 움직였어요. {drivers.latestTradeAt ? `마지막 체결은 ${lastTrade(ago(drivers.latestTradeAt))} 있었어요.` : "아직 체결이 없어요."} 지표는 지난 흐름이고 다음 가격을 알려 주지 않아요.</p>
         </>;
       })()}
     </section>
