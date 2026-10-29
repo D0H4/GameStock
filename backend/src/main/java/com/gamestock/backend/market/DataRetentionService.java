@@ -24,6 +24,8 @@ import java.util.*;
  * <li>Trades, settlements and orders made only between bots are deleted after 30 days once the
  *     liquidity and metric projections have consumed them. Anything a person traded is kept.</li>
  * <li>trading_restriction_events, which nothing reads back, keeps 90 days.</li>
+ * <li>Stock discussion threads are deleted, with their replies and likes, once the first post is
+ *     {@link StockTalkService#RETENTION} old.</li>
  * </ul>
  *
  * Each pass deletes a bounded number of rows in short autocommit statements so it never holds locks
@@ -79,9 +81,10 @@ public class DataRetentionService {
         int restrictions = budget[0] > 0 ? limited(budget, jdbc.update(
                 "DELETE FROM trading_restriction_events WHERE ends_at<? ORDER BY ends_at LIMIT ?",
                 new Timestamp(now - RESTRICTION_LOG.toMillis()), Math.min(DELETE_CHUNK, budget[0]))) : 0;
-        int total = history + ledger + orders + restrictions;
-        if (total > 0) log.info("Data retention removed {} price points, {} bot trades, {} bot orders, {} restriction logs",
-                history, ledger, orders, restrictions);
+        int talk = budget[0] > 0 ? deleteOldTalk(now, budget) : 0;
+        int total = history + ledger + orders + restrictions + talk;
+        if (total > 0) log.info("Data retention removed {} price points, {} bot trades, {} bot orders, {} restriction logs, {} discussion posts",
+                history, ledger, orders, restrictions, talk);
         return total;
     }
 
@@ -94,6 +97,7 @@ public class DataRetentionService {
                   hour_until TIMESTAMP NULL
                 )
                 """);
+        StockTalkService.ensureTables(jdbc);
         prepared = true;
     }
 
@@ -224,6 +228,16 @@ public class DataRetentionService {
 
     private Set<Long> botAccounts() {
         return new HashSet<>(jdbc.queryForList("SELECT id FROM users WHERE password_hash IN ('BOT','TRADER')", Long.class));
+    }
+
+    /** Whole threads go at once, replies first, so a reply never outlives its post. Likes cascade. */
+    private int deleteOldTalk(long now, int[] budget) {
+        List<Long> roots = jdbc.queryForList("SELECT id FROM stock_talk_posts WHERE parent_id IS NULL AND created_at<? ORDER BY id LIMIT ?",
+                Long.class, new Timestamp(now - StockTalkService.RETENTION.toMillis()), Math.min(DELETE_CHUNK, budget[0]));
+        if (roots.isEmpty()) return 0;
+        int replies = limited(budget, jdbc.update("DELETE FROM stock_talk_posts WHERE parent_id IN ("
+                + String.join(",", Collections.nCopies(roots.size(), "?")) + ")", roots.toArray()));
+        return replies + deleteIds("stock_talk_posts", roots, budget);
     }
 
     private int deleteIds(String table, List<Long> ids, int[] budget) {

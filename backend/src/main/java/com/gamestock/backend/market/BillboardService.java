@@ -29,9 +29,9 @@ public class BillboardService {
     public static final int MAX_LENGTH = 40;
     /** 10초씩 번갈아 보여도 한 바퀴가 너무 길어지지 않게 동시에 떠 있는 문구 수를 묶는다. */
     public static final int MAX_LIVE = 10;
-    private static final Pattern LINK = Pattern.compile("(?i)(https?://|www\\.|[a-z0-9-]+\\.(com|net|org|kr|io|gg|me|ly|co|xyz|site|app)\\b)");
+    static final Pattern LINK = Pattern.compile("(?i)(https?://|www\\.|[a-z0-9-]+\\.(com|net|org|kr|io|gg|me|ly|co|xyz|site|app)\\b)");
     /** 공백·기호를 지운 뒤 찾는다. 막는 단어는 최소한만 두고, 나머지는 신고와 관리자 내림으로 다룬다. */
-    private static final List<String> BLOCKED = List.of("시발", "씨발", "ㅅㅂ", "병신", "ㅂㅅ", "좆", "개새끼", "니미", "fuck", "shit");
+    static final List<String> BLOCKED = List.of("시발", "씨발", "ㅅㅂ", "병신", "ㅂㅅ", "좆", "개새끼", "니미", "fuck", "shit");
     private static final Set<String> OPEN = Set.of("BOOKED");
 
     public record Showing(long id, String nickname, String body, String startsAt, String endsAt) { }

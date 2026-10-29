@@ -108,6 +108,26 @@ class DataRetentionIntegrationTest {
         assertEquals(1,count("SELECT COUNT(*) FROM trading_restriction_events WHERE stock_id=? AND kind='STATIC_VI'",stock));
     }
 
+    @Test void dropsDiscussionThreadsAWeekAfterTheFirstPostAndKeepsBotsOut() {
+        StockTalkService talk=new StockTalkService(jdbc,new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource));
+        talk.setClock(Clock.fixed(Instant.ofEpochMilli(now),ZoneOffset.UTC));
+        assertThrows(IllegalArgumentException.class,()->talk.write(botA,"a","UMA",new StockTalkService.Write("봇 글",null)));
+        long fresh=talk.write(human,"h","UMA",new StockTalkService.Write("새 글",null)).id();
+        assertThrows(IllegalArgumentException.class,()->talk.like(botA,fresh));
+        jdbc.update("INSERT INTO stock_talk_posts(stock_code,user_id,parent_id,body,created_at) VALUES ('UMA',?,NULL,'지난 글',?)",human,new Timestamp(now-8*DAY));
+        long old=jdbc.queryForObject("SELECT MAX(id) FROM stock_talk_posts",Long.class);
+        jdbc.update("INSERT INTO stock_talk_posts(stock_code,user_id,parent_id,body,created_at) VALUES ('UMA',?,?,'최근 답글',?)",human,old,new Timestamp(now-DAY));
+        long reply=jdbc.queryForObject("SELECT MAX(id) FROM stock_talk_posts",Long.class);
+        talk.like(human,old);
+
+        for(int pass=0;pass<20&&retention.prune()>0;pass++);
+
+        assertEquals(0,count("SELECT COUNT(*) FROM stock_talk_posts WHERE id IN (?,?)",old,reply),"A reply goes with its week-old thread");
+        assertEquals(0,count("SELECT COUNT(*) FROM stock_talk_likes WHERE post_id=?",old));
+        assertEquals(1,count("SELECT COUNT(*) FROM stock_talk_posts WHERE id=?",fresh));
+        assertEquals(List.of(fresh),talk.list("UMA",0,human).posts().stream().map(StockTalkService.Post::id).toList());
+    }
+
     private static void assertOhlc(List<Long> before,List<Long> after,int maximum){
         assertTrue(after.size()<=maximum,"At most first, last, high and low remain: "+after);
         assertEquals(before.get(0),after.get(0));
