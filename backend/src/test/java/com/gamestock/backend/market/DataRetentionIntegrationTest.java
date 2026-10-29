@@ -120,7 +120,10 @@ class DataRetentionIntegrationTest {
         long reply=jdbc.queryForObject("SELECT MAX(id) FROM stock_talk_posts",Long.class);
         talk.like(human,old);
 
-        for(int pass=0;pass<20&&retention.prune()>0;pass++);
+        // Only the discussion step: a full prune() here would advance the price-history compaction
+        // cursors over still-empty windows, and the thinning test that shares this database would find
+        // its seeded points already marked as compacted.
+        retention.deleteOldTalk(now,new int[]{1_000});
 
         assertEquals(0,count("SELECT COUNT(*) FROM stock_talk_posts WHERE id IN (?,?)",old,reply),"A reply goes with its week-old thread");
         assertEquals(0,count("SELECT COUNT(*) FROM stock_talk_likes WHERE post_id=?",old));

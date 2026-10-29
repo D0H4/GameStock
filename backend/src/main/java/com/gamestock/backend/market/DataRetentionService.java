@@ -231,7 +231,7 @@ public class DataRetentionService {
     }
 
     /** Whole threads go at once, replies first, so a reply never outlives its post. Likes cascade. */
-    private int deleteOldTalk(long now, int[] budget) {
+    int deleteOldTalk(long now, int[] budget) {
         List<Long> roots = jdbc.queryForList("SELECT id FROM stock_talk_posts WHERE parent_id IS NULL AND created_at<? ORDER BY id LIMIT ?",
                 Long.class, new Timestamp(now - StockTalkService.RETENTION.toMillis()), Math.min(DELETE_CHUNK, budget[0]));
         if (roots.isEmpty()) return 0;
