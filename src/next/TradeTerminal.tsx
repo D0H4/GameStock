@@ -18,6 +18,7 @@ import { NxAccountPanel, type NxAccountTab } from "./trade/NxAccountPanel";
 import { NxOrderTicket } from "./trade/NxOrderTicket";
 import { OrderDock } from "./trade/OrderDock";
 import { PriceDrivers } from "./trade/PriceDrivers";
+import { StockTalk } from "./trade/StockTalk";
 import { MarketTabs } from "./MarketTabs";
 import { AnimatedNav } from "./AnimatedNav";
 
@@ -457,6 +458,7 @@ export function TradeTerminal({ ticker }: { ticker: string | null }) {
           <Book quote={quote} onPriceSelect={(price) => { setSelected((previous) => ({ code, price, revision: (previous?.revision ?? 0) + 1 })); focusTicket(); }} />
           <StockNews code={code} quote={quote} />
         </div>
+        <StockTalk key={code} code={code} name={listing.name} />
         <p className="nx-trade-disclaimer">게임 뉴스와 모의 주문으로 형성되는 시세입니다. 실제 금융상품이나 투자 수익과 관계없습니다.</p>
         </div>
         <OrderDock title={listing.name} open={orderOpen} onOpenChange={setOrderOpen}
